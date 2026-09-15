@@ -10,6 +10,8 @@ fazer. Cada item traz a medição que o justifica — nada aqui é palpite.
 - **Rolagem horizontal** não entra no cabeçalho da leitura: o eixo vertical é o
   que morde, e reportar os dois inventaria formato para um caso ainda não
   medido (item 1).
+- **`wait` não enxerga shadow root nem iframe de mesma origem** — e a leitura
+  agora mostra os dois (item 6).
 
 O resto abaixo é histórico: o que fechou, com o que ensinou.
 
@@ -157,6 +159,29 @@ Corrigido: o `text=` coleta candidatos também dentro de shadow roots **abertos*
 a semântica do seletor — caindo na sombra só quando o claro não acha nada. A
 ordem dos candidatos do documento claro ficou idêntica, então página sem web
 component não muda de alvo.
+
+---
+
+## 6. `wait` não enxerga shadow root nem iframe de mesma origem
+
+**Medido** agora que a leitura mostra os dois: `wait "Iframe zone"` e
+`wait "SHADOW-321"` estouram o tempo, embora o `snap` mostre o conteúdo da seção
+13 logo abaixo de `- Iframe` e o `SHADOW-321` da seção 12.
+
+**Por quê:** o `wait` tem varredura própria (`document.body.innerText` mais
+`document.querySelectorAll('body *')`), e nenhuma das duas atravessa fronteira —
+`innerText` enxerga só o documento claro.
+
+**O conserto:** o mesmo padrão que a mira por texto usa (`sobASombra`) e que a
+leitura agora usa para frame — descer em `el.shadowRoot` e em
+`iframe.contentDocument` (mesma origem) ao varrer. Vale para o `text=`/`css=`
+dentro de iframe também, que hoje só alcança o conteúdo do frame por `ref`.
+Barato, mas não entrou nesta rodada de propósito: mexe no `wait`, que é comando
+de espera, e espera é onde errar custa caro — ou volta cedo demais, ou estoura o
+tempo.
+
+**Enquanto isso:** o agente chega ao mesmo lugar lendo a tela (`snap` mostra o
+conteúdo) ou mirando por `ref`, que funciona dentro do iframe.
 
 ---
 
