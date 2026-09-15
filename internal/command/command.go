@@ -61,33 +61,33 @@ var Specs = []Spec{
 }
 
 var aliasToCmd = map[string]string{
-	"estado":      "status",
-	"abrir":       "open",
-	"tela":        "snap",
-	"clicar":      "click",
-	"passar":      "hover",
-	"digitar":     "fill",
-	"preencher":   "fill",
-	"teclar":      "type",
-	"tecla":       "press",
-	"escolher":    "select",
-	"marcar":      "check",
-	"desmarcar":   "uncheck",
-	"rolar":       "scroll",
-	"esperar":     "wait",
-	"sumir":       "waitgone",
-	"ler":         "read",
-	"abas":        "tabs",
-	"nova":        "newtab",
-	"fecharaba":   "closetab",
-	"voltar":      "back",
-	"avancar":     "forward",
-	"recarregar":  "reload",
-	"rede":        "net",
-	"captura":     "shot",
-	"roteiro":     "script",
-	"encerrar":    "stop",
-	"instalar":    "install",
+	"estado":     "status",
+	"abrir":      "open",
+	"tela":       "snap",
+	"clicar":     "click",
+	"passar":     "hover",
+	"digitar":    "fill",
+	"preencher":  "fill",
+	"teclar":     "type",
+	"tecla":      "press",
+	"escolher":   "select",
+	"marcar":     "check",
+	"desmarcar":  "uncheck",
+	"rolar":      "scroll",
+	"esperar":    "wait",
+	"sumir":      "waitgone",
+	"ler":        "read",
+	"abas":       "tabs",
+	"nova":       "newtab",
+	"fecharaba":  "closetab",
+	"voltar":     "back",
+	"avancar":    "forward",
+	"recarregar": "reload",
+	"rede":       "net",
+	"captura":    "shot",
+	"roteiro":    "script",
+	"encerrar":   "stop",
+	"instalar":   "install",
 }
 
 func lookup(cmd string) (Spec, bool) {
@@ -151,7 +151,8 @@ func Parse(tokens []string) (protocol.Request, error) {
 func Help() string {
 	var b strings.Builder
 	b.WriteString("bu — browser dirigido por agente\n\n")
-	b.WriteString("uso: bu <comando> [args] [chave=valor] [--flag]\n\n")
+	b.WriteString("uso: bu <comando> [args] [chave=valor] [--flag]\n")
+	b.WriteString("flags globais: --leve (sem janela, PADRÃO) | --ver (janela + cursor)\n\n")
 	for _, s := range Specs {
 		line := "  " + s.Cmd
 		for _, p := range s.Positional {

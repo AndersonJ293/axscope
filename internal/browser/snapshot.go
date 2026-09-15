@@ -67,13 +67,13 @@ var structuralRoles = map[string]bool{
 }
 
 type axNode struct {
-	NodeID   string `json:"nodeId"`
-	Ignored  bool   `json:"ignored"`
-	Role     axVal  `json:"role"`
-	Name     axVal  `json:"name"`
-	Value    axVal  `json:"value"`
-	ParentID string `json:"parentId"`
-	ChildIDs []string `json:"childIds"`
+	NodeID     string   `json:"nodeId"`
+	Ignored    bool     `json:"ignored"`
+	Role       axVal    `json:"role"`
+	Name       axVal    `json:"name"`
+	Value      axVal    `json:"value"`
+	ParentID   string   `json:"parentId"`
+	ChildIDs   []string `json:"childIds"`
 	Properties []struct {
 		Name  string `json:"name"`
 		Value struct {

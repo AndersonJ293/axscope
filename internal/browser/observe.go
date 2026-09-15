@@ -15,11 +15,11 @@ import (
 
 // ConsoleEntry é uma linha de console ou uma exceção da página.
 type ConsoleEntry struct {
-	Time    time.Time `json:"time"`
-	Level   string    `json:"level"`
-	Text    string    `json:"text"`
-	URL     string    `json:"url,omitempty"`
-	Line    int       `json:"line,omitempty"`
+	Time  time.Time `json:"time"`
+	Level string    `json:"level"`
+	Text  string    `json:"text"`
+	URL   string    `json:"url,omitempty"`
+	Line  int       `json:"line,omitempty"`
 }
 
 // NetworkEntry é uma requisição observada.

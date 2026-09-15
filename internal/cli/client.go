@@ -75,6 +75,12 @@ func Send(req protocol.Request) (protocol.Response, error) {
 	if err != nil {
 		return protocol.Response{}, err
 	}
+	return SendTo(socketPath, req)
+}
+
+// SendTo fala direto com um socket, sem subir daemon nenhum. É o que o
+// `stop --all` usa: garantir o daemon ali seria ressuscitar o que se quer fechar.
+func SendTo(socketPath string, req protocol.Request) (protocol.Response, error) {
 	conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
 	if err != nil {
 		return protocol.Response{}, err

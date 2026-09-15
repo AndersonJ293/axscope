@@ -14,6 +14,8 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/ajunior/browser-use/internal/browser"
@@ -23,6 +25,7 @@ import (
 	"github.com/ajunior/browser-use/internal/installer"
 	"github.com/ajunior/browser-use/internal/mcpsrv"
 	"github.com/ajunior/browser-use/internal/paths"
+	"github.com/ajunior/browser-use/internal/protocol"
 )
 
 const version = "0.1.0"
@@ -36,6 +39,26 @@ func main() {
 
 func run() error {
 	args := os.Args[1:]
+
+	// Flags globais de modo, aceitas antes do comando:
+	//   --ver  → janela de verdade (Chrome for Testing), sessão "ver"
+	//   --leve → sem janela (chrome-headless-shell), padrão
+	// A escolha vale para a sessão inteira: o daemon sobe o browser com ela.
+	var mode string
+	filtered := make([]string, 0, len(args))
+	for _, a := range args {
+		switch a {
+		case "--ver", "--watch":
+			mode = "ver"
+		case "--leve", "--light":
+			mode = "leve"
+		default:
+			filtered = append(filtered, a)
+		}
+	}
+	args = filtered
+	applyMode(mode)
+
 	if len(args) == 0 {
 		fmt.Print(command.Help())
 		return nil
@@ -55,7 +78,7 @@ func run() error {
 		return daemon.Run(ctx, daemon.Options{
 			Session:  paths.Session(),
 			Attach:   os.Getenv("BROWSER_USE_ATTACH"),
-			Engine:   envOr("BROWSER_USE_ENGINE", browser.EngineChrome),
+			Engine:   envOr("BROWSER_USE_ENGINE", browser.EngineShell),
 			Headless: envBool("BROWSER_USE_HEADLESS", false),
 		})
 
@@ -76,6 +99,14 @@ func run() error {
 			fmt.Printf("%s %-22s %s\n", mark, e.Product, e.Path)
 		}
 		return nil
+
+	case "stop", "encerrar":
+		for _, a := range args[1:] {
+			if a == "--all" || a == "all" {
+				return runStopAll()
+			}
+		}
+		// Sem --all, cai no caminho normal (encerra só a sessão atual).
 	}
 
 	req, err := command.Parse(args)
@@ -121,6 +152,49 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// applyMode ajusta o motor (e a sessão, para os dois modos coexistirem).
+func applyMode(mode string) {
+	switch mode {
+	case "ver":
+		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineChrome)
+		if os.Getenv("BROWSER_USE_SESSION") == "" {
+			_ = os.Setenv("BROWSER_USE_SESSION", "ver")
+		}
+	case "leve":
+		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineShell)
+	}
+}
+
+// runStopAll encerra todos os daemons vivos (e os browsers que eles subiram).
+func runStopAll() error {
+	dir := filepath.Join(paths.StateDir(), "sessions")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		fmt.Println("nenhuma sessão ativa")
+		return nil
+	}
+	stopped := 0
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		session := strings.TrimSuffix(e.Name(), ".json")
+		socketPath := paths.SocketPath(session)
+		if _, err := os.Stat(socketPath); err != nil {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+			continue
+		}
+		if _, err := cli.SendTo(socketPath, protocol.Request{Cmd: "stop"}); err == nil {
+			fmt.Printf("encerrei a sessão %q\n", session)
+			stopped++
+		}
+	}
+	if stopped == 0 {
+		fmt.Println("nenhuma sessão ativa")
+	}
+	return nil
 }
 
 // runInstall baixa os motores pedidos. `--engine` aceita chrome, shell ou all.

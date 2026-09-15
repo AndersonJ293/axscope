@@ -60,15 +60,15 @@ type Client struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	writeMu   sync.Mutex
-	stateMu   sync.Mutex
-	nextID    int64
-	nextHid   int64
-	pending   map[int64]*pending
-	handlers  map[string][]handlerEntry
-	closed    bool
-	closeErr  error
-	done      chan struct{}
+	writeMu  sync.Mutex
+	stateMu  sync.Mutex
+	nextID   int64
+	nextHid  int64
+	pending  map[int64]*pending
+	handlers map[string][]handlerEntry
+	closed   bool
+	closeErr error
+	done     chan struct{}
 }
 
 // Dial conecta e começa a ler eventos.

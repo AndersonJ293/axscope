@@ -108,26 +108,47 @@ snap
 shot /tmp/painel.png
 ```
 
+## Ciclo de vida
+
+O daemon mantém o browser vivo de propósito: a próxima chamada responde na hora
+e o estado (login, abas) sobrevive entre comandos. Ele **não** fica pendurado
+para sempre: se ninguém o usa por 30 minutos, ele se encerra e fecha o browser
+sozinho (`BROWSER_USE_IDLE_MINUTES` ajusta; `0` desliga).
+
+Para encerrar na hora, quando quiser:
+
+```bash
+browser-use stop          # só a sessão atual
+browser-use stop --all    # todas as sessões e todos os browsers
+```
+
 ## Modos: ver ou não ver
 
 Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.
 
 | Modo | Motor | RAM (1 aba) | Processos | Vê a tela? |
 |---|---|---|---|---|
-| **ver** (padrão) | Chrome for Testing | ~1850 MB | 16 | ✅ abas + cursor |
-| **leve** | chrome-headless-shell | ~505 MB | 7 | ❌ |
+| **leve** (padrão) | chrome-headless-shell | ~505 MB | 7 | ❌ |
+| **ver** (`--ver`) | Chrome for Testing | ~1850 MB | 16 | ✅ abas + cursor |
 | anexar | um Chromium seu | — | — | depende |
 
 ```bash
-# ver (padrão): janela de verdade, cursor renderizado
+# leve (padrão): sem janela nenhuma, não atrapalha seu uso
 browser-use open https://exemplo.com
 
-# leve: o mesmo Chromium sem casca de janela — ~3,7x menos RAM
-BROWSER_USE_SESSION=batch BROWSER_USE_ENGINE=shell browser-use script roteiro.txt
+# ver: janela de verdade com cursor, quando você quiser olhar
+browser-use --ver open https://exemplo.com
 
-# voltar ao modo ver numa sessão que já subiu no leve
-BROWSER_USE_SESSION=batch browser-use stop
+# roteiro em lote, sem janela
+browser-use script roteiro.txt
+
+# encerra tudo (todos os modos e seus browsers)
+browser-use stop --all
 ```
+
+Os dois modos são **sessões separadas** (`default` no leve, `ver` no ver), então
+**coexistem**: dá para deixar um roteiro rodando sem janela enquanto você olha
+outra coisa no modo ver.
 
 O motor é propriedade da **sessão**: o daemon sobe o browser com o motor escolhido
 na primeira chamada. Trocar de motor numa sessão já viva exige `stop` (ou use
@@ -209,7 +230,8 @@ quanto o cursor "chega antes" de agir; `0` remove a pausa.
 | Variável | Efeito |
 |---|---|
 | `BROWSER_USE_SESSION` | nome da sessão (default `default`) |
-| `BROWSER_USE_ENGINE` | `chrome` (ver, padrão) ou `shell` (leve) |
+| `BROWSER_USE_ENGINE` | `shell` (leve, padrão) ou `chrome` (ver) |
+| `BROWSER_USE_IDLE_MINUTES` | encerra o daemon após N min ocioso (padrão 30; 0 desliga) |
 | `BROWSER_USE_HOME` | diretório de dados |
 | `BROWSER_USE_CHROME` | executável do Chromium |
 | `BROWSER_USE_ATTACH` | `host:porta` de um Chromium já aberto |

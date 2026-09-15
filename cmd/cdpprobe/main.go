@@ -1,12 +1,12 @@
 // Sonda de diagnóstico de engines CDP.
 //
 // Responde, com medição e não com suposição:
-//   1. quais domínios CDP o endpoint implementa;
-//   2. se ele suporta várias páginas/targets independentes (abas headless);
-//   3. se há geometria (getBoxModel / getBoundingClientRect) — sem isso, ação
-//      por coordenada não existe;
-//   4. se a árvore de acessibilidade traz backendDOMNodeId e se dá para
-//      resolver de volta em nó do DOM (é o que nossas `ref` exigem).
+//  1. quais domínios CDP o endpoint implementa;
+//  2. se ele suporta várias páginas/targets independentes (abas headless);
+//  3. se há geometria (getBoxModel / getBoundingClientRect) — sem isso, ação
+//     por coordenada não existe;
+//  4. se a árvore de acessibilidade traz backendDOMNodeId e se dá para
+//     resolver de volta em nó do DOM (é o que nossas `ref` exigem).
 //
 // Uso: go run ./cmd/cdpprobe [ws://host:porta/]
 package main

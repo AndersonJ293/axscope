@@ -12,7 +12,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/ajunior/browser-use/internal/agent"
 	"github.com/ajunior/browser-use/internal/paths"
@@ -61,6 +64,9 @@ func Run(ctx context.Context, opts Options) error {
 	var stopOnce sync.Once
 	shutdown := func() { stopOnce.Do(func() { close(stop) }) }
 
+	var lastActivity atomic.Int64
+	lastActivity.Store(time.Now().UnixNano())
+
 	go func() {
 		<-ctx.Done()
 		shutdown()
@@ -71,6 +77,27 @@ func Run(ctx context.Context, opts Options) error {
 		<-stop
 		_ = ln.Close()
 	}()
+
+	// Desligamento por ociosidade: sem isso o browser fica de pé para sempre
+	// (e ocupando memória) depois que o agente termina. 0 desliga o recurso.
+	if idle := idleTimeout(); idle > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					idleFor := time.Since(time.Unix(0, lastActivity.Load()))
+					if idleFor >= idle {
+						shutdown()
+						return
+					}
+				}
+			}
+		}()
+	}
 
 	for {
 		conn, err := ln.Accept()
@@ -87,8 +114,23 @@ func Run(ctx context.Context, opts Options) error {
 				continue
 			}
 		}
+		lastActivity.Store(time.Now().UnixNano())
 		go handle(ctx, conn, ag, shutdown)
 	}
+}
+
+// idleTimeout lê BROWSER_USE_IDLE_MINUTES (default 30; 0 desliga).
+func idleTimeout() time.Duration {
+	minutes := 30
+	if v := os.Getenv("BROWSER_USE_IDLE_MINUTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			minutes = n
+		}
+	}
+	if minutes <= 0 {
+		return 0
+	}
+	return time.Duration(minutes) * time.Minute
 }
 
 func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()) {

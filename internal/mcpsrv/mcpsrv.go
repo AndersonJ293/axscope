@@ -117,7 +117,7 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 	}
 	resp, err := cli.Send(protocol.Request{Cmd: name, Args: args})
 	if err != nil {
-		return toolText("erro: " + err.Error(), true)
+		return toolText("erro: "+err.Error(), true)
 	}
 	if !resp.OK {
 		return toolText("erro: "+resp.Error, true)

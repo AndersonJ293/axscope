@@ -312,9 +312,9 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	_ = overlay.MoveCursor(ctx, client, session, cx, cy)
 
 	if _, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
-		"objectId": t.ObjectID,
+		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { if (this.focus) this.focus(); return true; }`,
-		"returnByValue": true,
+		"returnByValue":       true,
 	}, session); err != nil {
 		return err
 	}
