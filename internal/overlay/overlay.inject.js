@@ -157,7 +157,7 @@
     host.setAttribute('aria-hidden', 'true');
     host.style.cssText =
       'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;' +
-      'pointer-events:none;contain:layout style;';
+      'pointer-events:none;contain:style;';
 
     try {
       root = host.attachShadow({ mode: 'open' });

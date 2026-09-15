@@ -47,7 +47,7 @@ var Specs = []Spec{
 	{Cmd: "read", Positional: []string{"selector"}, Help: "lê o texto principal da página"},
 	{Cmd: "eval", Positional: []string{"js"}, Help: "avalia JavaScript na página"},
 	{Cmd: "tabs", Help: "lista as abas"},
-	{Cmd: "tab", Positional: []string{"ref"}, Help: "troca para a aba (índice ou targetId)"},
+	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "troca para a aba (índice ou targetId; --focus traz a janela à frente)"},
 	{Cmd: "newtab", Positional: []string{"url"}, Help: "abre aba nova"},
 	{Cmd: "closetab", Positional: []string{"ref"}, Help: "fecha a aba"},
 	{Cmd: "back", Help: "volta no histórico"},

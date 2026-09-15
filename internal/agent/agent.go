@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ajunior/browser-use/internal/bridge"
 	"github.com/ajunior/browser-use/internal/browser"
 	"github.com/ajunior/browser-use/internal/cdp"
 	"github.com/ajunior/browser-use/internal/command"
@@ -38,6 +39,8 @@ type Agent struct {
 	sess           *browser.Session
 	refs           map[string]int
 	overlayVisible bool
+	bridge         *bridge.Server
+	extClient      *cdp.Client
 }
 
 // Close encerra o browser (se fomos nós que subimos) e a conexão.
@@ -69,6 +72,32 @@ func (a *Agent) degraded() bool {
 	return false
 }
 
+// extension sobe a ponte (uma vez) e espera a extensão conectar.
+func (a *Agent) extension(ctx context.Context) (*cdp.Client, error) {
+	if a.bridge == nil {
+		port := 0
+		if v := os.Getenv("BROWSER_USE_BRIDGE_PORT"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				port = n
+			}
+		}
+		srv, err := bridge.Start(port)
+		if err != nil {
+			return nil, err
+		}
+		a.bridge = srv
+	}
+	if a.extClient != nil && a.extClient.Err() == nil {
+		return a.extClient, nil
+	}
+	client, err := a.bridge.Wait(ctx, 60*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	a.extClient = client
+	return client, nil
+}
+
 func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -87,9 +116,17 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 	}
 	var handle *browser.Handle
 	var err error
-	if a.Attach != "" {
+	switch {
+	case a.Attach != "":
 		handle, err = browser.Attach(ctx, a.Attach)
-	} else {
+	case a.Engine == browser.EngineExt:
+		// Não subimos browser nenhum: a extensão no Brave se conecta até nós.
+		var client *cdp.Client
+		client, err = a.extension(ctx)
+		if err == nil {
+			handle = &browser.Handle{Client: client, Executable: "(extensão)", Attached: true}
+		}
+	default:
 		handle, err = browser.Launch(ctx, browser.LaunchOptions{
 			Session:  a.Session,
 			Engine:   a.Engine,
@@ -576,7 +613,7 @@ func (a *Agent) switchTab(ctx context.Context, sess *browser.Session, req protoc
 	if ref == "" {
 		return protocol.Fail(fmt.Errorf("uso: bu tab <índice|targetId>"))
 	}
-	tab, err := sess.Select(ctx, ref)
+	tab, err := sess.Select(ctx, ref, req.Bool("focus", false))
 	if err != nil {
 		return protocol.Fail(err)
 	}

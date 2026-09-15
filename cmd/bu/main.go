@@ -52,6 +52,8 @@ func run() error {
 			mode = "ver"
 		case "--leve", "--light":
 			mode = "leve"
+		case "--ext", "--brave", "--extensao":
+			mode = "ext"
 		default:
 			filtered = append(filtered, a)
 		}
@@ -154,13 +156,18 @@ func envOr(key, def string) string {
 	return def
 }
 
-// applyMode ajusta o motor (e a sessão, para os dois modos coexistirem).
+// applyMode ajusta o motor (e a sessão, para os modos coexistirem).
 func applyMode(mode string) {
 	switch mode {
 	case "ver":
 		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineChrome)
 		if os.Getenv("BROWSER_USE_SESSION") == "" {
 			_ = os.Setenv("BROWSER_USE_SESSION", "ver")
+		}
+	case "ext":
+		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineExt)
+		if os.Getenv("BROWSER_USE_SESSION") == "" {
+			_ = os.Setenv("BROWSER_USE_SESSION", "ext")
 		}
 	case "leve":
 		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineShell)

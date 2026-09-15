@@ -80,6 +80,13 @@ func Dial(ctx context.Context, url string, timeout time.Duration) (*Client, erro
 	if err != nil {
 		return nil, fmt.Errorf("conectando em %s: %w", url, err)
 	}
+	return FromConn(conn), nil
+}
+
+// FromConn adota uma conexão já aberta (ex.: a extensão que se conectou ao
+// daemon) e começa a ler eventos. Assim o resto do driver não sabe — nem
+// precisa saber — de onde o CDP vem.
+func FromConn(conn *websocket.Conn) *Client {
 	// Screenshots em base64 podem ser grandes.
 	conn.SetReadLimit(256 << 20)
 
@@ -93,7 +100,7 @@ func Dial(ctx context.Context, url string, timeout time.Duration) (*Client, erro
 		done:     make(chan struct{}),
 	}
 	go c.readLoop()
-	return c, nil
+	return c
 }
 
 func (c *Client) readLoop() {

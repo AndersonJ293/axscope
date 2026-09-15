@@ -161,7 +161,7 @@ func (s *Session) bootstrap(ctx context.Context) error {
 			TargetID string `json:"targetId"`
 		}
 		if err := s.client.SendJSON(ctx, "Target.createTarget",
-			map[string]any{"url": "about:blank"}, "", &created); err == nil && created.TargetID != "" {
+			map[string]any{"url": "about:blank", "background": true}, "", &created); err == nil && created.TargetID != "" {
 			s.attachTarget(created.TargetID, "about:blank", "")
 		}
 	}
@@ -413,15 +413,19 @@ func (s *Session) Find(ref string) (*Tab, error) {
 	return nil, fmt.Errorf("aba %q não existe (use `bu tabs`)", ref)
 }
 
-// Select ativa uma aba e devolve-a.
-func (s *Session) Select(ctx context.Context, ref string) (*Tab, error) {
+// Select troca a aba ativa. `activate` traz a janela para a frente — por padrão
+// NÃO fazemos isso: roubar foco a cada comando atrapalha quem está trabalhando
+// em outra janela. A aba ativa do driver independe do foco do sistema.
+func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, error) {
 	tab, err := s.Find(ref)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.client.Send(ctx, "Target.activateTarget",
-		map[string]any{"targetId": tab.TargetID}, ""); err != nil {
-		return nil, err
+	if activate {
+		if _, err := s.client.Send(ctx, "Target.activateTarget",
+			map[string]any{"targetId": tab.TargetID}, ""); err != nil {
+			return nil, err
+		}
 	}
 	s.mu.Lock()
 	s.active = tab.TargetID
@@ -433,7 +437,7 @@ func (s *Session) Select(ctx context.Context, ref string) (*Tab, error) {
 	return tab, nil
 }
 
-// NewTab abre uma aba e espera ela ficar pronta.
+// NewTab abre uma aba e espera ela ficar pronta, sem trazer a janela para frente.
 func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 	if url == "" {
 		url = "about:blank"
@@ -441,18 +445,15 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 	var res struct {
 		TargetID string `json:"targetId"`
 	}
+	// background=true: a aba nova não vira a aba em foco nem levanta a janela.
 	if err := s.client.SendJSON(ctx, "Target.createTarget",
-		map[string]any{"url": url}, "", &res); err != nil {
+		map[string]any{"url": url, "background": true}, "", &res); err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if s.has(res.TargetID) {
-			tab, err := s.Select(ctx, res.TargetID)
-			if err != nil {
-				return nil, err
-			}
-			return tab, nil
+			return s.Select(ctx, res.TargetID, false)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}

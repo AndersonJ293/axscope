@@ -122,7 +122,60 @@ browser-use stop          # só a sessão atual
 browser-use stop --all    # todas as sessões e todos os browsers
 ```
 
-## Modos: ver ou não ver
+## Modo extensão: seu próprio navegador
+
+Em vez de subir um navegador dedicado, a extensão dirige o **seu Brave** — com os
+logins que você já tem. É o modo mais útil no dia a dia.
+
+```bash
+browser-use --ext open https://exemplo.com
+browser-use --ext snap
+browser-use --ext click e3
+```
+
+### Por que precisa de extensão
+
+Desde o Chrome/Chromium **136**, `--remote-debugging-port` é **ignorado** quando
+se usa o perfil padrão (medida de segurança para não expor senhas e cookies).
+Ou seja: não existe caminho por porta de debug no seu perfil real. A extensão usa
+`chrome.debugger`, que funciona no navegador já aberto, sem reiniciar nada.
+
+### Montagem (uma vez)
+
+1. **Carregue a extensão no Brave**
+   `brave://extensions` → ligue **Modo do desenvolvedor** → **Carregar sem
+   compactação** → aponte para `extension/` neste repositório.
+
+2. **Esconda a faixa de depuração** (opcional, mas recomendado)
+   A API `chrome.debugger` faz o Chromium mostrar uma faixa *"browser-use started
+   debugging this browser"* em todas as abas. Para não ver isso:
+
+   ```bash
+   scripts/brave-sem-faixa.sh instalar   # cria um override do .desktop, sem sudo
+   # feche o Brave por completo e abra de novo
+   scripts/brave-sem-faixa.sh remover    # para reverter
+   ```
+
+3. Confira a conexão no ícone da extensão (deve dizer **conectado**).
+
+### Como funciona
+
+```
+extensão (Brave)  ⇄  WebSocket local  ⇄  daemon (Go)  ⇄  CLI / MCP
+  chrome.debugger → CDP real na aba
+  chrome.tabs     → domínio Target (abas)
+```
+
+A extensão sintetiza **apenas** o domínio `Target` (abas ↔ `chrome.tabs`) e
+repassa todo o resto — `Accessibility`, `DOM`, `Input`, `Runtime`, `Page` — para
+o `chrome.debugger`. Por isso o driver inteiro funciona sem mudança: a árvore de
+acessibilidade é a **real**, o clique é por coordenada e o cursor é renderizado
+igual aos outros modos.
+
+A aba em foco do usuário vem **primeiro** na lista, então o agente começa onde
+você está. E `activateTarget` **não** levanta a janela: foco só com `tab N --focus`.
+
+
 
 Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.
 

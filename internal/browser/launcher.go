@@ -35,6 +35,9 @@ const (
 	// EngineShell é o chrome-headless-shell: o mesmo motor e o mesmo CDP,
 	// sem janela — mais leve, mas sem cursor renderizado.
 	EngineShell = "shell"
+	// EngineExt dirige o navegador do usuário (Brave) pela extensão, via
+	// chrome.debugger: perfil real, com os logins já feitos.
+	EngineExt = "ext"
 )
 
 var systemCandidates = []string{
@@ -177,6 +180,37 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 	return args
 }
 
+// ensureProfilePrefs deixa o arranque determinístico: sem restaurar as abas de
+// rodadas anteriores, que só poluem a janela de quem está olhando.
+func ensureProfilePrefs(profile string) {
+	prefsPath := filepath.Join(profile, "Default", "Preferences")
+	if err := os.MkdirAll(filepath.Dir(prefsPath), 0o755); err != nil {
+		return
+	}
+	prefs := map[string]any{}
+	if data, err := os.ReadFile(prefsPath); err == nil {
+		if err := json.Unmarshal(data, &prefs); err != nil {
+			return // não mexe em JSON que não entendemos
+		}
+	}
+	prefs["profile"] = withKey(prefs["profile"], "exit_type", "Normal")
+	prefs["session"] = withKey(prefs["session"], "restore_on_startup", float64(4))
+	out, err := json.Marshal(prefs)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(prefsPath, out, 0o600)
+}
+
+func withKey(v any, key string, val any) map[string]any {
+	m, ok := v.(map[string]any)
+	if !ok {
+		m = map[string]any{}
+	}
+	m[key] = val
+	return m
+}
+
 // Launch sobe o Chromium e devolve a conexão CDP pronta.
 func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
 	executable, err := ResolveExecutable(opts.Engine, opts.Executable)
@@ -187,6 +221,7 @@ func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
 	if err := os.MkdirAll(profile, 0o755); err != nil {
 		return nil, err
 	}
+	ensureProfilePrefs(profile)
 
 	cmd := exec.Command(executable, buildArgs(opts, profile)...)
 	// Grupo próprio de processos: dá para encerrar o browser inteiro de uma vez.
