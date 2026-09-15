@@ -158,10 +158,29 @@ async function handleMessage(st, msg) {
 
 async function adoptExistingGroup(st) {
   if (!st.session) return;
+  const key = `group:${st.session}`;
+
+  // 1) Tenta o grupo que já era desta sessão (sobrevive a renomear o grupo).
+  try {
+    const stored = (await chrome.storage.local.get(key))[key];
+    if (stored !== undefined && stored !== null) {
+      const g = await chrome.tabGroups.get(stored);
+      if (g) {
+        st.groupId = g.id;
+        await syncGroupTabs(st);
+        return;
+      }
+    }
+  } catch {
+    await chrome.storage.local.remove(key);
+  }
+
+  // 2) Senão, adota um grupo com o nosso título.
   try {
     const groups = await chrome.tabGroups.query({ title: groupTitle(st.session) });
     if (groups.length > 0) {
       st.groupId = groups[0].id;
+      await chrome.storage.local.set({ [key]: st.groupId });
       await syncGroupTabs(st);
     }
   } catch {
@@ -189,6 +208,7 @@ async function addTabToGroup(st, tabId) {
         color: groupColor(st.session),
         collapsed: false,
       });
+      if (st.session) await chrome.storage.local.set({ [`group:${st.session}`]: gid });
     } else {
       await chrome.tabs.group({ tabIds: [tabId], groupId: st.groupId });
     }
@@ -314,8 +334,36 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   sendOn(st, { method: 'Target.targetDestroyed', params: { targetId: String(tabId) } });
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const st = ownerByTab.get(tabId);
+
+  // Mudança de grupo é o gesto de conceder/revogar acesso: arrastar uma aba
+  // para dentro do grupo dá acesso ao agente; para fora, tira.
+  if (changeInfo.groupId !== undefined) {
+    if (st && st.groupId !== null && st.groupId !== undefined && changeInfo.groupId !== st.groupId) {
+      // Saiu do grupo: perde o acesso e soltamos o depurador.
+      st.tabBySession.delete(`t${tabId}`);
+      ownerByTab.delete(tabId);
+      try {
+        await chrome.debugger.detach({ tabId });
+      } catch {
+        /* não estava anexada */
+      }
+      sendOn(st, { method: 'Target.targetDestroyed', params: { targetId: String(tabId) } });
+      return;
+    }
+    if (!st) {
+      // Entrou no grupo de alguma sessão conectada: passa a enxergá-la.
+      for (const s of conns.values()) {
+        if (s.groupId !== null && s.groupId !== undefined && s.groupId === changeInfo.groupId) {
+          ownerByTab.set(tabId, s);
+          sendOn(s, { method: 'Target.targetCreated', params: { targetInfo: toTargetInfo(s, tab) } });
+          return;
+        }
+      }
+    }
+  }
+
   if (!st) return;
   if (!changeInfo.url && !changeInfo.title && changeInfo.status !== 'complete') return;
   sendOn(st, { method: 'Target.targetInfoChanged', params: { targetInfo: toTargetInfo(st, tab) } });

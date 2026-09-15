@@ -187,6 +187,18 @@ igual aos outros modos.
 Cada aba é anexada **sob demanda** — só a que está sendo usada. Abrir o agente
 não varre nem instrumenta as suas abas.
 
+### Dar e tirar acesso: arraste a aba
+
+O grupo **é** a interface de permissão. Não há menu nem configuração:
+
+- **arraste uma aba sua para dentro do grupo** de um agente → ele passa a
+  enxergá-la e a poder dirigi-la (útil para trabalhar numa aba onde você já
+  está logado, com o estado que você já montou);
+- **arraste para fora** → o acesso é revogado na hora, e o depurador é solto
+  daquela aba junto.
+
+As abas que o agente abre sozinho já nascem dentro do grupo dele.
+
 
 
 Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.

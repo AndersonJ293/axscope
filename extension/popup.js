@@ -33,7 +33,7 @@ function render(state) {
   );
 
   detail.textContent = sessions.length
-    ? 'Cada sessão tem o seu grupo de abas.'
+    ? 'Arraste uma aba para dentro do grupo para dar acesso a esse agente.'
     : 'Nenhum daemon ativo. Rode um comando browser-use.';
 }
 
