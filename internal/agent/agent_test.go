@@ -2,6 +2,7 @@ package agent
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +60,23 @@ func TestSplitTokens(t *testing.T) {
 				t.Errorf("tokens = %#v, esperado %#v", got, c.tokens)
 			}
 		})
+	}
+}
+
+// Regressão (missão 15 do laboratório): clicar num alvo desabilitado não faz
+// nada, e mesmo assim a resposta era um `ok` igual ao de um clique que
+// funcionou — o agente seguia como se tivesse agido. O aviso é o único sinal
+// que chega a quem lê, então é ele que o teste prende.
+func TestAvisoDeAlvoInativo(t *testing.T) {
+	if got := comAviso("click e1", ""); got != "click e1" {
+		t.Errorf("sem motivo o rótulo não devia mudar, virou %q", got)
+	}
+	got := comAviso("click text=Coletar resultado", "desabilitado")
+	if !strings.Contains(got, "desabilitado") {
+		t.Errorf("o motivo não chegou ao rótulo: %q", got)
+	}
+	if !strings.Contains(got, "não deve ter feito nada") {
+		t.Errorf("o rótulo não avisa que a ação provavelmente não teve efeito: %q", got)
 	}
 }
 

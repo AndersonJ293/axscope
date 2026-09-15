@@ -159,10 +159,9 @@ component não muda de alvo.
 
 ## Laboratório: missões pendentes
 
-Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14** (placar em 9/16
+Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15** (placar em 10/16
 porque o botão *Resetar estado* apaga as concluídas — é o desenho dele).
 
 | Missão | Assunto | Observação |
 |---|---|---|
-| 15 | job assíncrono + polling | depende de `wait`/leitura; deve passar |
 | 16 | elemento mutante (clicar quando disser AGORA) | depende de `wait` + clique; deve passar |

@@ -37,14 +37,16 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	if req.Bool("double", false) {
 		count = 2
 	}
-	if err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter); err != nil {
+	motivo, err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter)
+	if err != nil {
 		return protocol.Fail(err)
 	}
 	action := "click"
 	if count == 2 {
 		action = "dblclick"
 	}
-	return ok(a.finish(ctx, sess, sid, action+" "+target, before))
+	label := comAviso(action+" "+target, motivo)
+	return ok(a.finish(ctx, sess, sid, label, before))
 }
 
 func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
@@ -154,7 +156,7 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	}
 	before := a.errCount(sess, sid)
 	want := req.Cmd == "check"
-	clicked, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
+	clicked, motivo, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -162,7 +164,18 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	if !clicked {
 		label += " (já estava)"
 	}
-	return ok(a.finish(ctx, sess, sid, label, before))
+	return ok(a.finish(ctx, sess, sid, comAviso(label, motivo), before))
+}
+
+// comAviso acrescenta ao rótulo o motivo pelo qual o alvo recusou a ação.
+//
+// É o único sinal que chega a quem lê: a página ignora o clique, e sem o aviso a
+// resposta seria um ok igual ao de um clique que funcionou.
+func comAviso(label, motivo string) string {
+	if motivo == "" {
+		return label
+	}
+	return label + fmt.Sprintf(" (alvo %s — o clique não deve ter feito nada)", motivo)
 }
 
 // scroll rola. Sem alvo, rola o que estiver sob o centro da tela; com

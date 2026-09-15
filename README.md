@@ -96,6 +96,10 @@ Alvo aceita quatro formas: `e12` (ref), `css=.botao`, `text=Entrar` e `pos=x,y`
 árvore de acessibilidade a achata — a leitura mostra o que está lá dentro, com
 ref — e a mira por `text=`/`css=` também alcança.
 
+Quando o alvo recusa a ação (`disabled`, `aria-disabled`, `pointer-events:
+none`), a resposta diz o motivo. Clicar num botão desabilitado não faz nada, e um
+`ok` sem aviso passaria por sucesso — o agente seguiria como se tivesse agido.
+
 ### Roteiro
 
 Uma linha por passo, `#` comenta, aspas para espaços:

@@ -31,7 +31,16 @@ func cursorDelayMs() int {
 }
 
 // Click clica no alvo com mouse real (e cursor visível).
-func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) error {
+//
+// Devolve o motivo quando o alvo recusa o clique — desabilitado, `aria-disabled`
+// ou `pointer-events: none`. A página ignora o evento e a ação responderia ok do
+// mesmo jeito, que é o pior desfecho para um agente: ele segue como se tivesse
+// agido. Medido na missão 15 do laboratório, onde "Coletar resultado" fica
+// desabilitado enquanto o job roda.
+//
+// O clique é disparado mesmo assim: a página pode ter handler num ancestral, e
+// quem decide é ela — o que não pode é o motivo ficar só com a gente.
+func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) (string, error) {
 	if button == "" {
 		button = "left"
 	}
@@ -39,6 +48,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 		count = 1
 	}
 	cx, cy := t.ondeAgir()
+	motivo := inativo(ctx, client, session, t.ObjectID)
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.Press(ctx, client, session, cx, cy, button)
@@ -49,7 +59,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseMoved", "x": cx, "y": cy,
 	}, session); err != nil {
-		return err
+		return motivo, err
 	}
 	buttons := 1
 	if button == "right" {
@@ -61,17 +71,48 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 		"type": "mousePressed", "x": cx, "y": cy,
 		"button": button, "buttons": buttons, "clickCount": count,
 	}, session); err != nil {
-		return err
+		return motivo, err
 	}
 	time.Sleep(15 * time.Millisecond)
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseReleased", "x": cx, "y": cy,
 		"button": button, "buttons": 0, "clickCount": count,
 	}, session); err != nil {
-		return err
+		return motivo, err
 	}
 	time.Sleep(30 * time.Millisecond)
-	return nil
+	return motivo, nil
+}
+
+// inativo devolve o motivo pelo qual o elemento recusa ação — ou "" se ele
+// aceita.
+//
+// Vale a ascendência do `disabled` porque é assim que a página se comporta: um
+// `<span>` dentro de um `<button disabled>` também não recebe clique. E
+// `pointer-events` é herdado, então o `none` de um ancestral já aparece aqui.
+func inativo(ctx context.Context, client *cdp.Client, session, objectID string) string {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			if (this.disabled || (this.closest && this.closest('[disabled]'))) return 'desabilitado';
+			if (this.getAttribute && this.getAttribute('aria-disabled') === 'true') return 'com aria-disabled';
+			if (getComputedStyle(this).pointerEvents === 'none') return 'com pointer-events: none';
+			return '';
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return ""
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return ""
+	}
+	return res.Result.Value
 }
 
 // Hover passa o mouse por cima do alvo.
@@ -320,15 +361,16 @@ func Select(ctx context.Context, client *cdp.Client, session string, t *Target, 
 	return nil
 }
 
-// SetChecked garante o estado de um checkbox/radio (clica se precisar).
-func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, error) {
+// SetChecked garante o estado de um checkbox/radio (clica se precisar). Devolve
+// `true` quando clicou e o motivo quando o alvo recusa clique.
+func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { return !!this.checked; }`,
 		"returnByValue":       true,
 	}, session)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	var res struct {
 		Result struct {
@@ -336,29 +378,11 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return false, err
+		return false, "", err
 	}
 	if res.Result.Value == want {
-		return false, nil
+		return false, "", nil
 	}
-	return true, Click(ctx, client, session, t, "left", 1, p)
-}
-
-// Screenshot captura a página e devolve os bytes PNG.
-func Screenshot(ctx context.Context, client *cdp.Client, session string, fullPage bool) ([]byte, error) {
-	params := map[string]any{"format": "png", "fromSurface": true}
-	if fullPage {
-		params["captureBeyondViewport"] = true
-	}
-	raw, err := client.SendTimeout(ctx, "Page.captureScreenshot", params, session, 60*time.Second)
-	if err != nil {
-		return nil, err
-	}
-	var res struct {
-		Data string `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, err
-	}
-	return decodeBase64(res.Data)
+	motivo, err := Click(ctx, client, session, t, "left", 1, p)
+	return true, motivo, err
 }
