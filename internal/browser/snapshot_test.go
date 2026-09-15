@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -176,6 +177,51 @@ func TestMontarTexto_AchatamentoNaoVazaNoRefsOnly(t *testing.T) {
 	snap := montarTexto(nodes, SnapshotOptions{RefsOnly: true})
 	if snap.Text != "" {
 		t.Errorf("texto = %q, esperado vazio", snap.Text)
+	}
+}
+
+// Regressão (laboratório v2): o resumo de um container engolia o rótulo dos
+// itens. A lista virtual virava catorze botões "Abrir" sem dono, porque o texto
+// "Candidato 413" era consumido pelo resumo do container de cima — e ainda por
+// cima cortado na exibição, sumindo da leitura de vez.
+func TestMontarTexto_NaoRoubaRotuloDeItem(t *testing.T) {
+	nodes := []axNode{
+		ax("root", "", "RootWebArea", "", 0),
+		ax("main", "root", "main", "", 0),
+		ax("linha", "main", "generic", "", 0),
+		ax("rotulo", "linha", "generic", "Candidato 413", 0),
+		ax("abrir", "linha", "button", "Abrir", 42),
+	}
+	snap := montarTexto(nodes, SnapshotOptions{})
+
+	esperado := `- main
+  - generic "Candidato 413"
+  - button "Abrir" [ref=e1]`
+	if snap.Text != esperado {
+		t.Errorf("texto divergiu:\n--- obtido ---\n%s\n--- esperado ---\n%s", snap.Text, esperado)
+	}
+}
+
+// Resumo que não cabe não é resumo: antes ele era montado, cortado em 220
+// caracteres para exibir, e mesmo assim consumia tudo o que tinha juntado — o
+// resto sumia da leitura sem aparecer em lugar nenhum.
+func TestMontarTexto_ResumoQueNaoCabeNaoConsome(t *testing.T) {
+	nodes := []axNode{
+		ax("root", "", "RootWebArea", "", 0),
+		ax("reg", "root", "region", "", 0),
+		ax("g", "reg", "generic", "", 0),
+		ax("t1", "g", "StaticText", strings.Repeat("a", 200), 0),
+		ax("t2", "g", "StaticText", strings.Repeat("b", 200), 0),
+	}
+	snap := montarTexto(nodes, SnapshotOptions{})
+
+	if strings.Contains(snap.Text, "- region: ") {
+		t.Errorf("resumiu o que não cabia:\n%s", snap.Text)
+	}
+	for _, querido := range []string{strings.Repeat("a", 200), strings.Repeat("b", 200)} {
+		if !strings.Contains(snap.Text, querido) {
+			t.Errorf("texto sumiu da leitura:\n%s", snap.Text)
+		}
 	}
 }
 

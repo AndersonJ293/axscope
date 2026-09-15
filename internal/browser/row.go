@@ -40,7 +40,9 @@ func (b *snapBuilder) linhaDeRow(nodeID string) (string, bool) {
 		c := b.nodes[cid]
 		t := norm(c.Name.str())
 		if t == "" {
-			t = b.collectText(cid)
+			// A célula já passou por podeAchatar — não tem alvo dentro —, então
+			// a coleta não esbarra em rótulo de item.
+			t, _ = b.textoDeContainer(cid)
 		}
 		// O separador não pode vir de dentro: viraria uma célula a mais para
 		// quem lê.

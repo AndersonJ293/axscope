@@ -50,6 +50,7 @@ type snapBuilder struct {
 	refs      map[string]int
 	out       []string
 	consumed  map[string]bool
+	alvoCache map[string]bool
 	nextRef   int
 	max       int
 	refsOnly  bool
@@ -95,14 +96,15 @@ func montarTexto(nodes []axNode, opts SnapshotOptions) *Snapshot {
 		opts.MaxNodes = 1500
 	}
 	b := &snapBuilder{
-		nodes:    make(map[string]*axNode, len(nodes)),
-		children: make(map[string][]string),
-		refs:     make(map[string]int),
-		consumed: make(map[string]bool),
-		max:      opts.MaxNodes,
-		refsOnly: opts.RefsOnly,
-		tudo:     opts.Tudo,
-		gen:      opts.Gen,
+		nodes:     make(map[string]*axNode, len(nodes)),
+		children:  make(map[string][]string),
+		refs:      make(map[string]int),
+		consumed:  make(map[string]bool),
+		alvoCache: make(map[string]bool),
+		max:       opts.MaxNodes,
+		refsOnly:  opts.RefsOnly,
+		tudo:      opts.Tudo,
+		gen:       opts.Gen,
 	}
 	var root *axNode
 	for i := range nodes {
@@ -227,9 +229,12 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		// O iframe fica de fora da coleta: ele não tem texto próprio, e o que
 		// ela pescaria é o texto do documento de dentro — que já aparece logo
 		// abaixo, na árvore que foi enxertada nele.
-		if text := b.collectText(nodeID); text != "" && !repeatOf(text, parentName) {
-			line += ": " + text
+		if texto, donos := b.textoDeContainer(nodeID); texto != "" && len(texto) <= textoDeResumo && !repeatOf(texto, parentName) {
+			line += ": " + texto
 			hadText = true
+			for _, d := range donos {
+				b.consumed[d] = true
+			}
 		}
 	}
 
@@ -252,10 +257,12 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	// O nome do nó desce como contexto: filho que só o repete não é dito de novo.
 	b.walkFilhos(nodeID, name, depth+1, parentName)
 
-	// Container que não rendeu nada sai — mas só andaime sempre, e marco só
-	// quando não tem nome (ver scaffoldRoles/landmarkRoles).
-	if ref == "" && !hadText && len(b.out) == before {
-		if scaffoldRoles[role] || (landmarkRoles[role] && name == "") {
+	// Container que não rendeu linha nenhuma filha sai — mas só andaime, e só
+	// quando ele mesmo não disse nada. Uma linha com nome diz conteúdo (é o
+	// caso do rótulo "Candidato 413", cujo filho de texto é suprimido como eco
+	// do nome do pai): apagá-la era apagar o rótulo inteiro.
+	if ref == "" && name == "" && !hadText && len(b.out) == before {
+		if scaffoldRoles[role] || landmarkRoles[role] {
 			b.out = b.out[:len(b.out)-1]
 		}
 	}
@@ -345,11 +352,25 @@ func (b *snapBuilder) emit(depth int, line string) {
 	b.out = append(b.out, strings.Repeat("  ", depth)+line)
 }
 
-// collectText junta o texto direto de um nó (atravessando só nós de texto),
-// marcando-o como consumido para não repetir.
+// textoDeResumo é quanto texto a linha de um container pode resumir.
+const textoDeResumo = 220
 
-func (b *snapBuilder) collectText(nodeID string) string {
-	var parts []string
+// textoDeContainer devolve o texto que a linha de um container pode resumir, com
+// os nós que seriam consumidos — sem consumir nada ainda. Quem decide é quem
+// chama, e só marca o que coube e foi mostrado.
+//
+// Duas guardas, e as duas vieram de medição no laboratório v2:
+//
+//   - Ramo com alvo dentro não entra. O texto ali é rótulo de um item — o
+//     "Candidato 413" ao lado do botão "Abrir" —, e resumi-lo na linha do
+//     container apaga justamente o que associa item e rótulo. Era assim que a
+//     lista virtual virava catorze "Abrir" sem dono.
+//   - O resumo é montado inteiro antes: texto que não cabe não é resumido, e
+//     então ninguém é consumido. Antes o resumo era cortado em 220 caracteres
+//     para exibir, mas consumia tudo o que tinha juntado — o resto sumia da
+//     leitura sem aparecer em lugar nenhum.
+func (b *snapBuilder) textoDeContainer(nodeID string) (string, []string) {
+	var partes, donos []string
 	for _, cid := range b.children[nodeID] {
 		c := b.nodes[cid]
 		if c == nil || b.consumed[cid] {
@@ -363,14 +384,40 @@ func (b *snapBuilder) collectText(nodeID string) string {
 				t = norm(c.Value.str())
 			}
 			if t != "" {
-				parts = append(parts, t)
-				b.consumed[cid] = true
+				partes = append(partes, t)
+				donos = append(donos, cid)
 			}
 		case c.Ignored || (role == "generic" && norm(c.Name.str()) == ""):
-			if inner := b.collectText(cid); inner != "" {
-				parts = append(parts, inner)
+			if b.temAlvo(cid) {
+				continue
+			}
+			if inner, dentro := b.textoDeContainer(cid); inner != "" {
+				partes = append(partes, inner)
+				donos = append(donos, dentro...)
 			}
 		}
 	}
-	return truncate(strings.Join(parts, " "), 220)
+	return strings.Join(partes, " "), donos
+}
+
+// temAlvo diz se a subárvore tem alvo acionável — ou seja, se o texto lá dentro
+// é rótulo de um item, e não conteúdo solto que dá para resumir.
+func (b *snapBuilder) temAlvo(nodeID string) bool {
+	if v, ok := b.alvoCache[nodeID]; ok {
+		return v
+	}
+	v := false
+	if n := b.nodes[nodeID]; n != nil {
+		v = !n.Ignored && b.eligibleRef(n)
+		if !v {
+			for _, c := range b.children[nodeID] {
+				if b.temAlvo(c) {
+					v = true
+					break
+				}
+			}
+		}
+	}
+	b.alvoCache[nodeID] = v
+	return v
 }
