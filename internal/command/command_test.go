@@ -40,7 +40,7 @@ func TestParse(t *testing.T) {
 			// um texto com "=" (JS, valor livre) não se perde como par.
 			nome:    "texto com igual cai como posicional",
 			tokens:  []string{"fill", "#a", "a=b"},
-			querido: protocol.Request{Cmd: "fill", Args: map[string]any{"target": "#a", "text": "a=b"}},
+			querido: protocol.Request{Cmd: "fill", Args: map[string]any{"target": "#a", "value": "a=b"}},
 		},
 		{
 			nome:    "posicional opcional omitido",
@@ -90,6 +90,21 @@ func TestParse(t *testing.T) {
 				t.Errorf("pedido divergiu:\n obtido: %+v\nquerido: %+v", got, c.querido)
 			}
 		})
+	}
+}
+
+// Regressão: `fill` e `type` não conseguiam mirar por `text=`. O token era
+// engolido como par chave=valor, porque o posicional se chamava `text` — logo,
+// justamente nos dois comandos em que mais se quer mirar por rótulo.
+func TestParse_FillMiraPorTexto(t *testing.T) {
+	for _, cmd := range []string{"fill", "type"} {
+		req, err := Parse([]string{cmd, "text=CAPTCHA", "A7K9P"})
+		if err != nil {
+			t.Fatalf("%s: %v", cmd, err)
+		}
+		if req.Args["target"] != "text=CAPTCHA" || req.Args["value"] != "A7K9P" {
+			t.Errorf("%s: args = %v", cmd, req.Args)
+		}
 	}
 }
 

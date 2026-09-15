@@ -85,9 +85,13 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 
 func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
-	text := req.String("text")
+	// O argumento se chama `value`, e não `text`, porque `text=` é um seletor de
+	// alvo: com o nome `text` o parser engolia `text=Rótulo` como par chave=valor
+	// e o alvo virava o conteúdo. Eram justamente os dois comandos em que mais se
+	// quer mirar por texto.
+	text := req.String("value")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu %s <alvo> <texto>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("uso: bu %s <alvo> <valor>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {

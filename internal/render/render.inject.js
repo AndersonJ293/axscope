@@ -1,5 +1,5 @@
-// Overlay injetado na página: cursor renderizado, halo, ripple de clique,
-// spotlight no alvo e um HUD com abas/ação.
+// Overlay injetado na página: cursor renderizado, ripple de clique, spotlight
+// opcional e um HUD com abas/ação.
 //
 // Cuidados deliberados, porque roda em páginas reais e hostis:
 //   - sem innerHTML (páginas com Trusted Types recusariam);
@@ -15,7 +15,7 @@
     'M6 2.6 L6 22.2 L10.9 17.6 L14.3 24.6 L17.6 23.0 L14.2 16.2 L21.6 15.9 Z';
 
   const CSS = `
-    .cursor, .halo, .ripple, .spotlight, .hud {
+    .cursor, .ripple, .spotlight, .hud {
       position: fixed; left: 0; top: 0; pointer-events: none;
     }
 
@@ -34,39 +34,22 @@
     }
     .cursor.press svg { transform: scale(.74); }
 
-    /* ---- halo que acompanha o ponteiro ---- */
-    .halo {
-      width: 44px; height: 44px; margin: -22px 0 0 -22px; z-index: 1;
-      border-radius: 50%;
-      background: radial-gradient(circle at 50% 50%,
-        rgba(99,102,241,.30) 0%, rgba(99,102,241,.14) 42%, rgba(99,102,241,0) 70%);
-      opacity: 0;
-      transform: translate(-200px, -200px);
-      transition: transform 340ms cubic-bezier(.22,1,.36,1), opacity 200ms ease;
-      will-change: transform;
-    }
-    .halo.on { opacity: 1; }
-    .halo.pulse { animation: bu-halo 620ms cubic-bezier(.2,.8,.2,1); }
-    @keyframes bu-halo {
-      0%   { box-shadow: 0 0 0 0 rgba(99,102,241,.55); }
-      100% { box-shadow: 0 0 0 26px rgba(99,102,241,0); }
-    }
-
     /* ---- ripple do clique ---- */
-    /* Leve de propósito: quem clica é o mouse, o ripple só confirma. Antes ele
-       se abria 3,6x com halo forte e virava o espetáculo. */
+    /* O clique é o único momento que pede atenção: o cursor afunda e um anel
+       curto confirma o ponto. Sem auréola em volta do ponteiro — o brilho roxo
+       que seguia o mouse saiu de cena. */
     .ripple {
-      width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 2;
+      width: 20px; height: 20px; margin: -10px 0 0 -10px; z-index: 2;
       border-radius: 50%;
-      border: 1.5px solid rgba(199,210,254,.75);
-      background: rgba(99,102,241,.16);
-      box-shadow: 0 0 10px rgba(99,102,241,.32);
+      border: 1.5px solid rgba(199,210,254,.85);
+      background: rgba(99,102,241,.22);
+      box-shadow: 0 0 12px rgba(99,102,241,.40);
       opacity: 0; transform: scale(.35);
     }
-    .ripple.on { animation: bu-ripple 380ms cubic-bezier(.2,.8,.2,1); }
+    .ripple.on { animation: bu-ripple 460ms cubic-bezier(.2,.8,.2,1); }
     @keyframes bu-ripple {
-      0%   { opacity: .8; transform: scale(.35); }
-      100% { opacity: 0;  transform: scale(2.1); }
+      0%   { opacity: .9; transform: scale(.35); }
+      100% { opacity: 0;  transform: scale(2.6); }
     }
 
     /* Contorno puro: realça o alvo sem cobrir o conteúdo. Nada de fundo — o
@@ -128,14 +111,15 @@
 
     /* Respeita quem pediu menos movimento. */
     @media (prefers-reduced-motion: reduce) {
-      .cursor, .halo, .spotlight, .hud { transition-duration: 1ms; }
+      .cursor, .spotlight, .hud { transition-duration: 1ms; }
       .cursor svg { transition-duration: 1ms; }
-      .halo.pulse, .ripple.on, .hud .dot { animation: none; }
+      .ripple.on, .hud .dot { animation: none; }
     }
   `;
 
   let host = null, root = null;
-  let cursorEl = null, haloEl = null, rippleEl = null, spotEl = null;
+  let cursorEl = null, rippleEl = null, spotEl = null;
+  let rippleTimer = 0;
   let hudEl = null, hudTabs = null, hudLabel = null;
   let visible = true, hudVisible = true;
 
@@ -180,7 +164,6 @@
       root.appendChild(style);
     }
 
-    haloEl = div('halo');
     spotEl = div('spotlight');
     rippleEl = div('ripple');
     cursorEl = div('cursor');
@@ -231,7 +214,6 @@
     hudEl.appendChild(sep);
     hudEl.appendChild(hudLabel);
 
-    root.appendChild(haloEl);
     root.appendChild(spotEl);
     root.appendChild(rippleEl);
     root.appendChild(cursorEl);
@@ -245,7 +227,7 @@
   function applyVisibility() {
     if (!cursorEl) return;
     cursorEl.style.display = visible ? '' : 'none';
-    if (haloEl) haloEl.style.display = visible ? '' : 'none';
+
     if (spotEl) spotEl.style.display = visible ? '' : 'none';
     if (hudEl) hudEl.style.display = hudVisible ? '' : 'none';
   }
@@ -257,8 +239,6 @@
   function moveCursor(x, y) {
     if (!build()) return;
     place(cursorEl, x, y);
-    haloEl.classList.add('on');
-    place(haloEl, x, y);
   }
 
   function ripple(x, y) {
@@ -268,10 +248,11 @@
     rippleEl.classList.remove('on');
     void rippleEl.offsetWidth; // reinicia a animação
     rippleEl.classList.add('on');
-
-    haloEl.classList.remove('pulse');
-    void haloEl.offsetWidth;
-    haloEl.classList.add('pulse');
+    // O estado final não pode depender de a animação ter rodado: em aba de
+    // segundo plano o navegador congela a animação, e o elemento ficava parado
+    // no primeiro quadro — um ponto roxo preso no lugar do último clique.
+    clearTimeout(rippleTimer);
+    rippleTimer = setTimeout(() => rippleEl && rippleEl.classList.remove('on'), 520);
   }
 
   window.__bu = {
