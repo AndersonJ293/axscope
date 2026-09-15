@@ -58,10 +58,23 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
 			// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
 			const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
-			// O nome acessível manda: quando o alvo não tem texto nenhum e só um
-			// aria-label, é ele que a árvore mostra — e é por ele que o agente lê
-			// a tela. Olhar só o texto deixaria esse alvo inalcançável.
-			const texto = el => (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
+			// O nome acessível manda: é o que a árvore mostra e por onde o agente
+			// lê a tela. Sem o placeholder e o rótulo associado aqui, mirar por
+			// texto discordava do snap: o campo aparecia como "CAPTCHA" na
+			// leitura e era inalcançável por esse nome.
+			const texto = el => {
+				const aria = (el.getAttribute('aria-label') || '').trim();
+				if (aria) return aria;
+				if (el.labels && el.labels.length) {
+					const rotulo = (el.labels[0].innerText || '').trim();
+					if (rotulo) return rotulo;
+				}
+				const visivel = (el.innerText || '').trim();
+				if (visivel) return visivel;
+				const dica = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
+				if (dica) return dica;
+				return (el.value || '').trim();
+			};
 			// Ordem de preferência: nome exato antes de parcial; depois o mais
 			// justo (menos sobra de texto); acionável só desempata. Sem o "mais
 			// justo", o primeiro que contém o texto é sempre o container da
