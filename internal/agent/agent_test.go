@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -65,20 +66,17 @@ func TestSplitTokens(t *testing.T) {
 	}
 }
 
-// Regressão (missão 15 do laboratório): clicar num alvo desabilitado não faz
-// nada, e mesmo assim a resposta era um `ok` igual ao de um clique que
-// funcionou — o agente seguia como se tivesse agido. O aviso é o único sinal
-// que chega a quem lê, então é ele que o teste prende.
-func TestAvisoDeAlvoInativo(t *testing.T) {
-	if got := comAviso("click e1", ""); got != "click e1" {
-		t.Errorf("sem motivo o rótulo não devia mudar, virou %q", got)
-	}
-	got := comAviso("click text=Coletar resultado", "desabilitado")
-	if !strings.Contains(got, "desabilitado") {
-		t.Errorf("o motivo não chegou ao rótulo: %q", got)
-	}
-	if !strings.Contains(got, "não deve ter feito nada") {
-		t.Errorf("o rótulo não avisa que a ação provavelmente não teve efeito: %q", got)
+// Regressão (laboratório v2): o clique que não chega respondia `ok` do mesmo
+// jeito que um clique que funcionou — e ainda podia cair na camada de cima, com
+// o efeito colateral que a página quisesse dar a ela. Agora ele é recusado, e a
+// mensagem carrega o motivo e o próximo passo.
+func TestFalhaDeAcao(t *testing.T) {
+	err := falhaDeAcao("click", "text=Gostei 20", fmt.Errorf("o alvo está coberto por div.modal-backdrop — para clicar no ponto assim mesmo, use pos=x,y"))
+	got := err.Error()
+	for _, querido := range []string{"click em text=Gostei 20", "coberto por div.modal-backdrop", "pos=x,y"} {
+		if !strings.Contains(got, querido) {
+			t.Errorf("mensagem %q não diz %q", got, querido)
+		}
 	}
 }
 

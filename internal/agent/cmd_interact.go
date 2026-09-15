@@ -37,16 +37,14 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	if req.Bool("double", false) {
 		count = 2
 	}
-	motivo, err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter)
-	if err != nil {
-		return protocol.Fail(err)
-	}
 	action := "click"
 	if count == 2 {
 		action = "dblclick"
 	}
-	label := comAviso(action+" "+target, motivo)
-	return ok(a.finish(ctx, sess, sid, label, before))
+	if err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter); err != nil {
+		return protocol.Fail(falhaDeAcao(action, target, err))
+	}
+	return ok(a.finish(ctx, sess, sid, action+" "+target, before))
 }
 
 func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
@@ -156,26 +154,24 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	}
 	before := a.errCount(sess, sid)
 	want := req.Cmd == "check"
-	clicked, motivo, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
+	clicked, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
 	if err != nil {
-		return protocol.Fail(err)
+		return protocol.Fail(falhaDeAcao(req.Cmd, target, err))
 	}
 	label := req.Cmd + " " + target
 	if !clicked {
 		label += " (já estava)"
 	}
-	return ok(a.finish(ctx, sess, sid, comAviso(label, motivo), before))
+	return ok(a.finish(ctx, sess, sid, label, before))
 }
 
-// comAviso acrescenta ao rótulo o motivo pelo qual o alvo recusou a ação.
+// falhaDeAcao embrulha o motivo pelo qual a ação não foi enviada.
 //
-// É o único sinal que chega a quem lê: a página ignora o clique, e sem o aviso a
-// resposta seria um ok igual ao de um clique que funcionou.
-func comAviso(label, motivo string) string {
-	if motivo == "" {
-		return label
-	}
-	return label + fmt.Sprintf(" (alvo %s — o clique não deve ter feito nada)", motivo)
+// A recusa precisa dizer o que fazer — foi para isso que ela substituiu o `ok`
+// silencioso: quem lê a resposta fica sabendo o próximo passo (esperar
+// habilitar, tirar o que cobre, ou clicar pelo ponto com `pos=x,y`).
+func falhaDeAcao(acao, alvo string, err error) error {
+	return fmt.Errorf("%s em %s não foi enviado: %w", acao, alvo, err)
 }
 
 // scroll rola. Sem alvo, rola o que estiver sob o centro da tela; com

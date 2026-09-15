@@ -32,15 +32,19 @@ func cursorDelayMs() int {
 
 // Click clica no alvo com mouse real (e cursor visível).
 //
-// Devolve o motivo quando o alvo recusa o clique — desabilitado, `aria-disabled`
-// ou `pointer-events: none`. A página ignora o evento e a ação responderia ok do
-// mesmo jeito, que é o pior desfecho para um agente: ele segue como se tivesse
-// agido. Medido na missão 15 do laboratório, onde "Coletar resultado" fica
-// desabilitado enquanto o job roda.
+// Antes de clicar, confere se o clique vai chegar. Dois casos recusam:
 //
-// O clique é disparado mesmo assim: a página pode ter handler num ancestral, e
-// quem decide é ela — o que não pode é o motivo ficar só com a gente.
-func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) (string, error) {
+//   - o alvo não aceita ação (desabilitado, `aria-disabled`, `pointer-events:
+//     none`) — o `ok` de antes era mentira, medido na missão 15 do laboratório;
+//   - o alvo está coberto por outra camada. O clique é entregue e quem o recebe
+//     é outra coisa, e a página não reclama: a ação responderia ok do mesmo
+//     jeito. Medido no laboratório v2 — com o modal aberto, clicar num botão do
+//     feed devolveu ok, o contador não mudou, e ainda por cima o clique caiu no
+//     modal (com o efeito colateral que a página quisesse dar a ele).
+//
+// Recusar é melhor do que agir às cegas: a ação não acontece, mas o motivo
+// chega a quem pediu — e a saída para forçar existe (`pos=x,y`).
+func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) error {
 	if button == "" {
 		button = "left"
 	}
@@ -48,7 +52,10 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 		count = 1
 	}
 	cx, cy := t.ondeAgir()
-	motivo := inativo(ctx, client, session, t.ObjectID)
+
+	if motivo := recusaDeClique(ctx, client, session, t.ObjectID, cx, cy); motivo != "" {
+		return fmt.Errorf("%s", motivo)
+	}
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.Press(ctx, client, session, cx, cy, button)
@@ -59,7 +66,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseMoved", "x": cx, "y": cy,
 	}, session); err != nil {
-		return motivo, err
+		return err
 	}
 	buttons := 1
 	if button == "right" {
@@ -71,34 +78,69 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 		"type": "mousePressed", "x": cx, "y": cy,
 		"button": button, "buttons": buttons, "clickCount": count,
 	}, session); err != nil {
-		return motivo, err
+		return err
 	}
 	time.Sleep(15 * time.Millisecond)
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseReleased", "x": cx, "y": cy,
 		"button": button, "buttons": 0, "clickCount": count,
 	}, session); err != nil {
-		return motivo, err
+		return err
 	}
 	time.Sleep(30 * time.Millisecond)
-	return motivo, nil
+	return nil
 }
 
-// inativo devolve o motivo pelo qual o elemento recusa ação — ou "" se ele
-// aceita.
+// recusaDeClique devolve por que o clique não deve ser enviado — ou "" se o
+// caminho está livre. A frase já vem com a saída, porque quem lê é o agente.
 //
-// Vale a ascendência do `disabled` porque é assim que a página se comporta: um
-// `<span>` dentro de um `<button disabled>` também não recebe clique. E
-// `pointer-events` é herdado, então o `none` de um ancestral já aparece aqui.
-func inativo(ctx context.Context, client *cdp.Client, session, objectID string) string {
+// O ponto conferido é o mesmo que será clicado. Dentro de um iframe as
+// coordenadas da página não valem, então lá vale o centro medido no documento do
+// próprio alvo — que é o mesmo ponto relativo que o navegador acerta lá dentro.
+func recusaDeClique(ctx context.Context, client *cdp.Client, session, objectID string, x, y float64) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
-		"functionDeclaration": `function () {
-			if (this.disabled || (this.closest && this.closest('[disabled]'))) return 'desabilitado';
-			if (this.getAttribute && this.getAttribute('aria-disabled') === 'true') return 'com aria-disabled';
-			if (getComputedStyle(this).pointerEvents === 'none') return 'com pointer-events: none';
-			return '';
+		"functionDeclaration": `function (px, py) {
+			if (this.matches && this.matches(':disabled')) {
+				return 'o alvo está desabilitado — espere ele habilitar antes de clicar';
+			}
+			if (this.getAttribute && this.getAttribute('aria-disabled') === 'true') {
+				return 'o alvo está com aria-disabled — espere ele habilitar antes de clicar';
+			}
+			if (getComputedStyle(this).pointerEvents === 'none') {
+				return 'o alvo está com pointer-events: none — o ponteiro não chega nele';
+			}
+			let emFrame = false;
+			try { emFrame = window.top !== window; } catch (e) { emFrame = true; }
+			let cx = px, cy = py;
+			if (emFrame) {
+				const r = this.getBoundingClientRect();
+				cx = r.left + r.width / 2;
+				cy = r.top + r.height / 2;
+			}
+			const sob = this.ownerDocument.elementFromPoint(cx, cy);
+			if (!sob) return 'o ponto do clique está fora da tela';
+			// Alcança quando é o próprio alvo, um filho ou um ancestral — e a
+			// subida atravessa shadow root, que o elementFromPoint não enxerga.
+			let n = this;
+			while (n) {
+				if (n === sob) return '';
+				n = n.parentNode || (n.getRootNode && n.getRootNode().host) || null;
+			}
+			if (sob.contains && sob.contains(this)) return '';
+			if (sob.tagName === 'IFRAME' && sob.contentDocument && sob.contentDocument.contains(this)) return '';
+			// Nomeia a camada com identidade mais próxima: dizer "h2" não ajuda,
+			// dizer "div.modal-backdrop" diz o que está na frente.
+			const dono = (sob.closest && sob.closest('[id], [class]')) || sob;
+			const cls = typeof dono.className === 'string' && dono.className.trim()
+				? '.' + dono.className.trim().split(/\s+/).join('.') : '';
+			const nome = (dono.tagName || '?').toLowerCase() + (dono.id ? '#' + dono.id : '') + cls;
+			return 'o alvo está coberto por ' + nome + ' — para clicar no ponto assim mesmo, use pos=x,y';
 		}`,
+		"arguments": []any{
+			map[string]any{"value": x},
+			map[string]any{"value": y},
+		},
 		"returnByValue": true,
 	}, session)
 	if err != nil {
@@ -115,7 +157,6 @@ func inativo(ctx context.Context, client *cdp.Client, session, objectID string) 
 	return res.Result.Value
 }
 
-// Hover passa o mouse por cima do alvo.
 // Hover passa o mouse por cima do alvo, entrando de fora para dentro.
 //
 // Entrar de fora importa: mover o ponteiro para onde ele já está não gera
@@ -362,15 +403,15 @@ func Select(ctx context.Context, client *cdp.Client, session string, t *Target, 
 }
 
 // SetChecked garante o estado de um checkbox/radio (clica se precisar). Devolve
-// `true` quando clicou e o motivo quando o alvo recusa clique.
-func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, string, error) {
+// `true` quando clicou.
+func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { return !!this.checked; }`,
 		"returnByValue":       true,
 	}, session)
 	if err != nil {
-		return false, "", err
+		return false, err
 	}
 	var res struct {
 		Result struct {
@@ -378,11 +419,10 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return false, "", err
+		return false, err
 	}
 	if res.Result.Value == want {
-		return false, "", nil
+		return false, nil
 	}
-	motivo, err := Click(ctx, client, session, t, "left", 1, p)
-	return true, motivo, err
+	return true, Click(ctx, client, session, t, "left", 1, p)
 }
