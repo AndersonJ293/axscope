@@ -41,6 +41,7 @@ type Agent struct {
 	overlayVisible bool
 	bridge         *bridge.Server
 	extClient      *cdp.Client
+	agent          string
 }
 
 // Close encerra o browser (se fomos nós que subimos) e a conexão.
@@ -85,6 +86,7 @@ func (a *Agent) extension(ctx context.Context) (*cdp.Client, error) {
 		if err != nil {
 			return nil, err
 		}
+		srv.SetLabel(a.agent)
 		a.bridge = srv
 	}
 	if a.extClient != nil && a.extClient.Err() == nil {
@@ -156,10 +158,28 @@ func (a *Agent) client() *cdp.Client {
 	return a.handle.Client
 }
 
+// setAgent registra quem está dirigindo e reavisa a extensão, que renomeia o
+// grupo de abas (mantendo o número que ele já tinha).
+func (a *Agent) setAgent(name string) {
+	a.mu.Lock()
+	if name == "" || a.agent == name {
+		a.mu.Unlock()
+		return
+	}
+	a.agent = name
+	srv := a.bridge
+	a.mu.Unlock()
+	if srv != nil {
+		srv.SetLabel(name)
+	}
+}
+
 // Run executa um pedido. Serializa tudo para não misturar ações.
 func (a *Agent) Run(ctx context.Context, req protocol.Request) protocol.Response {
 	a.runMu.Lock()
 	defer a.runMu.Unlock()
+
+	a.setAgent(req.Agent)
 
 	if req.Cmd == "script" {
 		return a.runScript(ctx, req)

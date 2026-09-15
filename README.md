@@ -108,6 +108,23 @@ snap
 shot /tmp/painel.png
 ```
 
+## Disco
+
+| Onde | Tamanho | O quê |
+|---|---|---|
+| `~/.local/share/browser-use/browsers/` | ~650 MB | Chrome + headless-shell baixados |
+| `~/.local/share/browser-use/profiles/` | varia | perfil (logins, estado) |
+| `~/.local/share/browser-use/logs/` | ≤ 2 MB por sessão | log do daemon, truncado ao subir |
+
+`bu shot <arquivo>` grava **exatamente onde você manda** — não existe pasta
+padrão nem acúmulo automático. A ferramenta só escreve sozinha o que é
+necessário: perfil, browsers baixados (no `install`) e o log (limitado).
+
+```bash
+browser-use clean          # logs e sessões mortas
+browser-use clean --tudo   # inclui perfis e browsers baixados
+```
+
 ## Ciclo de vida
 
 O daemon mantém o browser vivo de propósito: a próxima chamada responde na hora
@@ -186,6 +203,28 @@ igual aos outros modos.
 
 Cada aba é anexada **sob demanda** — só a que está sendo usada. Abrir o agente
 não varre nem instrumenta as suas abas.
+
+### Nome do grupo
+
+O grupo aparece como **`<Agente> <N>`** — `Opencode 1`, `Opencode 2`, `Claude 1`.
+O número é atribuído pela extensão (o próximo livre daquele agente).
+
+O nome do agente vem da configuração do MCP que está dirigindo:
+
+```json
+{
+  "mcp": {
+    "browser-use": {
+      "type": "local",
+      "command": ["/home/USUARIO/.local/bin/browser-use", "mcp"],
+      "environment": { "BROWSER_USE_AGENT": "Opencode" }
+    }
+  }
+}
+```
+
+Sem isso, o MCP tenta o nome do cliente (`clientInfo.name`) e a CLI usa
+`browser-use`.
 
 ### Dar e tirar acesso: arraste a aba
 

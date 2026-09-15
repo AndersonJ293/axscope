@@ -75,7 +75,18 @@ func Send(req protocol.Request) (protocol.Response, error) {
 	if err != nil {
 		return protocol.Response{}, err
 	}
+	if req.Agent == "" {
+		req.Agent = AgentName()
+	}
 	return SendTo(socketPath, req)
+}
+
+// AgentName é quem está dirigindo: BROWSER_USE_AGENT, ou um padrão neutro.
+func AgentName() string {
+	if v := os.Getenv("BROWSER_USE_AGENT"); v != "" {
+		return v
+	}
+	return "browser-use"
 }
 
 // SendTo fala direto com um socket, sem subir daemon nenhum. É o que o

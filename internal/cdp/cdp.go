@@ -267,6 +267,27 @@ func (c *Client) On(method string, h Handler) func() {
 	}
 }
 
+// Notify envia uma mensagem sem esperar resposta (uma notificação do CDP).
+func (c *Client) Notify(ctx context.Context, method string, params any) error {
+	payload := map[string]any{"method": method}
+	if params != nil {
+		payload["params"] = params
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	c.stateMu.Lock()
+	closed := c.closed
+	c.stateMu.Unlock()
+	if closed {
+		return fmt.Errorf("conexão CDP fechada")
+	}
+	return c.conn.Write(ctx, websocket.MessageText, raw)
+}
+
 // Done fecha quando a conexão cai.
 func (c *Client) Done() <-chan struct{} { return c.done }
 

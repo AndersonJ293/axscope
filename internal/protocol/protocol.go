@@ -9,6 +9,9 @@ type Request struct {
 	ID   int64          `json:"id,omitempty"`
 	Cmd  string         `json:"cmd"`
 	Args map[string]any `json:"args,omitempty"`
+	// Agent identifica quem está dirigindo (ex.: "Opencode"), para nomear o
+	// grupo de abas no navegador. Vem do cliente MCP ou de BROWSER_USE_AGENT.
+	Agent string `json:"agent,omitempty"`
 }
 
 // Image é um anexo opcional (ex.: screenshot) para clientes que aceitam imagem.

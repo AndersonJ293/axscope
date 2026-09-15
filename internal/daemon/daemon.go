@@ -30,8 +30,21 @@ type Options struct {
 	Engine   string
 }
 
+// capLog impede que o log do daemon cresça sem limite. O processo escreve no
+// arquivo com O_APPEND, então truncar é seguro.
+func capLog(session string) {
+	const maxBytes = 2 << 20 // 2 MB
+	path := paths.DaemonLogPath(session)
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= maxBytes {
+		return
+	}
+	_ = os.Truncate(path, 0)
+}
+
 // Run sobe o daemon e só retorna quando ele é encerrado.
 func Run(ctx context.Context, opts Options) error {
+	capLog(opts.Session)
 	socketPath := paths.SocketPath(opts.Session)
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
 		return err

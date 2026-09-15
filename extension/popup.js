@@ -1,6 +1,9 @@
 // Popup: mostra as sessões conectadas (uma por agente) e permite reconectar.
 
 function render(state) {
+  const versionEl = document.getElementById('version');
+  if (versionEl) versionEl.textContent = `v${chrome.runtime.getManifest().version}`;
+
   const pill = document.getElementById('pill');
   const label = document.getElementById('label');
   const detail = document.getElementById('detail');

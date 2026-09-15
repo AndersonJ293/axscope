@@ -76,10 +76,21 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 
 	switch req.Method {
 	case "initialize":
+		// O nome do cliente MCP (opencode, claude, cursor…) vira o nome do grupo
+		// de abas no navegador. Sem configurar nada.
+		var params struct {
+			ClientInfo struct {
+				Name string `json:"name"`
+			} `json:"clientInfo"`
+		}
+		_ = json.Unmarshal(req.Params, &params)
+		if name := displayName(params.ClientInfo.Name); name != "" {
+			_ = os.Setenv("BROWSER_USE_AGENT", name)
+		}
 		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "browser-use", "version": "0.1.0"},
+			"serverInfo":      map[string]any{"name": "browser-use", "version": "0.2.0"},
 		}})
 
 	case "ping":
@@ -206,6 +217,25 @@ func write(writer *bufio.Writer, resp rpcResponse) {
 		return
 	}
 	_, _ = writer.Write(append(data, '\n'))
+}
+
+// displayName transforma o nome do cliente MCP num rótulo legível:
+// "opencode" -> "Opencode", "claude-desktop" -> "Claude Desktop".
+func displayName(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == ' '
+	})
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return strings.Join(parts, " ")
 }
 
 func errResponse(id json.RawMessage, code int, msg string) rpcResponse {

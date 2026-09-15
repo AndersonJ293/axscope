@@ -31,7 +31,33 @@ type Server struct {
 	http     *http.Server
 	port     int
 	session  string
+	label    string
+	last     *cdp.Client
 	conns    chan *cdp.Client
+}
+
+// SetLabel troca o nome exibido (ex.: "Opencode") e reavisa a extensão, que
+// renomeia o grupo de abas mantendo o número que já tinha.
+func (s *Server) SetLabel(label string) {
+	s.mu.Lock()
+	if label == "" || s.label == label {
+		s.mu.Unlock()
+		return
+	}
+	s.label = label
+	last := s.last
+	s.mu.Unlock()
+	if last != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = last.Notify(ctx, "__session", map[string]any{"session": s.session, "agent": label})
+	}
+}
+
+func (s *Server) currentLabel() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.label
 }
 
 // Start sobe o servidor em 127.0.0.1 (nunca exposto para fora da máquina) e
@@ -73,16 +99,20 @@ func Start(session string, basePort int) (*Server, error) {
 		if err != nil {
 			return
 		}
-		// Handshake: diz à extensão qual sessão/grupo de abas é dela.
+		// Handshake: diz à extensão qual sessão/grupo de abas é dela e como
+		// exibir esse grupo (o nome do agente que está dirigindo).
 		hello, _ := json.Marshal(map[string]any{
 			"method": "__session",
-			"params": map[string]any{"session": s.session},
+			"params": map[string]any{"session": s.session, "agent": s.currentLabel()},
 		})
 		wctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		_ = conn.Write(wctx, websocket.MessageText, hello)
 		cancel()
 
 		client := cdp.FromConn(conn)
+		s.mu.Lock()
+		s.last = client
+		s.mu.Unlock()
 		select {
 		case s.conns <- client:
 		default:

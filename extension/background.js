@@ -24,13 +24,34 @@ let heartbeatTimer = null;
 
 // ------------------------------------------------------------------ contexto
 
-function groupTitle(session) {
-  return `browser-use · ${session}`;
+const AGENT_DEFAULT = 'browser-use';
+
+// groupTitle é o que aparece na barra de abas: "<Agente> <N>".
+function groupTitle(st) {
+  return st.groupTitle || `${st.agent || AGENT_DEFAULT} 1`;
 }
 
-function groupColor(session) {
+/** Próximo número livre para um agente ("Opencode 1", "Opencode 2", …). */
+async function nextTitleFor(agent) {
+  const name = agent || AGENT_DEFAULT;
+  let max = 0;
+  try {
+    const groups = await chrome.tabGroups.query({});
+    const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
+    for (const g of groups) {
+      const m = re.exec(g.title || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+  } catch {
+    /* sem tabGroups: usa 1 */
+  }
+  return `${name} ${max + 1}`;
+}
+
+function groupColor(agent) {
+  const name = agent || AGENT_DEFAULT;
   let hash = 0;
-  for (let i = 0; i < session.length; i++) hash = (hash * 31 + session.charCodeAt(i)) | 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
   return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
 }
 
@@ -137,6 +158,22 @@ async function handleMessage(st, msg) {
 
   if (method === '__session') {
     st.session = (params && params.session) || 'default';
+    const agent = (params && params.agent) || AGENT_DEFAULT;
+    if (st.agent !== agent) {
+      st.agent = agent;
+      // Já tem grupo? Renomeia mantendo o número ("Opencode 2" continua 2).
+      if (st.groupId !== null && st.groupId !== undefined) {
+        const m = / (\d+)$/.exec(st.groupTitle || '');
+        st.groupTitle = `${agent}${m ? ' ' + m[1] : ''}`;
+        try {
+          await chrome.tabGroups.update(st.groupId, { title: st.groupTitle });
+        } catch {
+          /* grupo sumiu */
+        }
+      } else {
+        st.groupTitle = null;
+      }
+    }
     await adoptExistingGroup(st);
     refreshStatus();
     return;
@@ -167,6 +204,7 @@ async function adoptExistingGroup(st) {
       const g = await chrome.tabGroups.get(stored);
       if (g) {
         st.groupId = g.id;
+        st.groupTitle = g.title || st.groupTitle;
         await syncGroupTabs(st);
         return;
       }
@@ -175,13 +213,19 @@ async function adoptExistingGroup(st) {
     await chrome.storage.local.remove(key);
   }
 
-  // 2) Senão, adota um grupo com o nosso título.
+  // 2) Senão, adota um grupo cujo título case com o nome do agente.
   try {
-    const groups = await chrome.tabGroups.query({ title: groupTitle(st.session) });
-    if (groups.length > 0) {
-      st.groupId = groups[0].id;
-      await chrome.storage.local.set({ [key]: st.groupId });
-      await syncGroupTabs(st);
+    const groups = await chrome.tabGroups.query({});
+    const name = st.agent || AGENT_DEFAULT;
+    const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\d+$`);
+    for (const g of groups) {
+      if (re.test(g.title || '')) {
+        st.groupId = g.id;
+        st.groupTitle = g.title;
+        await chrome.storage.local.set({ [key]: st.groupId });
+        await syncGroupTabs(st);
+        return;
+      }
     }
   } catch {
     /* tabGroups indisponível: segue sem grupo */
@@ -203,9 +247,10 @@ async function addTabToGroup(st, tabId) {
     if (st.groupId === null || st.groupId === undefined) {
       const gid = await chrome.tabs.group({ tabIds: [tabId] });
       st.groupId = gid;
+      if (!st.groupTitle) st.groupTitle = await nextTitleFor(st.agent);
       await chrome.tabGroups.update(gid, {
-        title: groupTitle(st.session),
-        color: groupColor(st.session),
+        title: st.groupTitle,
+        color: groupColor(st.agent),
         collapsed: false,
       });
       if (st.session) await chrome.storage.local.set({ [`group:${st.session}`]: gid });

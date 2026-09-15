@@ -9,6 +9,7 @@
       color: #0f172a; background: #f8fafc;
     }
     h1 { font-size: 14px; margin: 0 0 2px; letter-spacing: -.01em; }
+    .ver { color: #94a3b8; font-weight: 500; font-size: 11px; margin-left: 6px; }
     .sub { margin: 0 0 12px; color: #64748b; font-size: 12px; }
     .pill {
       display: inline-flex; align-items: center; gap: 7px;
@@ -36,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h1>browser-use</h1>
+  <h1>browser-use <span class="ver" id="version"></span></h1>
   <p class="sub">Ponte com o daemon local</p>
   <div id="pill" class="pill"><span class="dot"></span><span id="label">verificando…</span></div>
   <div id="list" class="list"></div>

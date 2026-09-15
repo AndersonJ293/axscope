@@ -29,6 +29,7 @@ var Specs = []Spec{
 	{Cmd: "status", Help: "URL, título, abas e estado do overlay"},
 	{Cmd: "install", Flags: []string{"engine"}, Help: "baixa motores (--engine chrome|shell|all)"},
 	{Cmd: "engines", Help: "lista os motores instalados"},
+	{Cmd: "clean", Flags: []string{"tudo"}, Help: "apaga logs e sessões mortas (--tudo inclui perfis e browsers)"},
 	{Cmd: "stop", Help: "encerra o daemon (e o browser, se fomos nós que subimos)"},
 
 	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new"}, Help: "abre/navega (--new abre em aba nova)"},

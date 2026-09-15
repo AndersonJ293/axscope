@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "browser-use",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Deixa o browser-use dirigir este navegador pelo chrome.debugger — com cursor renderizado.",
   "permissions": ["debugger", "tabs", "tabGroups", "storage"],
   "host_permissions": ["<all_urls>"],
