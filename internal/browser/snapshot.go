@@ -345,38 +345,6 @@ func (b *snapBuilder) emit(depth int, line string) {
 	b.out = append(b.out, strings.Repeat("  ", depth)+line)
 }
 
-// eligibleRef diz se o nó pode receber ref, sem consumir numeração.
-
-func (b *snapBuilder) eligibleRef(n *axNode) bool {
-	if n.BackendDOMNodeID == 0 {
-		return false
-	}
-	role := n.Role.str()
-	return interactiveRoles[role] || b.focusable(n)
-}
-
-func (b *snapBuilder) refFor(n *axNode) string {
-	if !b.eligibleRef(n) {
-		return ""
-	}
-	b.nextRef++
-	ref := "e" + strconv.Itoa(b.nextRef)
-	if b.gen > 0 {
-		ref += "#" + strconv.Itoa(b.gen)
-	}
-	b.refs[ref] = n.BackendDOMNodeID
-	return ref
-}
-
-func (b *snapBuilder) focusable(n *axNode) bool {
-	for _, p := range n.Properties {
-		if p.Name == "focusable" {
-			return rawBool(p.Value.Value)
-		}
-	}
-	return false
-}
-
 // collectText junta o texto direto de um nó (atravessando só nós de texto),
 // marcando-o como consumido para não repetir.
 
