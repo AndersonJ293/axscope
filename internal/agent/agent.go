@@ -210,6 +210,8 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 		return a.snap(ctx, sess, req)
 	case "click", "hover":
 		return a.clickLike(ctx, sess, req)
+	case "drag":
+		return a.drag(ctx, sess, req)
 	case "fill", "type":
 		return a.fillLike(ctx, sess, req)
 	case "press":
@@ -412,6 +414,33 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 		action = "dblclick"
 	}
 	return ok(a.finish(ctx, sess, sid, action+" "+target, before))
+}
+
+func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
+	fromSpec := req.String("from")
+	toSpec := req.String("to")
+	if fromSpec == "" || toSpec == "" {
+		return protocol.Fail(fmt.Errorf("uso: bu drag <de> <para>"))
+	}
+	from, sid, err := a.resolve(ctx, sess, fromSpec)
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	to, _, err := a.resolve(ctx, sess, toSpec)
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	at := ""
+	if req.Bool("topo", false) {
+		at = "top"
+	} else if req.Bool("base", false) {
+		at = "bottom"
+	}
+	before := a.errCount(sess, sid)
+	if err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{DropAt: at}); err != nil {
+		return protocol.Fail(err)
+	}
+	return ok(a.finish(ctx, sess, sid, fmt.Sprintf("drag %s -> %s", fromSpec, toSpec), before))
 }
 
 func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {

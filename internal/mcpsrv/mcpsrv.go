@@ -162,6 +162,7 @@ var curatedMCP = map[string]bool{
 	"open":     true,
 	"snap":     true,
 	"click":    true,
+	"drag":     true,
 	"fill":     true,
 	"press":    true,
 	"wait":     true,

@@ -69,16 +69,24 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
 		expr := fmt.Sprintf(`(() => {
 			const want = %s;
-			const nodes = document.querySelectorAll('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],label,li,td,th,h1,h2,h3,p,span,div');
+			const nodes = document.querySelectorAll('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div');
+			// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
+			// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
+			const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
+			const texto = el => (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
+			let exatoAcionavel = null, exato = null, parcialAcionavel = null, parcial = null;
 			for (const el of nodes) {
-				const t = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
-				if (t && t === want) return el;
+				const t = texto(el);
+				if (!t) continue;
+				if (t === want) {
+					if (!exatoAcionavel && acionavel(el)) exatoAcionavel = el;
+					if (!exato) exato = el;
+				} else if (t.includes(want)) {
+					if (!parcialAcionavel && acionavel(el)) parcialAcionavel = el;
+					if (!parcial) parcial = el;
+				}
 			}
-			for (const el of nodes) {
-				const t = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
-				if (t && t.includes(want)) return el;
-			}
-			return null;
+			return exatoAcionavel || parcialAcionavel || exato || parcial || null;
 		})()`, strconv.Quote(want))
 		id, err := evalObject(ctx, client, session, expr)
 		if err != nil {
@@ -272,6 +280,118 @@ func Hover(ctx context.Context, client *cdp.Client, session string, t *Target) e
 		"type": "mouseMoved", "x": cx, "y": cy,
 	}, session)
 	return err
+}
+
+// DragOptions ajusta o arraste.
+type DragOptions struct {
+	// DropAt diz onde soltar sobre o alvo: "" (centro), "top" (25% do topo) ou
+	// "bottom" (75%). Importa quando o alvo decide antes/depois pela posição.
+	DropAt string
+}
+
+// Drag arrasta `from` até `to`.
+//
+// Arraste HTML5 (draggable/dragstart/drop) não nasce de mouse injetado: o Chrome
+// só inicia o gesto a partir de entrada real do usuário, e o caminho previsto no
+// CDP para automação (`Input.setInterceptDrags` + `dragIntercepted`) também não
+// dispara — medido com contador na própria página, dragstart/dragover/drop
+// ficaram em zero, e o que sobrava era um clique de verdade no alvo.
+//
+// Então o arraste é montado na página: emitimos dragstart/dragenter/dragover/
+// drop/dragend com um DataTransfer real, sobre o elemento que está sob o ponto
+// de soltura (o evento sobe, então quem escuta no container também recebe).
+// Funciona com DnD feito em JS — a maioria. Não funciona para arrastar arquivo
+// do sistema, nem quando o site exige evento confiável (`isTrusted`).
+func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) error {
+	fx, fy := from.center()
+	tx, ty := dropPoint(to, opts.DropAt)
+
+	// O cursor passeia até o destino: quem olha precisa ver o arraste acontecer.
+	_ = overlay.Spotlight(ctx, client, session, &from.Rect)
+	_ = overlay.MoveCursor(ctx, client, session, fx, fy)
+	if d := visualDelay(); d > 0 {
+		time.Sleep(d)
+	}
+	_ = overlay.Spotlight(ctx, client, session, &to.Rect)
+	_ = overlay.MoveCursor(ctx, client, session, tx, ty)
+	if d := visualDelay(); d > 0 {
+		time.Sleep(d)
+	}
+
+	onde := opts.DropAt
+	if onde == "" {
+		onde = "center"
+	}
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId":            from.ObjectID,
+		"functionDeclaration": dragScript,
+		"arguments": []any{
+			map[string]any{"objectId": to.ObjectID},
+			map[string]any{"value": onde},
+		},
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return err
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+		ExceptionDetails *struct {
+			Text string `json:"text"`
+		} `json:"exceptionDetails"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return err
+	}
+	if res.ExceptionDetails != nil {
+		return fmt.Errorf("%s", res.ExceptionDetails.Text)
+	}
+	if res.Result.Value != "ok" {
+		return fmt.Errorf("arraste não montou: %s", res.Result.Value)
+	}
+	time.Sleep(40 * time.Millisecond)
+	return nil
+}
+
+// dragScript emite a sequência de arraste sobre os elementos reais.
+const dragScript = `function (alvo, onde) {
+	const fonte = this;
+	if (!fonte || !alvo) return 'sem origem ou destino';
+	const ponto = (el) => {
+		const b = el.getBoundingClientRect();
+		let y = b.top + b.height / 2;
+		if (onde === 'top') y = b.top + b.height * 0.25;
+		else if (onde === 'bottom') y = b.top + b.height * 0.75;
+		return { x: b.left + b.width / 2, y: y };
+	};
+	const pf = ponto(fonte);
+	const pd = ponto(alvo);
+	const dt = new DataTransfer();
+	const dispara = (tipo, el, p) => el.dispatchEvent(new DragEvent(tipo, {
+		bubbles: true, cancelable: true, composed: true, dataTransfer: dt,
+		clientX: p.x, clientY: p.y, screenX: p.x, screenY: p.y,
+	}));
+	dispara('dragstart', fonte, pf);
+	const sob = document.elementFromPoint(pd.x, pd.y) || alvo;
+	dispara('dragenter', sob, pd);
+	dispara('dragover', sob, pd);
+	dispara('drop', sob, pd);
+	dispara('dragend', fonte, pd);
+	return 'ok';
+}`
+
+// dropPoint devolve onde soltar sobre o alvo.
+func dropPoint(t *Target, at string) (float64, float64) {
+	switch at {
+	case "top", "topo":
+		return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height*0.25
+	case "bottom", "base":
+		return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height*0.75
+	default:
+		return t.center()
+	}
 }
 
 // Fill substitui o conteúdo do campo (foco + seleção + insertText).
