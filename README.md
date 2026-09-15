@@ -1,454 +1,464 @@
 # axscope
 
-Ferramenta de **browser dirigido por agente**: lê a tela como texto, age por
-identidade e mostra um cursor renderizado — para o agente e para quem olha.
+**Agent-driven browser:** it reads the screen as text, acts by identity, and
+renders a cursor — for the agent and for whoever is watching.
 
-Um binário só, três papéis:
+One binary, four roles:
 
 ```bash
-axscope <comando>   # cliente: fala com o daemon (subindo-o se preciso)
-axscope serve       # o daemon (browser vivo, socket unix)
-axscope mcp         # servidor MCP sobre stdio, apontando para o mesmo daemon
-axscope install     # baixa o Chrome for Testing
+axscope <command>   # client: talks to the daemon (starting it if needed)
+axscope serve       # the daemon (live browser, unix socket)
+axscope mcp         # MCP server over stdio, pointing at the same daemon
+axscope install     # downloads Chrome for Testing
 ```
 
-## Princípios
+## Principles
 
-Os mesmos da ferramenta de QA do app, transportados para o navegador:
+1. **Read the screen as text** (`snap`) — an accessibility tree with stable
+   `ref`s, never raw HTML or pixels.
+2. **Act by identity** (`click e12`, `css=...`, `text=...`) — a coordinate is
+   never the first option.
+3. **Converge, don't sleep** (`wait`/`waitgone`, `Settle`) — fail loudly when
+   the page will not settle instead of masking it with `sleep`.
+4. **Batch** (`script`) — N steps on one connection, no cold start per step.
+5. **See** — cursor, halo, target spotlight and a tab HUD injected into the page.
 
-1. **Ler a tela como texto** (`snap`) — árvore de acessibilidade com `ref`
-   estável, nunca HTML cru nem pixel.
-2. **Agir por identidade** (`click e12`, `css=...`, `text=...`) — coordenada
-   nunca é a primeira opção.
-3. **Convergir, não dormir** (`wait`/`waitgone`, `Settle`) — falha alto se a
-   página não estabiliza em vez de mascarar com `sleep`.
-4. **Lote** (`script`) — N passos numa conexão só, sem cold start por passo.
-5. **Ver** — cursor, halo, destaque do alvo e HUD de abas injetados na página.
+## Why raw CDP (and not Playwright)
 
-## Por que CDP cru (e não Playwright)
+Playwright is a _testing_ framework: it wants to own the browser lifecycle,
+boots its own Chromium with a clean profile (losing your logins) and hides the
+protocol — the `ref` snapshot it uses in its MCP is an internal API
+(`_snapshotForAI`).
 
-Playwright é um framework de _teste_: quer ser dono do ciclo do browser, sobe um
-Chromium próprio com perfil limpo (perde login) e esconde o protocolo — o
-snapshot com `ref` que ele usa no MCP é API interna (`_snapshotForAI`).
+CDP hands over exactly what matters:
 
-O CDP entrega direto o que importa:
-
-| Necessidade | Onde vem |
+| Need | Where it comes from |
 |---|---|
-| Abas nativas | `Target.*` |
-| A "tela" em texto | `Accessibility.getFullAXTree` |
-| Cursor em coordenada exata | `Input.dispatchMouseEvent` |
-| Overlay que sobrevive à navegação | `Page.addScriptToEvaluateOnNewDocument` |
+| Native tabs | `Target.*` |
+| The screen as text | `Accessibility.getFullAXTree` |
+| Cursor at an exact coordinate | `Input.dispatchMouseEvent` |
+| An overlay that survives navigation | `Page.addScriptToEvaluateOnNewDocument` |
 
-E Node não é dependência: o cliente CDP é Go + `WebSocket`.
+And Node is not a dependency: the CDP client is Go + `WebSocket`.
 
-## Instalação
+## Install
 
 ```bash
-make install                    # → ~/.local/bin/axscope (atalho: axscope)
-axscope install --engine all  # Chrome for Testing + chrome-headless-shell
-axscope engines             # o que está disponível
+make install                       # → ~/.local/bin/axscope
+axscope install --engine all       # Chrome for Testing + chrome-headless-shell
+axscope engines                    # what is available
 ```
 
-Se `~/.local/bin` não estiver no seu `PATH`, use `PREFIX=/usr/local/bin make install`.
+If `~/.local/bin` is not on your `PATH`, use `PREFIX=/usr/local/bin make install`.
 
-Os binários ficam em `~/.local/share/axscope/browsers/`. O perfil fica em
-`~/.local/share/axscope/profiles/<sessão>/` — é persistente, então login
-sobrevive entre rodadas.
+The binaries live in `~/.local/share/axscope/browsers/`. The profile lives in
+`~/.local/share/axscope/profiles/<session>/` — it is persistent, so logins
+survive across runs.
 
-`--engine` aceita `chrome` (padrão), `shell` (chrome-headless-shell) ou `all`.
+`--engine` accepts `chrome` (default), `shell` (chrome-headless-shell) or `all`.
 
-### MCP no opencode
+### MCP in opencode
 
 ```json
 {
   "mcp": {
     "axscope": {
       "type": "local",
-      "command": ["/home/USUARIO/.local/bin/axscope", "mcp"]
+      "command": ["/home/USER/.local/bin/axscope", "mcp"]
     }
   }
 }
 ```
 
-O MCP expõe um conjunto **enxuto** de 16 ferramentas (schema de ferramenta custa
-contexto em toda requisição). Para abrir todas: `AXSCOPE_MCP_TOOLS=all`.
+The MCP exposes a **lean** set of tools (tool schemas cost context on every
+request). To open all of them: `AXSCOPE_MCP_TOOLS=all`.
 
-## Uso
+## Usage
 
 ```bash
-axscope open https://example.com        # navega (ou usa a aba ativa)
-axscope snap                            # lê a tela (o "tela" do app)
-axscope click e1                        # age pela ref do último snap
-axscope fill e5 "dono@exemplo.com"
+axscope open https://example.com     # navigates (or uses the active tab)
+axscope snap                         # reads the screen
+axscope click e1                     # acts by the ref from the last snap
+axscope fill e5 "owner@example.com"
 axscope press Enter
-axscope wait "Painel"                   # converge, não dorme
-axscope wait "Pronto" dentro=css=#lista # o texto, mas só dentro do container
-axscope wait css=#enviar --habilitado   # espera o estado, não o texto
-axscope tabs                            # abas abertas (a ativa vem com *)
-axscope shot /tmp/evidencia.png         # captura (com cursor e destaque)
-axscope script cenario.txt              # roteiro em lote
+axscope wait "Dashboard"             # converges, doesn't sleep
+axscope wait "Ready" within=css=#list   # the text, but only inside the container
+axscope wait css=#submit --enabled   # waits for the state, not the text
+axscope tabs                         # open tabs (the active one is marked *)
+axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
+axscope script scenario.txt          # batch script
 ```
 
-Aliases em português existem (`tela`, `clicar`, `digitar`, `esperar`, `abas`…).
+A target accepts four forms: `e12` (ref), `css=.button`, `text=Sign in` and
+`pos=x,y` (the element under the point — and **the action happens at the
+point**, not at its center, which is what lets you click inside an iframe). Open
+shadow roots are traversed: the accessibility tree flattens them — the snapshot
+shows what is inside, with a ref — and aiming by `text=`/`css=` reaches in too.
 
-Alvo aceita quatro formas: `e12` (ref), `css=.botao`, `text=Entrar` e `pos=x,y`
-(o elemento sob o ponto — e **a ação acontece no ponto**, não no centro dele, que
-é o que permite clicar dentro de um iframe). Shadow root aberto é atravessado: a
-árvore de acessibilidade a achata — a leitura mostra o que está lá dentro, com
-ref — e a mira por `text=`/`css=` também alcança.
+When the target refuses the action, the action **is not sent** and the response
+says why and what to do next: the target is disabled (`wait --enabled`), the
+target is covered (`to click the point anyway, use pos=x,y`), or the target is
+outside the window of the container that clips it. Clicking a covered button
+answers `ok` and does nothing — and still lands on the top layer, with whatever
+side effect the page gives it. Text that did not make it into the field
+(`the field is still empty`) and a click that was sent but the target never saw
+are also not silently ignored.
 
-Quando o alvo recusa a ação, a ação **não é enviada** e a resposta diz o motivo e
-o próximo passo: o alvo desabilitado (`espere habilitar`), o alvo coberto
-(`para clicar no ponto assim mesmo, use pos=x,y`) e o alvo que está fora da
-janela do container que o recorta. Clicar num botão coberto responde `ok` e não
-faz nada — e ainda cai na camada de cima, com o efeito colateral que a página
-quiser dar a ela. Também não passa em silêncio o texto que não entrou no campo
-(`o campo continua vazio`) nem o clique que foi enviado e o alvo não viu.
-
-O cabeçalho da leitura diz onde se está, inclusive dentro de uma área que rola:
-
-```
--- 261 linhas, 57 refs · rolagem: página 2075/2844 · #virtual 5000/41672
-```
-
-A árvore de acessibilidade não carrega rolagem, então isso vem do DOM. As maiores
-áreas vêm primeiro, e o seletor curto (`#id`, `tag.classe`) serve direto para
-`css=`.
-
-O fim da leitura lista os **clicáveis que a árvore não marca** — `div` com handler
-e `cursor: pointer`, o caso da conversa que não vira alvo:
+The snapshot header says where you are, including inside a scrollable area:
 
 ```
--- clicáveis sem papel na árvore (a leitura não os marca; aqui o seletor):
-  div[data-id="ana"] — "Ana Souza — Oi Ana! Tenho interesse"
+-- 261 lines, 57 refs · scroll: page 2075/2844 · #virtual 5000/41672
 ```
 
-O critério é estreito de propósito: só container **sem alvo dentro**. Um card que
-embala botões já tem alvos, e listá-lo seria ruído — a mesma página dava 249
-candidatos por `cursor: pointer` puro contra 3 por este critério. O seletor vem
-conferido contra a própria página, e prefere o atributo de dado à classe: a
-classe de estado (`active`) muda, e um seletor que a carrega quebra sozinho.
+The accessibility tree does not carry scrolling, so this comes from the DOM. The
+largest areas come first, and the short selector (`#id`, `tag.class`) works
+directly with `css=`.
 
-### Roteiro
-
-Uma linha por passo, `#` comenta, aspas para espaços:
+The end of the snapshot lists the **clickables the tree does not mark** — a `div`
+with a handler and `cursor: pointer`, the case of the chat that never becomes a
+target:
 
 ```
-# cenário: entrar no painel
-open https://exemplo.com/login
+-- clickables without a role in the tree (the snapshot does not mark them; here is the selector):
+  div[data-id="ana"] — "Ana Souza — Hi Ana! I'm interested"
+```
+
+The criterion is deliberately narrow: only a container **with no target inside**.
+A card that wraps buttons already has targets, and listing it would be noise —
+the same page produced 249 candidates by raw `cursor: pointer` against 3 by this
+criterion. The selector is checked against the page itself and prefers the data
+attribute over the class: a state class (`active`) changes, and a selector that
+carries it breaks on its own.
+
+### Scripts
+
+One step per line, `#` comments, quotes for spaces:
+
+```
+# scenario: sign in to the dashboard
+open https://example.com/login
 snap
-fill e1 "dono@talher.com"
-fill e2 "senha"
+fill e1 "owner@example.com"
+fill e2 "password"
 click e3
-wait "Painel"
+wait "Dashboard"
 snap
-shot /tmp/painel.png
+shot /tmp/dashboard.png
 ```
 
-## Disco
+## Modes: which browser
 
-| Onde | Tamanho | O quê |
-|---|---|---|
-| `~/.local/share/axscope/browsers/` | ~650 MB | Chrome + headless-shell baixados |
-| `~/.local/share/axscope/profiles/` | varia | perfil (logins, estado) |
-| `~/.local/share/axscope/logs/` | ≤ 2 MB por sessão | log do daemon, truncado ao subir |
+The engine is a property of the **session**: the daemon starts the browser with
+the chosen engine on the first call. Changing the engine on a live session
+requires `stop` (or use another session). `axscope engines` shows what is
+installed.
 
-`axscope shot <arquivo>` grava **exatamente onde você manda** — não existe pasta
-padrão nem acúmulo automático. A ferramenta só escreve sozinha o que é
-necessário: perfil, browsers baixados (no `install`) e o log (limitado).
+| Mode | Engine | RAM (1 tab) | Sees the screen? |
+|---|---|---|---|
+| **(default) extension** | your Brave, already logged in | — (already open) | ✅ tabs + cursor |
+| **`--chrome`** | Chrome for Testing | ~1850 MB | ✅ tabs + cursor |
+| **`--headless`** | chrome-headless-shell | ~505 MB | ❌ |
 
 ```bash
-axscope clean          # logs e sessões mortas
-axscope clean --tudo   # inclui perfis e browsers baixados
+# default: your Brave, through the extension (the everyday mode)
+axscope open https://example.com
+
+# dedicated Chrome, when you want a separate browser
+axscope --chrome open https://example.com
+
+# no window at all, for batch work
+axscope --headless script script.txt
+
+# stop everything (all modes and their browsers)
+axscope stop --all
 ```
 
-## Ciclo de vida
+Each mode is a **separate session** (`ext`, `chrome`, `headless`), so they
+coexist: you can leave a script running windowless while you watch something
+else in Brave.
 
-O daemon mantém o browser vivo de propósito: a próxima chamada responde na hora
-e o estado (login, abas) sobrevive entre comandos. Ele **não** fica pendurado
-para sempre: se ninguém o usa por 30 minutos, ele se encerra e fecha o browser
-sozinho (`AXSCOPE_IDLE_MINUTES` ajusta; `0` desliga).
+The light mode is **not** a stripped-down Chromium: it is the same engine with
+the same CDP, the same accessibility tree, the same real geometry and the same
+coordinate click. There is just no window — so no drawn cursor.
 
-Para encerrar na hora, quando quiser:
+Attaching still works for any Chromium already open with
+`--remote-debugging-port=PORT` (`AXSCOPE_ATTACH=host:port`), letting you use your
+everyday browser with your logins.
 
-```bash
-axscope stop          # só a sessão atual
-axscope stop --all    # todas as sessões e todos os browsers
+## The engine: what the research proved
+
+The question "is there a lighter browser?" has a measured answer, not an opinion.
+
+| Engine | Renders? | CDP | Verdict |
+|---|---|---|---|
+| **Chrome for Testing** | yes | complete | default of the **chrome** mode |
+| **chrome-headless-shell** | yes (no window) | complete | **headless** mode: same engine, ~3.7x less RAM |
+| Thorium / Helium / ungoogled / Cromite | yes | complete | the same Chromium with a patch; not smaller |
+| Servo / WebKitGTK / QtWebEngine | yes | no (WebDriver) | loses CDP |
+| **Lightpanda** | **no** (no rendering engine) | partial | see below |
+
+### Lightpanda, measured
+
+Probe in `cmd/cdpprobe` against `lightpanda serve`:
+
+```
+Browser.getVersion                 OK
+Target.getTargets                  OK    0 targets   ← does not use the target model
+Target.createTarget                OK    FID-0000000001
+Accessibility.getFullAXTree        OK    (real tree, with role/name)
+Runtime.evaluate                   OK    document.title = "Example Domain"
+DOM.getDocument                    OK
+Page.captureScreenshot             OK    (PNG of textual rendering)
+DOM.resolveNode                    OK    => refs work
+Accessibility (2 connections)      OK    two independent pages
+geometry: <a> getBoundingClientRect  {width:5, height:5}  ← not real layout
 ```
 
-## Modo extensão: seu próprio navegador
+Conclusions (corrected by measurement, not assumption):
 
-Em vez de subir um navegador dedicado, a extensão dirige o **seu Brave** — com os
-logins que você já tem. É o modo mais útil no dia a dia.
+- **Tabs: yes.** Each connection is an independent session, with its own page,
+  cookies and memory — it is its `session_new` and the "MultiClient" from the
+  blog. Not tabs in a visible bar, but independent, manageable pages.
+- **Cursor: no, and it cannot.** The screenshot doc is explicit: *"the text
+  layout Lightpanda computes, not a pixel-accurate browser rendering (no images,
+  fonts or CSS colours)"*. With no faithful pixel, a drawn mouse is decoration.
+- **Action by coordinate: no.** The `<a>` measured 5×5 — there is no real layout.
+  That is why all of its click tools go by `selector`/`backendNodeId`. Our click
+  (center + `Input.dispatchMouseEvent`) does not apply; it would mean firing an
+  event on the node instead.
+- **AX + refs: works.** 15 nodes, 11 with `backendNodeId`, and `DOM.resolveNode`
+  OK.
+- **Memory is the real gain**: 36 MB against ~505 MB for the headless shell. Even
+  so, the headless shell delivers everything (geometry, coordinate click, faithful
+  screenshot) — except the window.
+
+Recommended use of Lightpanda: its native MCP, for crawl/extraction at scale. Not
+as a visual engine.
+
+## Extension mode: your own browser
+
+Instead of starting a dedicated browser, the extension drives **your Brave** —
+with the logins you already have. It is the most useful mode day to day.
 
 ```bash
-axscope --ext open https://exemplo.com
+axscope --ext open https://example.com
 axscope --ext snap
 axscope --ext click e3
 ```
 
-### Por que precisa de extensão
+### Why it needs an extension
 
-Desde o Chrome/Chromium **136**, `--remote-debugging-port` é **ignorado** quando
-se usa o perfil padrão (medida de segurança para não expor senhas e cookies).
-Ou seja: não existe caminho por porta de debug no seu perfil real. A extensão usa
-`chrome.debugger`, que funciona no navegador já aberto, sem reiniciar nada.
+Since Chrome/Chromium **136**, `--remote-debugging-port` is **ignored** when
+using the default profile (a security measure so passwords and cookies are not
+exposed). In other words: there is no debug-port path into your real profile. The
+extension uses `chrome.debugger`, which works on the browser already open,
+without restarting anything.
 
-### Montagem (uma vez)
+### Setup (once)
 
-1. **Carregue a extensão no Brave**
-   `brave://extensions` → ligue **Modo do desenvolvedor** → **Carregar sem
-   compactação** → aponte para `extension/` neste repositório.
+1. **Load the extension in Brave**
+   `brave://extensions` → enable **Developer mode** → **Load unpacked** → point
+   to `extension/` in this repository.
 
-2. **Esconda a faixa de depuração** (opcional, mas recomendado)
-   A API `chrome.debugger` faz o Chromium mostrar uma faixa *"axscope started
-   debugging this browser"* em todas as abas. Para não ver isso:
+2. **Hide the debug banner** (optional, but recommended)
+   The `chrome.debugger` API makes Chromium show a *"axscope started debugging
+   this browser"* banner on every tab. To hide it:
 
    ```bash
-   scripts/brave-sem-faixa.sh instalar   # cria um override do .desktop, sem sudo
-   # feche o Brave por completo e abra de novo
-   scripts/brave-sem-faixa.sh remover    # para reverter
+   scripts/brave-hide-debug-banner.sh install   # creates a .desktop override, no sudo
+   # close Brave completely and open it again
+   scripts/brave-hide-debug-banner.sh remove    # to revert
    ```
 
-3. Confira a conexão no ícone da extensão (deve dizer **conectado**).
+3. Check the connection in the extension icon (it should say **connected**).
 
-### Como funciona
+### How it works
 
 ```
-extensão (Brave)  ⇄  uma conexão por sessão  ⇄  daemon (Go)  ⇄  CLI / MCP
-  chrome.debugger → CDP real na aba
-  chrome.tabs     → domínio Target (abas)
-  chrome.tabGroups→ um grupo por sessão (o isolamento)
+extension (Brave)  ⇄  one connection per session  ⇄  daemon (Go)  ⇄  CLI / MCP
+  chrome.debugger → real CDP on the tab
+  chrome.tabs     → Target domain (tabs)
+  chrome.tabGroups→ one group per session (the isolation)
 ```
 
-Cada sessão ocupa **uma porta da faixa 8787–8802** e recebe o seu **próprio grupo
-de abas** no Brave, com nome `axscope · <sessão>`. A extensão só enxerga e só
-toca nas abas do grupo daquela sessão.
+Each session takes a port in the **8787–8802** range and gets its **own tab
+group** in Brave, named `axscope · <session>`. The extension only sees and only
+touches the tabs in that session's group.
 
-Isso resolve três coisas de uma vez:
+This solves three things at once:
 
-- **vários agentes ao mesmo tempo**, cada um com o seu grupo, sem disputar porta;
-- **cada agente com quantas abas quiser** dentro do próprio grupo;
-- **suas abas pessoais intocadas** — e como é o mesmo perfil, as abas do agente
-  já nascem logadas nos seus sites.
+- **several agents at the same time**, each with its own group, without
+  fighting over a port;
+- **each agent with as many tabs as it wants** inside its own group;
+- **your personal tabs untouched** — and since it is the same profile, the
+  agent's tabs are already logged in to your sites.
 
-A extensão sintetiza **apenas** o domínio `Target` (abas ↔ `chrome.tabs`) e
-repassa todo o resto — `Accessibility`, `DOM`, `Input`, `Runtime`, `Page` — para
-o `chrome.debugger`. Por isso o driver inteiro funciona sem mudança: a árvore de
-acessibilidade é a **real**, o clique é por coordenada e o cursor é renderizado
-igual aos outros modos.
+The extension synthesizes **only** the `Target` domain (tabs ↔ `chrome.tabs`) and
+forwards everything else — `Accessibility`, `DOM`, `Input`, `Runtime`, `Page` —
+to `chrome.debugger`. That is why the whole driver works unchanged: the
+accessibility tree is the **real** one, the click is by coordinate and the cursor
+is rendered just like in the other modes.
 
-Cada aba é anexada **sob demanda** — só a que está sendo usada. Abrir o agente
-não varre nem instrumenta as suas abas.
+Each tab is attached **on demand** — only the one being used. Opening the agent
+does not sweep or instrument your tabs.
 
-### Nome do grupo
+### Group name
 
-O grupo aparece como **`<Agente> <N>`** — `Opencode 1`, `Opencode 2`, `Claude 1`.
-O número é atribuído pela extensão (o próximo livre daquele agente).
+The group appears as **`<Agent> <N>`** — `Opencode 1`, `Opencode 2`, `Claude 1`.
+The number is assigned by the extension (the next free one for that agent).
 
-O nome do agente vem da configuração do MCP que está dirigindo:
+The agent name comes from the MCP configuration that is driving it:
 
 ```json
 {
   "mcp": {
     "axscope": {
       "type": "local",
-      "command": ["/home/USUARIO/.local/bin/axscope", "mcp"],
+      "command": ["/home/USER/.local/bin/axscope", "mcp"],
       "environment": { "AXSCOPE_AGENT": "Opencode" }
     }
   }
 }
 ```
 
-Sem isso, o MCP tenta o nome do cliente (`clientInfo.name`) e a CLI usa
+Without that, the MCP tries the client name (`clientInfo.name`) and the CLI uses
 `axscope`.
 
-### Dar e tirar acesso: arraste a aba
+### Grant and revoke access: drag the tab
 
-O grupo **é** a interface de permissão. Não há menu nem configuração:
+The group **is** the permission interface. There is no menu or configuration:
 
-- **arraste uma aba sua para dentro do grupo** de um agente → ele passa a
-  enxergá-la e a poder dirigi-la (útil para trabalhar numa aba onde você já
-  está logado, com o estado que você já montou);
-- **arraste para fora** → o acesso é revogado na hora, e o depurador é solto
-  daquela aba junto.
+- **drag one of your tabs into an agent's group** → it can now see and drive it
+  (useful for working on a tab where you are already logged in, with the state
+  you already set up);
+- **drag it out** → the access is revoked immediately, and the debugger is
+  released from that tab too.
 
-As abas que o agente abre sozinho já nascem dentro do grupo dele.
+Tabs the agent opens itself are born inside its group.
 
+## Cursor overlay
 
+Injected on every navigation via `Page.addScriptToEvaluateOnNewDocument`. Cautions
+that cost real bugs:
 
-Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.
+- **no `innerHTML`** — pages with Trusted Types would reject the assignment;
+- **CSS via `adoptedStyleSheets`** — immune to `style-src`;
+- **positioning via CSSOM** (`el.style.*`), not via a `style` attribute;
+- **`aria-hidden`** on the host — otherwise the HUD shows up in `snap` itself;
+- **`top: auto`** on the HUD — the base rule sets `top:0` and the box stretched.
 
-| Modo | Motor | RAM (1 aba) | Processos | Vê a tela? |
-|---|---|---|---|---|
-| Modo | Motor | RAM | Vê a tela? |
-|---|---|---|---|
-| **(padrão) extensão** | o seu Brave, já logado | — (já está aberto) | ✅ abas + cursor |
-| **`--ver`** | Chrome for Testing | ~1850 MB | ✅ abas + cursor |
-| **`--leve`** | chrome-headless-shell | ~505 MB | ❌ |
-| anexar | um Chromium seu com porta de debug | — | depende |
+Visibility tuning: `AXSCOPE_CURSOR_DELAY` (ms, default 160) controls how long the
+cursor "arrives" before acting; `0` removes the pause.
+
+## Disk
+
+| Where | Size | What |
+|---|---|---|
+| `~/.local/share/axscope/browsers/` | ~650 MB | downloaded Chrome + headless shell |
+| `~/.local/share/axscope/profiles/` | varies | profile (logins, state) |
+| `~/.local/share/axscope/logs/` | ≤ 2 MB per session | daemon log, truncated on startup |
+
+`axscope shot <file>` writes **exactly where you tell it** — there is no default
+folder and no automatic accumulation. The tool only writes on its own what is
+necessary: profile, downloaded browsers (on `install`) and the log (bounded).
 
 ```bash
-# padrão: o seu Brave, pela extensão (é o modo do dia a dia)
-axscope open https://exemplo.com
-
-# Chrome dedicado, quando quiser um navegador separado
-axscope --ver open https://exemplo.com
-
-# sem janela nenhuma, para lote
-axscope --leve script roteiro.txt
-
-# encerra tudo (todos os modos e seus browsers)
-axscope stop --all
+axscope clean          # logs and dead sessions
+axscope clean --all    # includes profiles and downloaded browsers
 ```
 
-Cada modo é uma **sessão separada** (`default` = extensão, `ver`, `leve`), então
-coexistem: dá para deixar um roteiro rodando sem janela enquanto você olha outra
-coisa no Brave.
+## Lifecycle
 
-O motor é propriedade da **sessão**: o daemon sobe o browser com o motor escolhido
-na primeira chamada. Trocar de motor numa sessão já viva exige `stop` (ou use
-outra sessão). `axscope engines` mostra o que está instalado.
+The daemon keeps the browser alive on purpose: the next call answers instantly
+and the state (login, tabs) survives between commands. It does **not** hang
+around forever if you ask it not to: `AXSCOPE_IDLE_MINUTES` shuts it down after N
+idle minutes (default `0` = disabled, because a new Chrome start brings the
+window to the front).
 
-O modo leve **não é** um Chromium capado: é o mesmo motor com o mesmo CDP, a
-mesma árvore de acessibilidade, a mesma geometria real e o mesmo clique por
-coordenada. Só não há janela — então não há cursor desenhado.
+To stop it right away, whenever you want:
 
-Anexar continua valendo para qualquer Chromium já aberto com
-`--remote-debugging-port=PORTA` (`AXSCOPE_ATTACH=host:porta`), e aí você usa
-o seu navegador do dia a dia, com seus logins.
-
-## Motor: o que a pesquisa provou
-
-A pergunta "existe browser mais leve?" tem resposta medida, não de opinião.
-
-| Engine | Renderiza? | CDP | Veredito |
-|---|---|---|---|
-| **Chrome for Testing** | sim | completo | padrão do modo **ver** |
-| **chrome-headless-shell** | sim (sem janela) | completo | modo **leve**: mesmo motor, ~3,7x menos RAM |
-| Thorium / Helium / ungoogled / Cromite | sim | completo | mesmo Chromium com patch; não é menor |
-| Servo / WebKitGTK / QtWebEngine | sim | não (WebDriver) | perde o CDP |
-| **Lightpanda** | **não** (sem engine de renderização) | parcial | ver abaixo |
-
-### Lightpanda, medido
-
-Sonda em `cmd/cdpprobe` contra `lightpanda serve`:
-
-```
-Browser.getVersion                 OK
-Target.getTargets                  OK    0 targets   ← não usa o modelo de targets
-Target.createTarget                OK    FID-0000000001
-Accessibility.getFullAXTree        OK    (árvore real, com role/name)
-Runtime.evaluate                   OK    document.title = "Example Domain"
-DOM.getDocument                    OK
-Page.captureScreenshot             OK    (PNG de renderização textual)
-DOM.resolveNode                    OK    => refs funcionam
-Accessibility (2 conexões)         OK    duas páginas independentes
-geometria: <a> getBoundingClientRect  {width:5, height:5}  ← não é layout real
+```bash
+axscope stop          # just the current session
+axscope stop --all    # all sessions and all browsers
 ```
 
-Conclusões (corrigidas por medição, não por suposição):
+## Environment variables
 
-- **Abas: tem.** Cada conexão é uma sessão independente, com página, cookies e
-  memória próprios — é o `session_new` do MCP dele e o "MultiClient" do blog.
-  Não são abas numa barra visível, mas são páginas independentes gerenciáveis.
-- **Cursor: não tem, e não pode ter.** A doc do screenshot é explícita: *"the
-  text layout Lightpanda computes, not a pixel-accurate browser rendering (no
-  images, fonts or CSS colours)"*. Sem pixel fiel, mouse desenhado é decoração.
-- **Ação por coordenada: não dá.** O `<a>` mediu 5×5 — não há layout real. Por
-  isso todos os tools de clique dele são por `selector`/`backendNodeId`. O nosso
-  clique (centro + `Input.dispatchMouseEvent`) não se aplica; seria trocar por
-  disparo de evento no nó.
-- **AX + refs: funciona.** 15 nós, 11 com `backendNodeId`, e `DOM.resolveNode` OK.
-- **Memória é o ganho real**: 36 MB contra ~505 MB do headless-shell. Ainda
-  assim, o headless-shell entrega tudo (geometria, clique por coordenada,
-  screenshot fiel) — exceto a janela.
-
-Uso recomendado do Lightpanda: o MCP nativo dele, para crawl/extração em massa.
-Não como motor visual.
-
-## Overlay do cursor
-
-Injetado em toda navegação via `Page.addScriptToEvaluateOnNewDocument`. Cuidados
-que custaram bugs reais:
-
-- **sem `innerHTML`** — páginas com Trusted Types recusariam a atribuição;
-- **CSS por `adoptedStyleSheets`** — imune a `style-src`;
-- **posicionamento por CSSOM** (`el.style.*`), não por atributo `style`;
-- **`aria-hidden`** no host — senão o HUD aparece no próprio `snap`;
-- **`top: auto`** no HUD — a regra base fixa `top:0` e a caixa esticava.
-
-Ajuste de visibilidade: `AXSCOPE_CURSOR_DELAY` (ms, padrão 160) controla
-quanto o cursor "chega antes" de agir; `0` remove a pausa.
-
-## Variáveis
-
-| Variável | Efeito |
+| Variable | Effect |
 |---|---|
-| `AXSCOPE_SESSION` | nome da sessão (default `default`) |
-| `AXSCOPE_ENGINE` | `shell` (leve, padrão) ou `chrome` (ver) |
-| `AXSCOPE_IDLE_MINUTES` | encerra o daemon após N min ocioso (padrão 30; 0 desliga) |
-| `AXSCOPE_HOME` | diretório de dados |
-| `AXSCOPE_CHROME` | executável do Chromium |
-| `AXSCOPE_ATTACH` | `host:porta` de um Chromium já aberto |
-| `AXSCOPE_HEADLESS` | sobe sem janela |
-| `AXSCOPE_CURSOR_DELAY` | pausa do cursor antes de agir (ms) |
+| `AXSCOPE_SESSION` | session name (default `default`) |
+| `AXSCOPE_ENGINE` | `ext`, `chrome` or `shell` (default `ext`) |
+| `AXSCOPE_IDLE_MINUTES` | shuts the daemon down after N idle min (default 0 = off) |
+| `AXSCOPE_HOME` | data directory |
+| `AXSCOPE_CHROME` | Chromium executable |
+| `AXSCOPE_ATTACH` | `host:port` of an already-open Chromium |
+| `AXSCOPE_HEADLESS` | start without a window |
+| `AXSCOPE_CURSOR_DELAY` | cursor pause before acting (ms) |
+| `AXSCOPE_AGENT` | agent name for the tab group |
+| `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |
+| `AXSCOPE_SPOTLIGHT` | `1` re-enables the target outline |
 
-## Estrutura
+## Project layout
 
 ```
-cmd/axscope/            entrypoint (cliente, serve, mcp, install)
-cmd/cdpprobe/      sonda de diagnóstico de engines CDP
-internal/cdp/      cliente CDP sobre WebSocket
-internal/browser/  launcher, sessão/abas, snapshot, ações, observação
-internal/overlay/  overlay.inject.js + ponte
-internal/agent/    despachante dos comandos
-internal/command/  parser compartilhado (CLI, roteiro, MCP)
-internal/daemon/   servidor do socket unix
-internal/mcpsrv/   servidor MCP (stdio, JSON-RPC à mão)
-internal/installer/ download do Chrome for Testing
+cmd/axscope/       entrypoint (client, serve, mcp, install)
+cmd/cdpprobe/      CDP engine diagnostic probe
+internal/cdp/      CDP client over WebSocket
+internal/browser/  launcher, session/tabs, snapshot, actions, observation
+internal/render/   overlay.inject.js + bridge (cursor, HUD, spotlight)
+internal/agent/    command dispatcher
+internal/command/  shared parser (CLI, script, MCP)
+internal/daemon/   unix socket server
+internal/mcpsrv/   MCP server (stdio, hand-rolled JSON-RPC)
+internal/installer/ Chrome for Testing download
 ```
 
-## Limitações conhecidas
+## Known limitations
 
-- **Iframe de outra origem (OOPIF) não aparece na leitura**: o `snap` mostra o
-  frame como uma linha só (`- Iframe`, sem conteúdo), porque aquela árvore de
-  acessibilidade vive no processo do outro site — alcançá-la exige sessão CDP
-  própria por frame (ver [`PENDENCIAS.md`](PENDENCIAS.md), item 3). Iframe da
-  **mesma origem** é lido por inteiro, e o ref de dentro funciona: as árvores dos
-  dois frames são juntadas na leitura.
-- Diálogos nativos são sempre descartados (`dismiss`), configurável depois.
-- O `bootstrap` assume o modelo de targets do Chromium; engines alternativos
-  precisam de um caminho próprio.
-- **Ler e alcançar não são o mesmo conjunto.** O `snap` vem da árvore de
-  acessibilidade; a mira por `text=` anda no DOM. Os dois discordam em dois
-  casos medidos:
-  - **Conteúdo gerado por CSS** (`content: attr(...)`, típico de tooltip) existe
-    na leitura e **não existe no DOM** — e entra no **nome** do elemento em
-    volta: um botão passou de `"Passe o mouse"` para
-    `"Passe o mouse Tooltip carregado no hover"` depois do hover. Nome de alvo
-    não é estável; para lógica que dependa dele, use `ref`.
-  - **Rótulo de campo** é o inverso: o `text=` agora enxerga `placeholder` e
-    rótulo associado para concordar com o que a leitura mostra, mas um campo
-    **sem nome nenhum** (sem `aria-label`, rótulo ou placeholder) segue
-    inalcançável por identidade — só por `ref` ou `pos=`.
-- `hover` entra de fora para dentro de propósito: mover o ponteiro para onde ele
-  já está não gera `pointerenter`, e a ação responderia `ok` sem a página ver
-  nada.
-- **`wait` e `text=` casam por texto parcial — e a página costuma repetir a
-  palavra.** Na missão 16 do laboratório, `wait "AGORA"` voltou em 3 ms casando
-  com a *descrição* da própria tarefa ("…clique quando ele disser “AGORA”"), não
-  com o botão que dizia AGORA. A resposta diz onde achou (`em p.desc`), que é
-  como se percebe, e a saída é esperar um texto que só exista no alvo
-  (`waitgone "Ainda não"`).
-- **Aba em segundo plano trava o que depende de quadro.** Com o documento oculto
-  (`document.hidden`), o `IntersectionObserver` não dispara: página que carrega
-  conteúdo assim — feed infinito, imagem preguiçosa — não avança por mais que se
-  role. O `scroll` avisa quando chega ao fim nessa condição, e a saída é
-  `axscope tab <n> --focus` (traz a aba à frente) ou o `eval` chamando a função da
-  própria página. Medido no laboratório v2: rolar até o fim deixava 6 posts de 18.
-- `upload` por `<input type=file>` manda o **caminho**, que quem lê é o
-  navegador — vale para navegador e daemon na mesma máquina (o caso da
-  extensão). Numa dropzone o conteúdo viaja em bytes, então o caminho não
-  importa.
+- **Cross-origin iframe (OOPIF) is not read**: `snap` shows the frame as a single
+  line (`- Iframe`, no content), because that accessibility tree lives in the
+  other site's process — reaching it requires a separate CDP session per frame
+  (see [`BACKLOG.md`](BACKLOG.md)). A **same-origin** iframe is read in full, and
+  the ref from inside works: the trees of both frames are merged in the snapshot.
+- Native dialogs are always dismissed (`dismiss`), configurable later.
+- `bootstrap` assumes the Chromium target model; alternative engines need their
+  own path.
+- **Reading and reaching are not the same set.** `snap` comes from the
+  accessibility tree; aiming by `text=` walks the DOM. The two disagree in two
+  measured cases:
+  - **CSS-generated content** (`content: attr(...)`, typical of a tooltip) exists
+    in the snapshot and **does not exist in the DOM** — and it enters the
+    **name** of the surrounding element: a button went from `"Hover me"` to
+    `"Hover me Tooltip loaded on hover"` after the hover. A target name is not
+    stable; for logic that depends on it, use `ref`.
+  - **Field label** is the reverse: `text=` now sees `placeholder` and an
+    associated label to agree with what the snapshot shows, but a field **with no
+    name at all** (no `aria-label`, label or placeholder) remains unreachable by
+    identity — only by `ref` or `pos=`.
+- `hover` enters from the outside on purpose: moving the pointer to where it
+  already is does not fire `pointerenter`, and the action would answer `ok`
+  without the page seeing anything.
+- **`wait` and `text=` match by partial text — and the page usually repeats the
+  word.** The response says where it found it (`in p.desc`), which is how you
+  notice, and the way out is to wait for text that only exists on the target
+  (`waitgone "Not yet"`).
+- **A background tab freezes anything that depends on a frame.** With the
+  document hidden (`document.hidden`), `IntersectionObserver` does not fire: a
+  page that loads content that way — infinite feed, lazy image — does not advance
+  no matter how much you scroll. `scroll` warns when it reaches the end in that
+  condition, and the way out is `axscope tab <n> --focus` (bring the tab to the
+  front) or `eval` calling the page's own function.
+- `upload` through `<input type=file>` sends the **path**, which the browser
+  reads — valid for browser and daemon on the same machine (the extension case).
+  In a dropzone the content travels as bytes, so the path does not matter.
+- Linux-first: the daemon uses a unix socket and the banner workaround is a
+  `.desktop` override. macOS and Windows are not verified yet.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues: see
+[`SECURITY.md`](SECURITY.md).
+
+## License
+
+[MIT](LICENSE).

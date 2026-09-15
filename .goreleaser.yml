@@ -1,0 +1,45 @@
+version: 2
+
+project_name: axscope
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: axscope
+    main: ./cmd/axscope
+    binary: axscope
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+  - id: cdpprobe
+    main: ./cmd/cdpprobe
+    binary: cdpprobe
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - extension/**
+      - scripts/**
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github

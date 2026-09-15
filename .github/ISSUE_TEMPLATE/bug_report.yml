@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a bug in axscope
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do **not** include secrets, personal data or page
+        content you are not allowed to share. For security issues, see SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Also tell us what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and mode
+      description: The exact command(s) and the mode (ext, --chrome, --headless, attach).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The output of `axscope snap` and, if relevant, `axscope console`.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: axscope version
+      description: Output of `axscope --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and browser
+      description: Your operating system and the browser/engine in use.
+    validations:
+      required: true

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "axscope",
-  "version": "0.2.1",
+  "version": "0.1.0",
   "description": "Lets axscope drive this browser through chrome.debugger — with a rendered cursor.",
   "permissions": ["debugger", "tabs", "tabGroups", "storage"],
   "host_permissions": ["<all_urls>"],

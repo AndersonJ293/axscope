@@ -90,7 +90,7 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "axscope", "version": "0.2.0"},
+			"serverInfo":      map[string]any{"name": "axscope", "version": "0.1.0"},
 		}})
 
 	case "ping":
