@@ -3,7 +3,7 @@
 O que ficou fora do trabalho de hoje, por que ficou, e o que já foi decidido **não**
 fazer. Cada item traz a medição que o justifica — nada aqui é palpite.
 
-Ordem: as três primeiras são de ferramenta; a última é do laboratório.
+Ordem: as três primeiras são de ferramenta.
 
 ---
 
@@ -68,20 +68,26 @@ Já está anotado em `README.md` → *Limitações conhecidas*.
 
 ---
 
-## 4. Upload de arquivo (missão 11 do laboratório)
+## 4. Upload de arquivo (missão 11 do laboratório) — resolvido
 
-**Suspeita:** vai falhar. O arraste que a ferramenta monta usa `DataTransfer`
-criado na página, e **`DataTransfer.files` não dá para preencher por JS** — é
-proteção do navegador.
+Ficou aqui a correção, porque a previsão que eu tinha escrito estava **errada**:
+"`DataTransfer.files` não dá para preencher por JS". Dá. A atribuição direta é
+que é só-leitura; `items.add(new File(...))` **popula** `files`, e é assim que
+um dropzone de verdade recebe um arquivo forjado na página.
 
-**O caminho certo, quando formos enfrentar:**
-- `<input type=file>` → `DOM.setFileInputFiles` (CDP) resolve direto, e é o caso
-  mais comum em formulário;
-- dropzone de verdade (arrastar e soltar arquivo) → `Input.dispatchDragEvent`
-  com `dragData.files`, que é caminho próprio de arquivo, não o arraste
-  sintético que a gente monta hoje.
+Entrou como `bu upload <arquivo> [alvo=]`, com dois caminhos, porque a web
+recebe arquivo de duas formas:
 
-Vale decidir na hora se isso entra ou se fica como limite declarado.
+- **`<input type=file>`** (formulário, quase sempre escondido atrás de um botão)
+  → `DOM.setFileInputFiles` do CDP, que dispara `input`/`change` como se o
+  arquivo tivesse sido escolhido. É o caminho padrão, quando não se passa alvo.
+- **dropzone** → o conteúdo vira um `File` dentro da página, num `DataTransfer`
+  de verdade, e `dragenter`/`dragover`/`drop` são emitidos sobre o alvo. O
+  `Input.dispatchDragEvent` que eu tinha planejado não foi preciso.
+
+Ambos medidos no laboratório: `[input]` e `[dropzone]`, cada um marcando o
+`check(11)`. No caminho da dropzone o input escondido fica com `files.length = 0`
+— é a prova de que o arquivo veio por arraste e não por baixo.
 
 ---
 
@@ -100,12 +106,11 @@ Vale decidir na hora se isso entra ou se fica como limite declarado.
 
 ## Laboratório: missões pendentes
 
-Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10** (placar em 5/16 porque o botão
+Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11** (placar em 5/16 porque o botão
 *Resetar estado* apaga as concluídas — é o desenho dele).
 
 | Missão | Assunto | Observação |
 |---|---|---|
-| 11 | upload de `.txt` | ver item 4 acima |
 | 12 | botão dentro de Shadow DOM | a leitura e o `text=` não atravessam shadow root |
 | 13 | iframe `srcdoc` | ver item 3 acima |
 | 14 | alvo desenhado em canvas | não existe elemento no DOM: só por `pos=` |

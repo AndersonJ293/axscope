@@ -394,3 +394,7 @@ internal/installer/ download do Chrome for Testing
 - `hover` entra de fora para dentro de propósito: mover o ponteiro para onde ele
   já está não gera `pointerenter`, e a ação responderia `ok` sem a página ver
   nada.
+- `upload` por `<input type=file>` manda o **caminho**, que quem lê é o
+  navegador — vale para navegador e daemon na mesma máquina (o caso da
+  extensão). Numa dropzone o conteúdo viaja em bytes, então o caminho não
+  importa.

@@ -129,6 +129,28 @@ func TestParse_ScrollComAlvo(t *testing.T) {
 	}
 }
 
+// Regressão: o `upload` declara o posicional como `alvo`, e o handler lê
+// `alvo`. O nome tem que bater: quando não batia, o alvo caía no vazio e o
+// comando escolhia sempre o primeiro `<input type=file>` — e o laboratório
+// aceitou por acidente, porque a dropzone dele tem um input escondido dentro.
+func TestParse_UploadComAlvo(t *testing.T) {
+	req, err := Parse([]string{"upload", "/tmp/a.txt"})
+	if err != nil {
+		t.Fatalf("Parse recusou o upload: %v", err)
+	}
+	if req.Args["arquivo"] != "/tmp/a.txt" {
+		t.Errorf("sem alvo: args = %v", req.Args)
+	}
+
+	req, err = Parse([]string{"upload", "/tmp/a.txt", "alvo=css=#dropzone"})
+	if err != nil {
+		t.Fatalf("Parse recusou o alvo: %v", err)
+	}
+	if req.Args["arquivo"] != "/tmp/a.txt" || req.Args["alvo"] != "css=#dropzone" {
+		t.Errorf("com alvo: args = %v", req.Args)
+	}
+}
+
 // A ajuda deriva da tabela: todo spec aparece na lista.
 func TestHelpListaTodosOsSpecs(t *testing.T) {
 	help := Help()
