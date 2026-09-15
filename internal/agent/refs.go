@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/browser"
 )
 
 func (a *Agent) setRefs(refs map[string]int, gen int) {

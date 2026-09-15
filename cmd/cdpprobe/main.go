@@ -18,8 +18,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 func main() {

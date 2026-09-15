@@ -15,8 +15,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 // Rolagem é onde uma área rolável está: quem rola, quanto já rolou e quanto

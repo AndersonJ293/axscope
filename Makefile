@@ -1,24 +1,22 @@
-# Instalação do browser-use.
+# axscope installation.
 #
-# `make install` põe o binário em ~/.local/bin com o nome completo e cria o
-# atalho `bu`. Assim nem o shell nem o opencode dependem de caminho dentro da
-# árvore do código-fonte.
+# `make install` drops the binary into ~/.local/bin under its full name, so
+# neither the shell nor opencode depends on a path inside the source tree.
 
 PREFIX ?= $(HOME)/.local/bin
-NAME    = browser-use
+NAME    = axscope
 
 .PHONY: build install uninstall vet
 
 build:
-	go build -o bu ./cmd/bu
+	go build -o $(NAME) ./cmd/axscope
 
 install:
-	go build -o $(PREFIX)/$(NAME) ./cmd/bu
-	ln -sf $(NAME) $(PREFIX)/bu
-	@echo "instalado: $(PREFIX)/$(NAME) (atalho: bu)"
+	go build -o $(PREFIX)/$(NAME) ./cmd/axscope
+	@echo "installed: $(PREFIX)/$(NAME)"
 
 uninstall:
-	rm -f $(PREFIX)/$(NAME) $(PREFIX)/bu
+	rm -f $(PREFIX)/$(NAME)
 
 vet:
 	go vet ./...

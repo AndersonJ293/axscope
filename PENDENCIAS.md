@@ -122,7 +122,7 @@ Ficou aqui a correção, porque a previsão que eu tinha escrito estava **errada
 que é só-leitura; `items.add(new File(...))` **popula** `files`, e é assim que
 um dropzone de verdade recebe um arquivo forjado na página.
 
-Entrou como `bu upload <arquivo> [alvo=]`, com dois caminhos, porque a web
+Entrou como `axscope upload <arquivo> [alvo=]`, com dois caminhos, porque a web
 recebe arquivo de duas formas:
 
 - **`<input type=file>`** (formulário, quase sempre escondido atrás de um botão)
@@ -217,7 +217,7 @@ recusar logo depois.
   repetir) e o agente monta com o que existe.
 - **Destaque do alvo (o contorno roxo).** Removido por preferência: ficava aceso
   depois da ação e, com a página rolando, apontava para o nada. Volta com
-  `BROWSER_USE_DESTAQUE=1`.
+  `AXSCOPE_DESTAQUE=1`.
 - **Adivinhar alvo dentro de canvas.** Não há o que procurar: o desenho não é
   DOM — não está na árvore de acessibilidade nem para o `text=`, e não existe
   elemento sob o ponto (o `elementFromPoint` devolve o próprio canvas). O

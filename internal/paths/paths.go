@@ -8,7 +8,7 @@ import (
 
 // StateDir guarda o que é persistente (perfis, logs, binário baixado).
 func StateDir() string {
-	if v := os.Getenv("BROWSER_USE_HOME"); v != "" {
+	if v := os.Getenv("AXSCOPE_HOME"); v != "" {
 		return v
 	}
 	base := os.Getenv("XDG_DATA_HOME")
@@ -19,20 +19,20 @@ func StateDir() string {
 		}
 		base = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(base, "browser-use")
+	return filepath.Join(base, "axscope")
 }
 
 // RuntimeDir guarda o que é efêmero (o socket), no runtime do usuário.
 func RuntimeDir() string {
 	if v := os.Getenv("XDG_RUNTIME_DIR"); v != "" {
-		return filepath.Join(v, "browser-use")
+		return filepath.Join(v, "axscope")
 	}
-	return filepath.Join(os.TempDir(), "browser-use")
+	return filepath.Join(os.TempDir(), "axscope")
 }
 
 // Session é o nome do conjunto de abas/daemon. Permite várias sessões paralelas.
 func Session() string {
-	if v := os.Getenv("BROWSER_USE_SESSION"); v != "" {
+	if v := os.Getenv("AXSCOPE_SESSION"); v != "" {
 		return v
 	}
 	return "default"
@@ -64,7 +64,7 @@ func BrowsersDir() string {
 	return filepath.Join(StateDir(), "browsers")
 }
 
-// BrowserExecutableMarker aponta para o Chromium baixado por `bu install`,
+// BrowserExecutableMarker aponta para o Chromium baixado por `axscope install`,
 // por produto (chrome ou chrome-headless-shell).
 func BrowserExecutableMarker(product string) string {
 	return filepath.Join(BrowsersDir(), "executable-"+product)

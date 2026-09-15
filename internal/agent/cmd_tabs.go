@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func (a *Agent) tabs(_ context.Context, sess *browser.Session, _ protocol.Request) protocol.Response {
@@ -32,7 +32,7 @@ func (a *Agent) tabs(_ context.Context, sess *browser.Session, _ protocol.Reques
 func (a *Agent) switchTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	ref := req.String("ref")
 	if ref == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu tab <índice|targetId>"))
+		return protocol.Fail(fmt.Errorf("uso: axscope tab <índice|targetId>"))
 	}
 	tab, err := sess.Select(ctx, ref, req.Bool("focus", false))
 	if err != nil {
@@ -58,7 +58,7 @@ func (a *Agent) newTab(ctx context.Context, sess *browser.Session, req protocol.
 func (a *Agent) closeTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	ref := req.String("ref")
 	if ref == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu closetab <índice|targetId>"))
+		return protocol.Fail(fmt.Errorf("uso: axscope closetab <índice|targetId>"))
 	}
 	if err := sess.CloseTab(ctx, ref); err != nil {
 		return protocol.Fail(err)

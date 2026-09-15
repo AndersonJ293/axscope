@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/paths"
+	"github.com/AndersonJ293/axscope/internal/paths"
 )
 
 const knownGoodURL = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
@@ -95,7 +95,7 @@ func Install(ctx context.Context, opts Options) (string, error) {
 	}
 
 	fmt.Printf("baixando %s %s (%s)...\n", opts.Product, version, platform)
-	zipPath := filepath.Join(os.TempDir(), fmt.Sprintf("bu-%s-%s.zip", opts.Product, version))
+	zipPath := filepath.Join(os.TempDir(), fmt.Sprintf("axscope-%s-%s.zip", opts.Product, version))
 	if err := download(ctx, url, zipPath); err != nil {
 		return "", err
 	}

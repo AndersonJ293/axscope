@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // campoDescritor é o que a página diz do alvo antes de receber texto.
@@ -61,15 +61,15 @@ func classificaCampo(d campoDescritor) (bool, string) {
 	case tag == "textarea" || d.Editavel:
 		return true, ""
 	case tag == "select":
-		return false, "é um <select> — para escolher a opção use `bu select <alvo> <valor>`"
+		return false, "é um <select> — para escolher a opção use `axscope select <alvo> <valor>`"
 	case tag == "input":
 		switch tipo {
 		case "checkbox", "radio":
-			return false, "é uma caixa de marcar — use `bu check <alvo>` (ou `uncheck`)"
+			return false, "é uma caixa de marcar — use `axscope check <alvo>` (ou `uncheck`)"
 		case "file":
-			return false, "recebe arquivo — use `bu upload <arquivo> alvo=<alvo>`"
+			return false, "recebe arquivo — use `axscope upload <arquivo> alvo=<alvo>`"
 		case "submit", "button", "reset", "image":
-			return false, "é um botão — use `bu click <alvo>`"
+			return false, "é um botão — use `axscope click <alvo>`"
 		}
 		return true, ""
 	case d.Papel == "textbox" || d.Papel == "searchbox":

@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // Rect é um retângulo em coordenadas de viewport (CSS px).

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 func visualDelay() time.Duration {
@@ -21,9 +21,9 @@ func visualDelay() time.Duration {
 	return 0
 }
 
-// cursorDelayMs lê BROWSER_USE_CURSOR_DELAY (ms). Default 160.
+// cursorDelayMs lê AXSCOPE_CURSOR_DELAY (ms). Default 160.
 func cursorDelayMs() int {
-	raw := envInt("BROWSER_USE_CURSOR_DELAY", 160)
+	raw := envInt("AXSCOPE_CURSOR_DELAY", 160)
 	if raw < 0 {
 		return 0
 	}

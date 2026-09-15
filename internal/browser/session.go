@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // Tab é uma aba (target de página) com sua sessão CDP.

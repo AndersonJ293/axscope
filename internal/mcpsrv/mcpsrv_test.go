@@ -3,7 +3,7 @@ package mcpsrv
 import "testing"
 
 // Regressão (laboratório v3): as mensagens de recusa do `fill` apontam para
-// `bu select`, `bu check` e `bu upload` — e nenhum dos três estava no catálogo
+// `axscope select`, `axscope check` e `axscope upload` — e nenhum dos três estava no catálogo
 // exposto. O agente foi mandado usar o que não podia chamar, e teve de recorrer
 // ao `eval` para escolher uma opção de `<select>`.
 //

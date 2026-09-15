@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // Screenshot captura a página e devolve os bytes PNG.

@@ -1,6 +1,6 @@
-// Ponte entre os daemons (browser-use) e o navegador.
+// Ponte entre os daemons (axscope) e o navegador.
 //
-// Cada sessão do browser-use ocupa uma porta da faixa 8787..8802 e recebe o seu
+// Cada sessão do axscope ocupa uma porta da faixa 8787..8802 e recebe o seu
 // próprio grupo de abas. A extensão mantém uma conexão por porta e traduz só o
 // domínio `Target` para a API de abas; todo o resto vai para o chrome.debugger.
 //
@@ -24,7 +24,7 @@ let heartbeatTimer = null;
 
 // ------------------------------------------------------------------ contexto
 
-const AGENT_DEFAULT = 'browser-use';
+const AGENT_DEFAULT = 'axscope';
 
 // groupTitle é o que aparece na barra de abas: "<Agente> <N>".
 function groupTitle(st) {

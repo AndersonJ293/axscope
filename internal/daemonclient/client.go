@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/paths"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/paths"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 // EnsureDaemon sobe o daemon (destacado) se ainda não houver um atendendo.
@@ -81,12 +81,12 @@ func Send(req protocol.Request) (protocol.Response, error) {
 	return SendTo(socketPath, req)
 }
 
-// AgentName é quem está dirigindo: BROWSER_USE_AGENT, ou um padrão neutro.
+// AgentName é quem está dirigindo: AXSCOPE_AGENT, ou um padrão neutro.
 func AgentName() string {
-	if v := os.Getenv("BROWSER_USE_AGENT"); v != "" {
+	if v := os.Getenv("AXSCOPE_AGENT"); v != "" {
 		return v
 	}
-	return "browser-use"
+	return "axscope"
 }
 
 // SendTo fala direto com um socket, sem subir daemon nenhum. É o que o

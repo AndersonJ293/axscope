@@ -9,15 +9,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/bridge"
-	"github.com/ajunior/browser-use/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/bridge"
+	"github.com/AndersonJ293/axscope/internal/browser"
 	// cdp entra só para carregar o tipo *cdp.Client: quem fala o protocolo é o
 	// browser/dom. A exceção consciente é a ponte da extensão, que devolve um
 	// cliente CDP pronto.
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/paths"
-	"github.com/ajunior/browser-use/internal/protocol"
-	"github.com/ajunior/browser-use/internal/render"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/paths"
+	"github.com/AndersonJ293/axscope/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/render"
 )
 
 const (
@@ -80,7 +80,7 @@ func (a *Agent) degraded() bool {
 func (a *Agent) extension(ctx context.Context) (*cdp.Client, error) {
 	if a.bridge == nil {
 		port := 0
-		if v := os.Getenv("BROWSER_USE_BRIDGE_PORT"); v != "" {
+		if v := os.Getenv("AXSCOPE_BRIDGE_PORT"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
 				port = n
 			}

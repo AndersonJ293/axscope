@@ -22,8 +22,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/paths"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/paths"
 )
 
 var devToolsRe = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
@@ -80,12 +80,12 @@ func engineProduct(engine string) string {
 	return "chrome"
 }
 
-// ResolveExecutable acha o Chromium: flag, env, baixado por `bu install`, sistema.
+// ResolveExecutable acha o Chromium: flag, env, baixado por `axscope install`, sistema.
 func ResolveExecutable(engine, explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
-	if v := os.Getenv("BROWSER_USE_CHROME"); v != "" {
+	if v := os.Getenv("AXSCOPE_CHROME"); v != "" {
 		return v, nil
 	}
 	product := engineProduct(engine)
@@ -98,14 +98,14 @@ func ResolveExecutable(engine, explicit string) (string, error) {
 		}
 	}
 	if engine == EngineShell {
-		return "", fmt.Errorf("chrome-headless-shell não instalado: rode `browser-use install --engine shell`")
+		return "", fmt.Errorf("chrome-headless-shell não instalado: rode `axscope install --engine shell`")
 	}
 	for _, name := range systemCandidates {
 		if p, err := exec.LookPath(name); err == nil {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("nenhum Chromium encontrado: rode `browser-use install` ou defina BROWSER_USE_CHROME")
+	return "", fmt.Errorf("nenhum Chromium encontrado: rode `axscope install` ou defina AXSCOPE_CHROME")
 }
 
 // Engine é um motor disponível no sistema.
@@ -173,7 +173,7 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 	}
 	// A árvore de acessibilidade é ligada sob demanda pelo domínio Accessibility.
 	// Forçá-la no arranque custa memória em todo processo; só ligamos se pedido.
-	if envBool("BROWSER_USE_FORCE_AX", false) {
+	if envBool("AXSCOPE_FORCE_AX", false) {
 		args = append(args, "--force-renderer-accessibility")
 	}
 	args = append(args, opts.ExtraArgs...)

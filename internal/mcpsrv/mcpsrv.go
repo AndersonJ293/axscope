@@ -13,9 +13,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/command"
-	"github.com/ajunior/browser-use/internal/daemonclient"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/command"
+	"github.com/AndersonJ293/axscope/internal/daemonclient"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 const protocolVersion = "2025-06-18"
@@ -85,12 +85,12 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 		}
 		_ = json.Unmarshal(req.Params, &params)
 		if name := displayName(params.ClientInfo.Name); name != "" {
-			_ = os.Setenv("BROWSER_USE_AGENT", name)
+			_ = os.Setenv("AXSCOPE_AGENT", name)
 		}
 		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "browser-use", "version": "0.2.0"},
+			"serverInfo":      map[string]any{"name": "axscope", "version": "0.2.0"},
 		}})
 
 	case "ping":
@@ -157,11 +157,11 @@ type toolDef struct {
 
 // curatedMCP é o conjunto enxuto exposto por padrão: alta frequência, e o resto
 // via `script`. Schema de ferramenta custa contexto em toda requisição, então
-// menos ferramentas é melhor — `BROWSER_USE_MCP_TOOLS=all` abre tudo.
+// menos ferramentas é melhor — `AXSCOPE_MCP_TOOLS=all` abre tudo.
 //
 // `select`, `check`, `uncheck`, `type` e `upload` estão aqui porque as próprias
 // mensagens de recusa apontam para eles: quando o `fill` encontra um `<select>` a
-// resposta diz "use `bu select`". Dizer isso e não expor o comando é mandar o
+// resposta diz "use `axscope select`". Dizer isso e não expor o comando é mandar o
 // agente usar o que ele não pode chamar — medido no laboratório v3, e o agente
 // teve de recorrer ao `eval`. O custo de contexto é menor que a contradição.
 var curatedMCP = map[string]bool{
@@ -192,7 +192,7 @@ var curatedMCP = map[string]bool{
 
 // tools deriva as ferramentas da tabela de comandos, para CLI e MCP não divergirem.
 func tools() []toolDef {
-	all := os.Getenv("BROWSER_USE_MCP_TOOLS") == "all"
+	all := os.Getenv("AXSCOPE_MCP_TOOLS") == "all"
 	out := make([]toolDef, 0, len(command.Specs))
 	for _, spec := range command.Specs {
 		switch spec.Cmd {

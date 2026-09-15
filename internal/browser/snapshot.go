@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // Snapshot é a tela lida, com o mapa de refs para o próximo passo.

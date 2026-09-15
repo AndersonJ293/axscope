@@ -37,7 +37,7 @@ function render(state) {
 
   detail.textContent = sessions.length
     ? 'Arraste uma aba para dentro do grupo para dar acesso a esse agente.'
-    : 'Nenhum daemon ativo. Rode um comando browser-use.';
+    : 'Nenhum daemon ativo. Rode um comando axscope.';
 }
 
 function refresh() {

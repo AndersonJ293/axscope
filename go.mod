@@ -1,4 +1,4 @@
-module github.com/ajunior/browser-use
+module github.com/AndersonJ293/axscope
 
 go 1.27
 

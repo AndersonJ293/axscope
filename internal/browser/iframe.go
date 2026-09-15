@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // frameInfo é o frame como o Page.getFrameTree descreve (só o que usamos).

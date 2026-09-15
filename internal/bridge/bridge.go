@@ -15,7 +15,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // DefaultPort é a primeira porta da faixa onde o daemon espera a extensão.
@@ -144,7 +144,7 @@ func (s *Server) Wait(ctx context.Context, timeout time.Duration) (*cdp.Client, 
 		return c, nil
 	case <-timer.C:
 		return nil, fmt.Errorf(
-			"a extensão browser-use não conectou na porta %d em %s.\n"+
+			"a extensão axscope não conectou na porta %d em %s.\n"+
 				"Confira: (1) o Brave está aberto; (2) a extensão está carregada em brave://extensions;\n"+
 				"(3) o ícone da extensão mostra 'conectado'. Se o Brave não está aberto, use --ver ou --leve",
 			s.Port(), timeout)

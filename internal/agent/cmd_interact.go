@@ -6,15 +6,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/dom"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu %s <alvo>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("uso: axscope %s <alvo>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -52,7 +52,7 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 	fromSpec := req.String("from")
 	toSpec := req.String("to")
 	if fromSpec == "" || toSpec == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu drag <de> <para>"))
+		return protocol.Fail(fmt.Errorf("uso: axscope drag <de> <para>"))
 	}
 	from, sid, err := a.resolve(ctx, sess, fromSpec)
 	if err != nil {
@@ -92,7 +92,7 @@ func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protoco
 	// quer mirar por texto.
 	text := req.String("value")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu %s <alvo> <valor>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("uso: axscope %s <alvo> <valor>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -118,7 +118,7 @@ func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protoco
 func (a *Agent) press(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	key := req.String("key")
 	if key == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu press <tecla>"))
+		return protocol.Fail(fmt.Errorf("uso: axscope press <tecla>"))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
@@ -135,7 +135,7 @@ func (a *Agent) selectOption(ctx context.Context, sess *browser.Session, req pro
 	target := req.String("target")
 	value := req.String("value")
 	if target == "" || value == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu select <alvo> <valor>"))
+		return protocol.Fail(fmt.Errorf("uso: axscope select <alvo> <valor>"))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -151,7 +151,7 @@ func (a *Agent) selectOption(ctx context.Context, sess *browser.Session, req pro
 func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu %s <alvo>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("uso: axscope %s <alvo>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -198,7 +198,7 @@ func falhaDeAcao(acao, alvo string, err error) error {
 func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	raw := req.String("dy")
 	if raw == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu scroll <dy> [alvo=<ref|texto|css>] (dy positivo desce)"))
+		return protocol.Fail(fmt.Errorf("uso: axscope scroll <dy> [alvo=<ref|texto|css>] (dy positivo desce)"))
 	}
 	dy, err := strconv.ParseFloat(raw, 64)
 	if err != nil {

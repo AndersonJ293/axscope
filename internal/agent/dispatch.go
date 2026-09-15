@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 // handler é a assinatura única dos comandos: recebe a sessão (nil nos que não

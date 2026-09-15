@@ -17,9 +17,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/agent"
-	"github.com/ajunior/browser-use/internal/paths"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/agent"
+	"github.com/AndersonJ293/axscope/internal/paths"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 // Options configuram a subida do daemon.
@@ -132,14 +132,14 @@ func Run(ctx context.Context, opts Options) error {
 	}
 }
 
-// idleTimeout lê BROWSER_USE_IDLE_MINUTES (default 0 = desligado).
+// idleTimeout lê AXSCOPE_IDLE_MINUTES (default 0 = desligado).
 //
 // Desligado por padrão de propósito: fechar o browser sozinho faz a próxima
 // chamada subir um Chrome novo, e subir Chrome traz a janela para frente — que
 // é exatamente o que atrapalha. Quem quiser o encerramento, liga explicitamente.
 func idleTimeout() time.Duration {
 	minutes := 0
-	if v := os.Getenv("BROWSER_USE_IDLE_MINUTES"); v != "" {
+	if v := os.Getenv("AXSCOPE_IDLE_MINUTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			minutes = n
 		}

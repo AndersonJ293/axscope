@@ -6,16 +6,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/command"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/command"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func (a *Agent) shot(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	path := req.String("path")
 	if path == "" {
 		// Sem caminho, vai para o temporário do sistema — nunca para o projeto.
-		f, err := os.CreateTemp("", "browser-use-*.png")
+		f, err := os.CreateTemp("", "axscope-*.png")
 		if err != nil {
 			return protocol.Fail(err)
 		}

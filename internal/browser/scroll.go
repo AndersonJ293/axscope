@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // Scroll rola o viewport por (dx, dy). Vai em passos, para quem olha acompanhar
@@ -87,7 +87,7 @@ const jsDescreveRolagem = `
 			: (el.id ? '#' + el.id : el.tagName.toLowerCase());
 		const fim = el.scrollTop >= (el.scrollHeight - el.clientHeight) - 1;
 		const nota = (fim && document.hidden)
-			? ' — fim, e a aba está oculta: o que carrega por IntersectionObserver não dispara (use bu tab <n> --focus)'
+			? ' — fim, e a aba está oculta: o que carrega por IntersectionObserver não dispara (use axscope tab <n> --focus)'
 			: '';
 		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight) + nota;
 	};`

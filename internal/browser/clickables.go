@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 // Clicavel é um alvo que a árvore não marca.

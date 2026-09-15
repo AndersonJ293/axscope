@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ajunior/browser-use/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/browser"
 )
 
 func TestRefGen(t *testing.T) {

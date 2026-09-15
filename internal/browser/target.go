@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 // Target é um alvo resolvido pronto para receber a ação.

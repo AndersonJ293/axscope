@@ -8,7 +8,7 @@
 //   - shadow DOM + pointer-events:none: não intercepta nada da página;
 //   - aria-hidden: não polui a árvore de acessibilidade (o `snap`).
 (() => {
-  if (window.__bu && window.__bu.__v) return;
+  if (window.__axscope && window.__axscope.__v) return;
 
   const SVGNS = 'http://www.w3.org/2000/svg';
   const CURSOR_PATH =
@@ -46,8 +46,8 @@
       box-shadow: 0 0 12px rgba(99,102,241,.40);
       opacity: 0; transform: scale(.35);
     }
-    .ripple.on { animation: bu-ripple 460ms cubic-bezier(.2,.8,.2,1); }
-    @keyframes bu-ripple {
+    .ripple.on { animation: axscope-ripple 460ms cubic-bezier(.2,.8,.2,1); }
+    @keyframes axscope-ripple {
       0%   { opacity: .9; transform: scale(.35); }
       100% { opacity: 0;  transform: scale(2.6); }
     }
@@ -90,9 +90,9 @@
       flex: none; width: 7px; height: 7px; border-radius: 50%;
       background: linear-gradient(135deg, #818cf8, #a78bfa);
       box-shadow: 0 0 10px rgba(129,140,248,.9);
-      animation: bu-pulse 2.4s ease-in-out infinite;
+      animation: axscope-pulse 2.4s ease-in-out infinite;
     }
-    @keyframes bu-pulse {
+    @keyframes axscope-pulse {
       0%, 100% { opacity: 1;   transform: scale(1); }
       50%      { opacity: .45; transform: scale(.82); }
     }
@@ -135,7 +135,7 @@
     if (!docEl) return false;
 
     host = document.createElement('div');
-    host.setAttribute('data-bu-root', '');
+    host.setAttribute('data-axscope-root', '');
     // Fora da árvore de acessibilidade: o overlay não pode poluir o `snap`.
     host.setAttribute('aria-hidden', 'true');
     host.style.cssText =
@@ -176,7 +176,7 @@
 
     const defs = document.createElementNS(SVGNS, 'defs');
     const grad = document.createElementNS(SVGNS, 'linearGradient');
-    grad.setAttribute('id', 'bu-grad');
+    grad.setAttribute('id', 'axscope-grad');
     grad.setAttribute('x1', '0');
     grad.setAttribute('y1', '0');
     grad.setAttribute('x2', '0.35');
@@ -193,7 +193,7 @@
 
     const path = document.createElementNS(SVGNS, 'path');
     path.setAttribute('d', CURSOR_PATH);
-    path.setAttribute('fill', 'url(#bu-grad)');
+    path.setAttribute('fill', 'url(#axscope-grad)');
     path.setAttribute('stroke', '#0b1220');
     path.setAttribute('stroke-width', '1.4');
     path.setAttribute('stroke-linejoin', 'round');
@@ -255,7 +255,7 @@
     rippleTimer = setTimeout(() => rippleEl && rippleEl.classList.remove('on'), 520);
   }
 
-  window.__bu = {
+  window.__axscope = {
     __v: 1,
     ready: build,
     show(value) { visible = !!value; applyVisibility(); },

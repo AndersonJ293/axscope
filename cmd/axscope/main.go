@@ -1,11 +1,11 @@
-// bu — browser dirigido por agente.
+// axscope — browser dirigido por agente.
 //
 // Um único binário, três papéis:
 //
-//	bu <comando>   → cliente: fala com o daemon (subindo-o se preciso)
-//	bu serve       → o daemon (browser vivo, socket unix)
-//	bu mcp         → servidor MCP sobre stdio, apontando para o mesmo daemon
-//	bu install     → baixa o Chrome for Testing
+//	axscope <comando>   → cliente: fala com o daemon (subindo-o se preciso)
+//	axscope serve       → o daemon (browser vivo, socket unix)
+//	axscope mcp         → servidor MCP sobre stdio, apontando para o mesmo daemon
+//	axscope install     → baixa o Chrome for Testing
 package main
 
 import (
@@ -18,14 +18,14 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/command"
-	"github.com/ajunior/browser-use/internal/daemon"
-	"github.com/ajunior/browser-use/internal/daemonclient"
-	"github.com/ajunior/browser-use/internal/installer"
-	"github.com/ajunior/browser-use/internal/mcpsrv"
-	"github.com/ajunior/browser-use/internal/paths"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/command"
+	"github.com/AndersonJ293/axscope/internal/daemon"
+	"github.com/AndersonJ293/axscope/internal/daemonclient"
+	"github.com/AndersonJ293/axscope/internal/installer"
+	"github.com/AndersonJ293/axscope/internal/mcpsrv"
+	"github.com/AndersonJ293/axscope/internal/paths"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 const version = "0.2.0"
@@ -71,7 +71,7 @@ func run() error {
 		fmt.Print(command.Help())
 		return nil
 	case "version", "--version", "-v":
-		fmt.Printf("browser-use %s\n", version)
+		fmt.Printf("axscope %s\n", version)
 		return nil
 
 	case "serve":
@@ -79,9 +79,9 @@ func run() error {
 		defer cancel()
 		return daemon.Run(ctx, daemon.Options{
 			Session:  paths.Session(),
-			Attach:   os.Getenv("BROWSER_USE_ATTACH"),
-			Engine:   envOr("BROWSER_USE_ENGINE", browser.EngineExt),
-			Headless: envBool("BROWSER_USE_HEADLESS", false),
+			Attach:   os.Getenv("AXSCOPE_ATTACH"),
+			Engine:   envOr("AXSCOPE_ENGINE", browser.EngineExt),
+			Headless: envBool("AXSCOPE_HEADLESS", false),
 		})
 
 	case "mcp":
@@ -119,7 +119,7 @@ func run() error {
 		return err
 	}
 
-	// `bu script -` lê o roteiro do stdin e manda o conteúdo, para não depender
+	// `axscope script -` lê o roteiro do stdin e manda o conteúdo, para não depender
 	// do daemon enxergar o mesmo diretório.
 	if req.Cmd == "script" && req.String("path") == "-" {
 		data, err := io.ReadAll(os.Stdin)
@@ -163,19 +163,19 @@ func envOr(key, def string) string {
 func applyMode(mode string) {
 	switch mode {
 	case "ver":
-		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineChrome)
-		if os.Getenv("BROWSER_USE_SESSION") == "" {
-			_ = os.Setenv("BROWSER_USE_SESSION", "ver")
+		_ = os.Setenv("AXSCOPE_ENGINE", browser.EngineChrome)
+		if os.Getenv("AXSCOPE_SESSION") == "" {
+			_ = os.Setenv("AXSCOPE_SESSION", "ver")
 		}
 	case "ext":
-		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineExt)
-		if os.Getenv("BROWSER_USE_SESSION") == "" {
-			_ = os.Setenv("BROWSER_USE_SESSION", "ext")
+		_ = os.Setenv("AXSCOPE_ENGINE", browser.EngineExt)
+		if os.Getenv("AXSCOPE_SESSION") == "" {
+			_ = os.Setenv("AXSCOPE_SESSION", "ext")
 		}
 	case "leve":
-		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineShell)
-		if os.Getenv("BROWSER_USE_SESSION") == "" {
-			_ = os.Setenv("BROWSER_USE_SESSION", "leve")
+		_ = os.Setenv("AXSCOPE_ENGINE", browser.EngineShell)
+		if os.Getenv("AXSCOPE_SESSION") == "" {
+			_ = os.Setenv("AXSCOPE_SESSION", "leve")
 		}
 	}
 }

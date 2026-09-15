@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 // upload manda um arquivo para a página.
@@ -19,7 +19,7 @@ import (
 func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	caminho := req.String("arquivo")
 	if caminho == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu upload <arquivo> [alvo=<ref|texto|css=>]"))
+		return protocol.Fail(fmt.Errorf("uso: axscope upload <arquivo> [alvo=<ref|texto|css=>]"))
 	}
 	info, err := os.Stat(caminho)
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 // Spec descreve um comando.
@@ -116,7 +116,7 @@ func Parse(tokens []string) (protocol.Request, error) {
 	}
 	spec, ok := lookup(tokens[0])
 	if !ok {
-		return protocol.Request{}, fmt.Errorf("comando desconhecido: %q (veja `bu help`)", tokens[0])
+		return protocol.Request{}, fmt.Errorf("comando desconhecido: %q (veja `axscope help`)", tokens[0])
 	}
 	req := protocol.Request{Cmd: spec.Cmd, Args: map[string]any{}}
 
@@ -157,8 +157,8 @@ func Parse(tokens []string) (protocol.Request, error) {
 // Help devolve o texto de ajuda.
 func Help() string {
 	var b strings.Builder
-	b.WriteString("bu — browser dirigido por agente\n\n")
-	b.WriteString("uso: bu <comando> [args] [chave=valor] [--flag]\n")
+	b.WriteString("axscope — browser dirigido por agente\n\n")
+	b.WriteString("uso: axscope <comando> [args] [chave=valor] [--flag]\n")
 	b.WriteString("flags globais: (padrão) extensão no Brave | --ver (Chrome dedicado) | --leve (sem janela)\n\n")
 	for _, s := range Specs {
 		line := "  " + s.Cmd

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/dom"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Request) protocol.Response {
@@ -119,7 +119,7 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	js := req.String("js")
 	if js == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu eval <js>"))
+		return protocol.Fail(fmt.Errorf("uso: axscope eval <js>"))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {

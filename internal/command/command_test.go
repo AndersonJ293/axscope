@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func TestParse(t *testing.T) {

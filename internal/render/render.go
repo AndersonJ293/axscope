@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 // source é o script de apresentação, embutido no binário.
@@ -48,9 +48,9 @@ func args(values ...any) string {
 	return strings.Join(parts, ", ")
 }
 
-// call chama um método de window.__bu com guarda de existência.
+// call chama um método de window.__axscope com guarda de existência.
 func call(ctx context.Context, c *cdp.Client, session, method string, values ...any) error {
-	expr := fmt.Sprintf("(window.__bu ? window.__bu.%s(%s) : null)", method, args(values...))
+	expr := fmt.Sprintf("(window.__axscope ? window.__axscope.%s(%s) : null)", method, args(values...))
 	_, err := dom.Eval(ctx, c, session, expr)
 	return err
 }
@@ -72,9 +72,9 @@ func (Presenter) Press(ctx context.Context, c *cdp.Client, session string, x, y 
 //
 // Desligado por padrão. O contorno no alvo poluía mais do que ajudava: ficava
 // aceso depois da ação e, quando a página rolava, apontava para o nada. Quem
-// quiser de volta liga com BROWSER_USE_DESTAQUE=1.
+// quiser de volta liga com AXSCOPE_DESTAQUE=1.
 func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, rect *dom.Rect) error {
-	ligado, _ := strconv.Atoi(os.Getenv("BROWSER_USE_DESTAQUE"))
+	ligado, _ := strconv.Atoi(os.Getenv("AXSCOPE_DESTAQUE"))
 	if ligado <= 0 {
 		return nil
 	}

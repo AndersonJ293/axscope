@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
 // ConsoleEntry é uma linha de console ou uma exceção da página.

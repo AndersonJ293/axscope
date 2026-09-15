@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ajunior/browser-use/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 // Regressão (missão 13 do laboratório): `pos=x,y` resolvia o elemento sob o

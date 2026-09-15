@@ -1,4 +1,4 @@
-# Arquitetura do browser-use
+# Arquitetura do axscope
 
 Este documento é **contrato**: descreve as camadas, quem pode importar quem, e
 as fases do refatoramento que tira o projeto do estado atual. Quem executa segue
@@ -14,7 +14,7 @@ isto; quem revisa confere isto.
 | Roteador é `switch` paralelo à tabela de comandos | comando novo exige mexer em spec, switch e handler |
 | `eval` **triplicado** | `page.Eval*`, `agent.evalString`, `browser.evalObject/evalString` |
 | `page` existe para um só consumidor | apenas `overlay` usa |
-| `cli` não diz o que é | é o cliente do daemon, usado por `cmd/bu` e `mcpsrv` |
+| `cli` não diz o que é | é o cliente do daemon, usado por `cmd/axscope` e `mcpsrv` |
 
 ## Camadas e direção das dependências
 
@@ -53,7 +53,7 @@ Regras:
 ## Estrutura alvo
 
 ```
-cmd/bu/                 entrada: flags globais, install/engines/clean/mcp/serve/stop
+cmd/axscope/                 entrada: flags globais, install/engines/clean/mcp/serve/stop
 cmd/cdpprobe/           entrada de diagnóstico
 
 internal/

@@ -1,4 +1,4 @@
-# browser-use
+# axscope
 
 Ferramenta de **browser dirigido por agente**: lê a tela como texto, age por
 identidade e mostra um cursor renderizado — para o agente e para quem olha.
@@ -6,10 +6,10 @@ identidade e mostra um cursor renderizado — para o agente e para quem olha.
 Um binário só, três papéis:
 
 ```bash
-bu <comando>   # cliente: fala com o daemon (subindo-o se preciso)
-bu serve       # o daemon (browser vivo, socket unix)
-bu mcp         # servidor MCP sobre stdio, apontando para o mesmo daemon
-bu install     # baixa o Chrome for Testing
+axscope <comando>   # cliente: fala com o daemon (subindo-o se preciso)
+axscope serve       # o daemon (browser vivo, socket unix)
+axscope mcp         # servidor MCP sobre stdio, apontando para o mesmo daemon
+axscope install     # baixa o Chrome for Testing
 ```
 
 ## Princípios
@@ -45,15 +45,15 @@ E Node não é dependência: o cliente CDP é Go + `WebSocket`.
 ## Instalação
 
 ```bash
-make install                    # → ~/.local/bin/browser-use (atalho: bu)
-browser-use install --engine all  # Chrome for Testing + chrome-headless-shell
-browser-use engines             # o que está disponível
+make install                    # → ~/.local/bin/axscope (atalho: axscope)
+axscope install --engine all  # Chrome for Testing + chrome-headless-shell
+axscope engines             # o que está disponível
 ```
 
 Se `~/.local/bin` não estiver no seu `PATH`, use `PREFIX=/usr/local/bin make install`.
 
-Os binários ficam em `~/.local/share/browser-use/browsers/`. O perfil fica em
-`~/.local/share/browser-use/profiles/<sessão>/` — é persistente, então login
+Os binários ficam em `~/.local/share/axscope/browsers/`. O perfil fica em
+`~/.local/share/axscope/profiles/<sessão>/` — é persistente, então login
 sobrevive entre rodadas.
 
 `--engine` aceita `chrome` (padrão), `shell` (chrome-headless-shell) ou `all`.
@@ -63,31 +63,31 @@ sobrevive entre rodadas.
 ```json
 {
   "mcp": {
-    "browser-use": {
+    "axscope": {
       "type": "local",
-      "command": ["/home/USUARIO/.local/bin/browser-use", "mcp"]
+      "command": ["/home/USUARIO/.local/bin/axscope", "mcp"]
     }
   }
 }
 ```
 
 O MCP expõe um conjunto **enxuto** de 16 ferramentas (schema de ferramenta custa
-contexto em toda requisição). Para abrir todas: `BROWSER_USE_MCP_TOOLS=all`.
+contexto em toda requisição). Para abrir todas: `AXSCOPE_MCP_TOOLS=all`.
 
 ## Uso
 
 ```bash
-bu open https://example.com        # navega (ou usa a aba ativa)
-bu snap                            # lê a tela (o "tela" do app)
-bu click e1                        # age pela ref do último snap
-bu fill e5 "dono@exemplo.com"
-bu press Enter
-bu wait "Painel"                   # converge, não dorme
-bu wait "Pronto" dentro=css=#lista # o texto, mas só dentro do container
-bu wait css=#enviar --habilitado   # espera o estado, não o texto
-bu tabs                            # abas abertas (a ativa vem com *)
-bu shot /tmp/evidencia.png         # captura (com cursor e destaque)
-bu script cenario.txt              # roteiro em lote
+axscope open https://example.com        # navega (ou usa a aba ativa)
+axscope snap                            # lê a tela (o "tela" do app)
+axscope click e1                        # age pela ref do último snap
+axscope fill e5 "dono@exemplo.com"
+axscope press Enter
+axscope wait "Painel"                   # converge, não dorme
+axscope wait "Pronto" dentro=css=#lista # o texto, mas só dentro do container
+axscope wait css=#enviar --habilitado   # espera o estado, não o texto
+axscope tabs                            # abas abertas (a ativa vem com *)
+axscope shot /tmp/evidencia.png         # captura (com cursor e destaque)
+axscope script cenario.txt              # roteiro em lote
 ```
 
 Aliases em português existem (`tela`, `clicar`, `digitar`, `esperar`, `abas`…).
@@ -150,17 +150,17 @@ shot /tmp/painel.png
 
 | Onde | Tamanho | O quê |
 |---|---|---|
-| `~/.local/share/browser-use/browsers/` | ~650 MB | Chrome + headless-shell baixados |
-| `~/.local/share/browser-use/profiles/` | varia | perfil (logins, estado) |
-| `~/.local/share/browser-use/logs/` | ≤ 2 MB por sessão | log do daemon, truncado ao subir |
+| `~/.local/share/axscope/browsers/` | ~650 MB | Chrome + headless-shell baixados |
+| `~/.local/share/axscope/profiles/` | varia | perfil (logins, estado) |
+| `~/.local/share/axscope/logs/` | ≤ 2 MB por sessão | log do daemon, truncado ao subir |
 
-`bu shot <arquivo>` grava **exatamente onde você manda** — não existe pasta
+`axscope shot <arquivo>` grava **exatamente onde você manda** — não existe pasta
 padrão nem acúmulo automático. A ferramenta só escreve sozinha o que é
 necessário: perfil, browsers baixados (no `install`) e o log (limitado).
 
 ```bash
-browser-use clean          # logs e sessões mortas
-browser-use clean --tudo   # inclui perfis e browsers baixados
+axscope clean          # logs e sessões mortas
+axscope clean --tudo   # inclui perfis e browsers baixados
 ```
 
 ## Ciclo de vida
@@ -168,13 +168,13 @@ browser-use clean --tudo   # inclui perfis e browsers baixados
 O daemon mantém o browser vivo de propósito: a próxima chamada responde na hora
 e o estado (login, abas) sobrevive entre comandos. Ele **não** fica pendurado
 para sempre: se ninguém o usa por 30 minutos, ele se encerra e fecha o browser
-sozinho (`BROWSER_USE_IDLE_MINUTES` ajusta; `0` desliga).
+sozinho (`AXSCOPE_IDLE_MINUTES` ajusta; `0` desliga).
 
 Para encerrar na hora, quando quiser:
 
 ```bash
-browser-use stop          # só a sessão atual
-browser-use stop --all    # todas as sessões e todos os browsers
+axscope stop          # só a sessão atual
+axscope stop --all    # todas as sessões e todos os browsers
 ```
 
 ## Modo extensão: seu próprio navegador
@@ -183,9 +183,9 @@ Em vez de subir um navegador dedicado, a extensão dirige o **seu Brave** — co
 logins que você já tem. É o modo mais útil no dia a dia.
 
 ```bash
-browser-use --ext open https://exemplo.com
-browser-use --ext snap
-browser-use --ext click e3
+axscope --ext open https://exemplo.com
+axscope --ext snap
+axscope --ext click e3
 ```
 
 ### Por que precisa de extensão
@@ -202,7 +202,7 @@ Ou seja: não existe caminho por porta de debug no seu perfil real. A extensão 
    compactação** → aponte para `extension/` neste repositório.
 
 2. **Esconda a faixa de depuração** (opcional, mas recomendado)
-   A API `chrome.debugger` faz o Chromium mostrar uma faixa *"browser-use started
+   A API `chrome.debugger` faz o Chromium mostrar uma faixa *"axscope started
    debugging this browser"* em todas as abas. Para não ver isso:
 
    ```bash
@@ -223,7 +223,7 @@ extensão (Brave)  ⇄  uma conexão por sessão  ⇄  daemon (Go)  ⇄  CLI / M
 ```
 
 Cada sessão ocupa **uma porta da faixa 8787–8802** e recebe o seu **próprio grupo
-de abas** no Brave, com nome `browser-use · <sessão>`. A extensão só enxerga e só
+de abas** no Brave, com nome `axscope · <sessão>`. A extensão só enxerga e só
 toca nas abas do grupo daquela sessão.
 
 Isso resolve três coisas de uma vez:
@@ -252,17 +252,17 @@ O nome do agente vem da configuração do MCP que está dirigindo:
 ```json
 {
   "mcp": {
-    "browser-use": {
+    "axscope": {
       "type": "local",
-      "command": ["/home/USUARIO/.local/bin/browser-use", "mcp"],
-      "environment": { "BROWSER_USE_AGENT": "Opencode" }
+      "command": ["/home/USUARIO/.local/bin/axscope", "mcp"],
+      "environment": { "AXSCOPE_AGENT": "Opencode" }
     }
   }
 }
 ```
 
 Sem isso, o MCP tenta o nome do cliente (`clientInfo.name`) e a CLI usa
-`browser-use`.
+`axscope`.
 
 ### Dar e tirar acesso: arraste a aba
 
@@ -291,16 +291,16 @@ Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.
 
 ```bash
 # padrão: o seu Brave, pela extensão (é o modo do dia a dia)
-browser-use open https://exemplo.com
+axscope open https://exemplo.com
 
 # Chrome dedicado, quando quiser um navegador separado
-browser-use --ver open https://exemplo.com
+axscope --ver open https://exemplo.com
 
 # sem janela nenhuma, para lote
-browser-use --leve script roteiro.txt
+axscope --leve script roteiro.txt
 
 # encerra tudo (todos os modos e seus browsers)
-browser-use stop --all
+axscope stop --all
 ```
 
 Cada modo é uma **sessão separada** (`default` = extensão, `ver`, `leve`), então
@@ -309,14 +309,14 @@ coisa no Brave.
 
 O motor é propriedade da **sessão**: o daemon sobe o browser com o motor escolhido
 na primeira chamada. Trocar de motor numa sessão já viva exige `stop` (ou use
-outra sessão). `browser-use engines` mostra o que está instalado.
+outra sessão). `axscope engines` mostra o que está instalado.
 
 O modo leve **não é** um Chromium capado: é o mesmo motor com o mesmo CDP, a
 mesma árvore de acessibilidade, a mesma geometria real e o mesmo clique por
 coordenada. Só não há janela — então não há cursor desenhado.
 
 Anexar continua valendo para qualquer Chromium já aberto com
-`--remote-debugging-port=PORTA` (`BROWSER_USE_ATTACH=host:porta`), e aí você usa
+`--remote-debugging-port=PORTA` (`AXSCOPE_ATTACH=host:porta`), e aí você usa
 o seu navegador do dia a dia, com seus logins.
 
 ## Motor: o que a pesquisa provou
@@ -379,26 +379,26 @@ que custaram bugs reais:
 - **`aria-hidden`** no host — senão o HUD aparece no próprio `snap`;
 - **`top: auto`** no HUD — a regra base fixa `top:0` e a caixa esticava.
 
-Ajuste de visibilidade: `BROWSER_USE_CURSOR_DELAY` (ms, padrão 160) controla
+Ajuste de visibilidade: `AXSCOPE_CURSOR_DELAY` (ms, padrão 160) controla
 quanto o cursor "chega antes" de agir; `0` remove a pausa.
 
 ## Variáveis
 
 | Variável | Efeito |
 |---|---|
-| `BROWSER_USE_SESSION` | nome da sessão (default `default`) |
-| `BROWSER_USE_ENGINE` | `shell` (leve, padrão) ou `chrome` (ver) |
-| `BROWSER_USE_IDLE_MINUTES` | encerra o daemon após N min ocioso (padrão 30; 0 desliga) |
-| `BROWSER_USE_HOME` | diretório de dados |
-| `BROWSER_USE_CHROME` | executável do Chromium |
-| `BROWSER_USE_ATTACH` | `host:porta` de um Chromium já aberto |
-| `BROWSER_USE_HEADLESS` | sobe sem janela |
-| `BROWSER_USE_CURSOR_DELAY` | pausa do cursor antes de agir (ms) |
+| `AXSCOPE_SESSION` | nome da sessão (default `default`) |
+| `AXSCOPE_ENGINE` | `shell` (leve, padrão) ou `chrome` (ver) |
+| `AXSCOPE_IDLE_MINUTES` | encerra o daemon após N min ocioso (padrão 30; 0 desliga) |
+| `AXSCOPE_HOME` | diretório de dados |
+| `AXSCOPE_CHROME` | executável do Chromium |
+| `AXSCOPE_ATTACH` | `host:porta` de um Chromium já aberto |
+| `AXSCOPE_HEADLESS` | sobe sem janela |
+| `AXSCOPE_CURSOR_DELAY` | pausa do cursor antes de agir (ms) |
 
 ## Estrutura
 
 ```
-cmd/bu/            entrypoint (cliente, serve, mcp, install)
+cmd/axscope/            entrypoint (cliente, serve, mcp, install)
 cmd/cdpprobe/      sonda de diagnóstico de engines CDP
 internal/cdp/      cliente CDP sobre WebSocket
 internal/browser/  launcher, sessão/abas, snapshot, ações, observação
@@ -446,7 +446,7 @@ internal/installer/ download do Chrome for Testing
   (`document.hidden`), o `IntersectionObserver` não dispara: página que carrega
   conteúdo assim — feed infinito, imagem preguiçosa — não avança por mais que se
   role. O `scroll` avisa quando chega ao fim nessa condição, e a saída é
-  `bu tab <n> --focus` (traz a aba à frente) ou o `eval` chamando a função da
+  `axscope tab <n> --focus` (traz a aba à frente) ou o `eval` chamando a função da
   própria página. Medido no laboratório v2: rolar até o fim deixava 6 posts de 18.
 - `upload` por `<input type=file>` manda o **caminho**, que quem lê é o
   navegador — vale para navegador e daemon na mesma máquina (o caso da

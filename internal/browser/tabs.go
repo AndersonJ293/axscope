@@ -272,7 +272,7 @@ func (s *Session) Find(ref string) (*Tab, error) {
 	if _, err := fmt.Sscanf(ref, "%d", &index); err == nil && index >= 1 && index <= len(s.order) {
 		return s.tabs[s.order[index-1]], nil
 	}
-	return nil, fmt.Errorf("aba %q não existe (use `bu tabs`)", ref)
+	return nil, fmt.Errorf("aba %q não existe (use `axscope tabs`)", ref)
 }
 
 // Select troca a aba ativa. `activate` traz a janela para a frente — por padrão

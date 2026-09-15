@@ -7,16 +7,16 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
-	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/cdp"
+	"github.com/AndersonJ293/axscope/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	url := req.String("url")
 	if url == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu open <url> [--new]"))
+		return protocol.Fail(fmt.Errorf("uso: axscope open <url> [--new]"))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
@@ -50,7 +50,7 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	pedido := req.String("text")
 	if pedido == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu %s <texto|alvo> [timeout] [dentro=<alvo>]", req.Cmd))
+		return protocol.Fail(fmt.Errorf("uso: axscope %s <texto|alvo> [timeout] [dentro=<alvo>]", req.Cmd))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
