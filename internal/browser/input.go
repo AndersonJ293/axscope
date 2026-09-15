@@ -235,6 +235,65 @@ func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy floa
 	return nil
 }
 
+// ScrollTarget rola o container do alvo — o próprio, se ele rola, ou o
+// ancestral rolável mais próximo; sem nenhum, o documento.
+func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID string, dx, dy float64) error {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId":            objectID,
+		"functionDeclaration": scrollDoAlvo,
+		"arguments": []any{
+			map[string]any{"value": dx},
+			map[string]any{"value": dy},
+		},
+		"returnByValue": true,
+		"awaitPromise":  true,
+	}, session)
+	if err != nil {
+		return err
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil || res.Result.Value != "ok" {
+		return fmt.Errorf("não consegui rolar o alvo")
+	}
+	return nil
+}
+
+// scrollDoAlvo rola o container do elemento, em passos.
+const scrollDoAlvo = `function (dx, dy) {
+	const rola = (el) => {
+		if (!el || !el.scrollHeight) return false;
+		const st = getComputedStyle(el);
+		return /(auto|scroll|overlay)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1;
+	};
+	let rolavel = null;
+	if (rola(this)) rolavel = this;
+	else {
+		let c = this && this.parentElement;
+		while (c) { if (rola(c)) { rolavel = c; break; } c = c.parentElement; }
+	}
+	if (!rolavel) rolavel = document.scrollingElement || document.documentElement;
+	const deX = rolavel.scrollLeft, deY = rolavel.scrollTop;
+	const passos = (document.hidden || !rolavel.scrollHeight) ? 1 : 6;
+	let i = 0;
+	return new Promise((pronto) => {
+		const passo = () => {
+			i++;
+			rolavel.scrollTo({
+				left: deX + dx * (i / passos),
+				top: deY + dy * (i / passos),
+				behavior: 'instant',
+			});
+			if (i < passos) { setTimeout(passo, 35); return; }
+			pronto('ok');
+		};
+		passo();
+	});
+}`
+
 // scrollPassos rola o elemento rolável sob o centro da tela, em passos.
 const scrollPassos = `function (dx, dy) {
 	const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);

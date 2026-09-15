@@ -165,10 +165,17 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	return ok(a.finish(ctx, sess, sid, label, before))
 }
 
+// scroll rola. Sem alvo, rola o que estiver sob o centro da tela; com
+// `alvo=<ref|texto|css>`, rola o container daquele alvo.
+//
+// O alvo existe porque "rolar" tem dois donos possíveis: a página e uma caixa
+// que rola dentro dela. A lista de infinite scroll do laboratório mostrou a
+// diferença — rolar a página não carrega o próximo lote, e o alvo é a única
+// forma de dizer qual caixa rolar.
 func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	raw := req.String("dy")
 	if raw == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu scroll <dy> (dy positivo desce)"))
+		return protocol.Fail(fmt.Errorf("uso: bu scroll <dy> [alvo=<ref|texto|css>] (dy positivo desce)"))
 	}
 	dy, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
@@ -178,6 +185,21 @@ func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.
 	if err != nil {
 		return protocol.Fail(err)
 	}
+
+	if alvo := req.String("alvo"); alvo != "" {
+		t, _, err := a.resolve(ctx, sess, alvo)
+		if err != nil {
+			return protocol.Fail(err)
+		}
+		if err := browser.ScrollTarget(ctx, a.client(), sid, t.ObjectID, 0, dy); err != nil {
+			return protocol.Fail(err)
+		}
+		sess.Settle(ctx, sid, actionIdle)
+		label := fmt.Sprintf("scroll %.0f em %s", dy, alvo)
+		sess.UpdateHUD(ctx, label)
+		return ok("ok: " + label)
+	}
+
 	if err := browser.Scroll(ctx, a.client(), sid, 0, dy); err != nil {
 		return protocol.Fail(err)
 	}

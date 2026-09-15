@@ -108,6 +108,27 @@ func TestParse_FillMiraPorTexto(t *testing.T) {
 	}
 }
 
+// Regressão: o `scroll` não tinha como mirar um container. A lista de infinite
+// scroll do laboratório mostrou a falta: rolar a página não carrega o próximo
+// lote, e o gesto sem alvo rolava o que estivesse sob o centro da tela.
+func TestParse_ScrollComAlvo(t *testing.T) {
+	req, err := Parse([]string{"scroll", "200", "alvo=text=Infinite item 3"})
+	if err != nil {
+		t.Fatalf("Parse recusou o alvo: %v", err)
+	}
+	if req.Args["dy"] != "200" || req.Args["alvo"] != "text=Infinite item 3" {
+		t.Errorf("args = %v", req.Args)
+	}
+	// E sem alvo continua valendo: ele é opcional.
+	req, err = Parse([]string{"scroll", "500"})
+	if err != nil {
+		t.Fatalf("scroll sem alvo deveria valer: %v", err)
+	}
+	if req.Args["dy"] != "500" {
+		t.Errorf("args = %v", req.Args)
+	}
+}
+
 // A ajuda deriva da tabela: todo spec aparece na lista.
 func TestHelpListaTodosOsSpecs(t *testing.T) {
 	help := Help()
