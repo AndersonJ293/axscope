@@ -77,13 +77,23 @@ func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID str
 	return res.Result.Value, nil
 }
 
-// scrollDoAlvo rola o container do elemento, em passos.
-const scrollDoAlvo = `function (dx, dy) {
+// jsDescreveRolagem é colado nos dois scripts de rolagem: descreve onde parou e,
+// no fim da página com a aba oculta, avisa do que isso impede. O aviso entra só
+// no fim — é quando a ausência de conteúdo novo intriga —, e não em toda
+// rolagem, que viraria ruído num caso que é o normal aqui.
+const jsDescreveRolagem = `
 	const descreve = (el) => {
 		const nome = el === (document.scrollingElement || document.documentElement) ? 'página'
 			: (el.id ? '#' + el.id : el.tagName.toLowerCase());
-		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight);
-	};
+		const fim = el.scrollTop >= (el.scrollHeight - el.clientHeight) - 1;
+		const nota = (fim && document.hidden)
+			? ' — fim, e a aba está oculta: o que carrega por IntersectionObserver não dispara (use bu tab <n> --focus)'
+			: '';
+		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight) + nota;
+	};`
+
+// scrollDoAlvo rola o container do elemento, em passos.
+const scrollDoAlvo = `function (dx, dy) {` + jsDescreveRolagem + `
 	const rola = (el) => {
 		if (!el || !el.scrollHeight) return false;
 		const st = getComputedStyle(el);
@@ -120,12 +130,7 @@ const scrollDoAlvo = `function (dx, dy) {
 
 // scrollPassos rola o elemento rolável sob o centro da tela, em passos; com
 // `pagina`, rola o documento.
-const scrollPassos = `function (dx, dy, pagina) {
-	const descreve = (el) => {
-		const nome = el === (document.scrollingElement || document.documentElement) ? 'página'
-			: (el.id ? '#' + el.id : el.tagName.toLowerCase());
-		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight);
-	};
+const scrollPassos = `function (dx, dy, pagina) {` + jsDescreveRolagem + `
 	let rolavel = document.scrollingElement || document.documentElement;
 	if (!pagina) {
 		const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);

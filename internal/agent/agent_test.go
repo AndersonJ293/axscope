@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -70,6 +71,22 @@ func TestSplitTokens(t *testing.T) {
 // jeito que um clique que funcionou — e ainda podia cair na camada de cima, com
 // o efeito colateral que a página quisesse dar a ela. Agora ele é recusado, e a
 // mensagem carrega o motivo e o próximo passo.
+// A varredura do wait precisa atravessar shadow root e iframe de mesma origem —
+// a leitura mostra o conteúdo dos dois, e antes a espera não via nenhum deles:
+// `wait "Iframe zone"` e `wait "SHADOW-321"` estouravam o tempo embora o snap
+// mostrasse o texto. O teste prende as duas fronteiras.
+func TestExpressaoLocalizaTexto(t *testing.T) {
+	expr := expressaoLocalizaTexto("Iframe zone")
+	for _, querido := range []string{"shadowRoot", "contentDocument", "IFRAME", "dentro de iframe"} {
+		if !strings.Contains(expr, querido) {
+			t.Errorf("a varredura do wait não atravessa %q", querido)
+		}
+	}
+	if !strings.Contains(expr, strconv.Quote("Iframe zone")) {
+		t.Error("o texto procurado não entrou na expressão")
+	}
+}
+
 func TestFalhaDeAcao(t *testing.T) {
 	err := falhaDeAcao("click", "text=Gostei 20", fmt.Errorf("o alvo está coberto por div.modal-backdrop — para clicar no ponto assim mesmo, use pos=x,y"))
 	got := err.Error()
