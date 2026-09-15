@@ -20,16 +20,16 @@ type Target struct {
 	BackendNodeID int
 	Rect          dom.Rect
 	Description   string
-	// Ponto, quando não é nil, é onde a ação deve acontecer — o alvo veio de
+	// Point, quando não é nil, é onde a ação deve acontecer — o alvo veio de
 	// `pos=x,y`. O Rect continua sendo o do elemento sob o ponto, para o
 	// destaque e para o hover saber de onde entrar; sem separar os dois, a ação
 	// cairia no centro do elemento, que num iframe fica a dezenas de pixels do
 	// lugar pedido.
-	Ponto *Ponto
+	Point *Point
 }
 
-// Ponto é uma coordenada de tela.
-type Ponto struct{ X, Y float64 }
+// Point é uma coordenada de tela.
+type Point struct{ X, Y float64 }
 
 // ResolveTarget resolve uma referência em um alvo com geometria.
 //
@@ -45,7 +45,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	var objectID string
 	var backendID int
-	var ponto *Ponto
+	var ponto *Point
 	// Expressão que produziu o nó, para poder resolver de novo se a rolagem
 	// invalidar o que foi resolvido (lista virtualizada recria as linhas).
 	var expr string
@@ -97,7 +97,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			return nil, fmt.Errorf("nada em %s (fora da tela?)", spec)
 		}
 		objectID = id
-		ponto = &Ponto{X: x, Y: y}
+		ponto = &Point{X: x, Y: y}
 
 	default:
 		backend, ok := refs[spec]
@@ -120,7 +120,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		objectID = res.Object.ObjectID
 	}
 
-	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Ponto: ponto}
+	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Point: ponto}
 
 	// Traz para a tela em passos visíveis; se não bastar, garante com o scroll
 	// direto — o que não pode é a ação não alcançar o alvo.
@@ -379,10 +379,10 @@ func textoEscondido(ctx context.Context, client *cdp.Client, session, want strin
 		return ""
 	}
 	var res struct {
-		Total    int `json:"total"`
-		Visiveis int `json:"visiveis"`
+		Total   int `json:"total"`
+		Visible int `json:"visiveis"`
 	}
-	if json.Unmarshal(raw, &res) != nil || res.Total == 0 || res.Visiveis > 0 {
+	if json.Unmarshal(raw, &res) != nil || res.Total == 0 || res.Visible > 0 {
 		return ""
 	}
 	return mensagemTextoEscondido(want, res.Total)
@@ -397,8 +397,8 @@ func mensagemTextoEscondido(want string, total int) string {
 }
 
 func (t *Target) ondeAgir() (float64, float64) {
-	if t.Ponto != nil {
-		return t.Ponto.X, t.Ponto.Y
+	if t.Point != nil {
+		return t.Point.X, t.Point.Y
 	}
 	return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height/2
 }

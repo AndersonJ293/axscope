@@ -13,7 +13,7 @@ import (
 func TestAlvoPorPosicaoAgeNoPontoPedido(t *testing.T) {
 	alvo := &Target{
 		Rect:  dom.Rect{X: 279, Y: 428, Width: 628, Height: 170},
-		Ponto: &Ponto{X: 385, Y: 527},
+		Point: &Point{X: 385, Y: 527},
 	}
 	x, y := alvo.ondeAgir()
 	if x != 385 || y != 527 {

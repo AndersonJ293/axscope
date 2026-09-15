@@ -26,10 +26,10 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// Clicavel é um alvo que a árvore não marca.
-type Clicavel struct {
-	Seletor string `json:"seletor"`
-	Rotulo  string `json:"rotulo"`
+// Clickable é um alvo que a árvore não marca.
+type Clickable struct {
+	Selector string `json:"seletor"`
+	Label    string `json:"rotulo"`
 }
 
 // maxClicaveis é quanto entra na leitura. É aviso, não inventário: passando
@@ -98,10 +98,10 @@ const clicaveisJS = `(() => {
 
 // lerClicaveis roda a passada e devolve os alvos sem papel. Falha em silêncio: a
 // leitura sem eles continua sendo leitura útil.
-func lerClicaveis(ctx context.Context, client *cdp.Client, session string) ([]Clicavel, int) {
+func lerClicaveis(ctx context.Context, client *cdp.Client, session string) ([]Clickable, int) {
 	var res struct {
-		Itens []Clicavel `json:"itens"`
-		Total int        `json:"total"`
+		Items []Clickable `json:"itens"`
+		Total int         `json:"total"`
 	}
 	raw, err := dom.Eval(ctx, client, session, clicaveisJS)
 	if err != nil {
@@ -110,12 +110,12 @@ func lerClicaveis(ctx context.Context, client *cdp.Client, session string) ([]Cl
 	if json.Unmarshal(raw, &res) != nil {
 		return nil, 0
 	}
-	return res.Itens, res.Total
+	return res.Items, res.Total
 }
 
 // secaoDeClicaveis monta o bloco que entra no fim da leitura. Fica separado de
 // quem o chama porque é a parte que dá para testar sem browser.
-func secaoDeClicaveis(itens []Clicavel, total int) string {
+func secaoDeClicaveis(itens []Clickable, total int) string {
 	if len(itens) == 0 {
 		return ""
 	}
@@ -126,7 +126,7 @@ func secaoDeClicaveis(itens []Clicavel, total int) string {
 	var b strings.Builder
 	b.WriteString("-- clicáveis sem papel na árvore (a leitura não os marca; aqui o seletor):")
 	for _, c := range mostrados {
-		fmt.Fprintf(&b, "\n  %s — %q", c.Seletor, c.Rotulo)
+		fmt.Fprintf(&b, "\n  %s — %q", c.Selector, c.Label)
 	}
 	if resto := total - len(mostrados); resto > 0 {
 		fmt.Fprintf(&b, "\n  (+%d)", resto)

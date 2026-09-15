@@ -40,7 +40,7 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	gen := a.nextGen()
 	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, browser.SnapshotOptions{
 		RefsOnly: req.Bool("refs", false),
-		Tudo:     req.Bool("tudo", false),
+		All:      req.Bool("tudo", false),
 		Gen:      gen,
 	})
 	if err != nil {
@@ -68,20 +68,20 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 // isso o agente vê as linhas e não sabe onde está nelas.
 func linhaDeRolagem(snap *browser.Snapshot) string {
 	var partes []string
-	if p := snap.Pagina; p != nil && p.Max > 1 {
-		partes = append(partes, fmt.Sprintf("%s %d/%d", p.Alvo, p.Pos, p.Max))
+	if p := snap.Page; p != nil && p.Max > 1 {
+		partes = append(partes, fmt.Sprintf("%s %d/%d", p.Name, p.Pos, p.Max))
 	}
-	for _, r := range snap.Rolagens {
+	for _, r := range snap.ScrollAreas {
 		if len(partes) >= maxAreasRolagem {
 			break
 		}
-		partes = append(partes, fmt.Sprintf("%s %d/%d", r.Alvo, r.Pos, r.Max))
+		partes = append(partes, fmt.Sprintf("%s %d/%d", r.Name, r.Pos, r.Max))
 	}
 	if len(partes) == 0 {
 		return ""
 	}
 	linha := " · rolagem: " + strings.Join(partes, " · ")
-	if resto := snap.RolagensTotal - len(partes); resto > 0 {
+	if resto := snap.ScrollAreasTotal - len(partes); resto > 0 {
 		linha += fmt.Sprintf(" (+%d)", resto)
 	}
 	return linha

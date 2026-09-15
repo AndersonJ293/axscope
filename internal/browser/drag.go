@@ -17,8 +17,8 @@ type DragOptions struct {
 	// DropAt diz onde soltar sobre o alvo: "" (centro), "top" (25% do topo) ou
 	// "bottom" (75%). Importa quando o alvo decide antes/depois pela posição.
 	DropAt string
-	// Tipo força a família do arraste: "html5" ou "ponteiro". Vazio detecta.
-	Tipo string
+	// Type força a família do arraste: "html5" ou "ponteiro". Vazio detecta.
+	Type string
 	// Steps é quantos passos de mouse no caminho do arraste por ponteiro.
 	Steps int
 }
@@ -108,7 +108,7 @@ func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Tar
 	// gesto que não pega costuma terminar em clique, sem aviso nenhum.
 	antes := assinaturaDe(ctx, client, session, from.ObjectID)
 
-	tipo := opts.Tipo
+	tipo := opts.Type
 	if tipo == "" {
 		tipo = dragKind(ctx, client, session, from.ObjectID)
 	}

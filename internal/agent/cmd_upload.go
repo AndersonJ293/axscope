@@ -44,13 +44,13 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 		if err != nil {
 			return protocol.Fail(err)
 		}
-		obj, err := browser.PrimeiroInputDeArquivo(ctx, a.client(), sid)
+		obj, err := browser.FirstFileInput(ctx, a.client(), sid)
 		if err != nil {
 			return protocol.Fail(err)
 		}
 		t = &browser.Target{ObjectID: obj}
 	}
-	ehInput, err := browser.EhInputDeArquivo(ctx, a.client(), sid, t.ObjectID)
+	ehInput, err := browser.IsFileInput(ctx, a.client(), sid, t.ObjectID)
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -61,7 +61,7 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 		err = browser.SetFileInput(ctx, a.client(), sid, t.ObjectID, caminho)
 	} else {
 		via = "dropzone"
-		err = browser.SoltaArquivo(ctx, a.client(), sid, t, caminho, sess.Presenter)
+		err = browser.DropFile(ctx, a.client(), sid, t, caminho, sess.Presenter)
 	}
 	if err != nil {
 		return protocol.Fail(err)

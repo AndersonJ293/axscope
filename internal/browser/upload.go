@@ -24,11 +24,11 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// PrimeiroInputDeArquivo devolve o primeiro `<input type=file>` da página.
+// FirstFileInput devolve o primeiro `<input type=file>` da página.
 //
 // Existe porque, sem alvo, é ele que se quer: costuma estar escondido, e é o
 // caminho que o navegador aceita sem diálogo nenhum.
-func PrimeiroInputDeArquivo(ctx context.Context, client *cdp.Client, session string) (string, error) {
+func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
 		"expression":    "document.querySelector('input[type=file]')",
 		"returnByValue": false,
@@ -47,9 +47,9 @@ func PrimeiroInputDeArquivo(ctx context.Context, client *cdp.Client, session str
 	return res.Result.ObjectID, nil
 }
 
-// EhInputDeArquivo diz se o elemento é um `<input type=file>` (aceita o arquivo
+// IsFileInput diz se o elemento é um `<input type=file>` (aceita o arquivo
 // direto) ou qualquer outra coisa (só aceita por arraste).
-func EhInputDeArquivo(ctx context.Context, client *cdp.Client, session, objectID string) (bool, error) {
+func IsFileInput(ctx context.Context, client *cdp.Client, session, objectID string) (bool, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
@@ -84,9 +84,9 @@ func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, ca
 	return err
 }
 
-// SoltaArquivo emite um arraste de arquivo sobre o alvo, com o conteúdo de
+// DropFile emite um arraste de arquivo sobre o alvo, com o conteúdo de
 // verdade dentro do DataTransfer.
-func SoltaArquivo(ctx context.Context, client *cdp.Client, session string, t *Target, caminho string, p Presenter) error {
+func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target, caminho string, p Presenter) error {
 	dados, err := os.ReadFile(caminho)
 	if err != nil {
 		return err

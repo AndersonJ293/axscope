@@ -19,21 +19,21 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// Rolagem é onde uma área rolável está: quem rola, quanto já rolou e quanto
+// ScrollArea é onde uma área rolável está: quem rola, quanto já rolou e quanto
 // ainda cabe.
-type Rolagem struct {
-	Alvo string `json:"alvo"`
+type ScrollArea struct {
+	Name string `json:"alvo"`
 	Pos  int    `json:"pos"`
 	Max  int    `json:"max"`
 }
 
 // metaDaPagina é o que a leitura precisa saber da página além da árvore.
 type metaDaPagina struct {
-	Title    string    `json:"title"`
-	URL      string    `json:"url"`
-	Pagina   *Rolagem  `json:"pagina"`
-	Rolagens []Rolagem `json:"rolagens"`
-	Total    int       `json:"total"`
+	Title       string       `json:"title"`
+	URL         string       `json:"url"`
+	Page        *ScrollArea  `json:"pagina"`
+	ScrollAreas []ScrollArea `json:"rolagens"`
+	Total       int          `json:"total"`
 }
 
 // lerMetaDaPagina busca título, URL e o estado de rolagem numa avaliação só.

@@ -1,4 +1,4 @@
-// Onde ficam perfil, socket e info do daemon. Tudo fora do repositório.
+// Onde ficam perfil, socket e info do daemon. All fora do repositório.
 package paths
 
 import (

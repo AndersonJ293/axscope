@@ -12,9 +12,9 @@ func TestSecaoDeClicaveis(t *testing.T) {
 		t.Errorf("sem itens a seção não devia existir: %q", got)
 	}
 
-	itens := []Clicavel{
-		{Seletor: `div.thread[data-id="t1"]`, Rotulo: "Ana Souza — Oi Ana! Tenho interesse"},
-		{Seletor: `div.thread[data-id="t2"]`, Rotulo: "Bruno Lima — Aquele artigo sobre filas"},
+	itens := []Clickable{
+		{Selector: `div.thread[data-id="t1"]`, Label: "Ana Souza — Oi Ana! Tenho interesse"},
+		{Selector: `div.thread[data-id="t2"]`, Label: "Bruno Lima — Aquele artigo sobre filas"},
 	}
 	got := secaoDeClicaveis(itens, 2)
 	for _, querido := range []string{"clicáveis", `div.thread[data-id="t1"]`, "Ana Souza", `div.thread[data-id="t2"]`} {
@@ -27,9 +27,9 @@ func TestSecaoDeClicaveis(t *testing.T) {
 	}
 
 	// Acima do teto, o resto vira contagem.
-	muitos := make([]Clicavel, 0, maxClicaveis+4)
+	muitos := make([]Clickable, 0, maxClicaveis+4)
 	for i := 0; i < maxClicaveis+4; i++ {
-		muitos = append(muitos, Clicavel{Seletor: "div.item", Rotulo: "item"})
+		muitos = append(muitos, Clickable{Selector: "div.item", Label: "item"})
 	}
 	got = secaoDeClicaveis(muitos, len(muitos))
 	if !strings.Contains(got, "(+4)") {

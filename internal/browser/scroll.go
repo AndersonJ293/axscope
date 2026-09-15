@@ -1,4 +1,4 @@
-// Rolagem: a página, ou o container de um alvo. Vai em passos, para quem olha
+// ScrollArea: a página, ou o container de um alvo. Vai em passos, para quem olha
 // acompanhar o movimento em vez de a página pular de uma vez.
 package browser
 

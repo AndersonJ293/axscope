@@ -147,7 +147,7 @@ func (a *Agent) noEstado(ctx context.Context, sess *browser.Session, alvo, estad
 	}
 	switch estado {
 	case "habilitado":
-		return browser.Habilitado(ctx, a.client(), sid, t.ObjectID), nil
+		return browser.Enabled(ctx, a.client(), sid, t.ObjectID), nil
 	case "visivel":
 		// Resolveu e tem caixa: é o que "visível" quer dizer aqui (se está no
 		// ponto, quem cuida disso é o clique, que recusa o contrário).

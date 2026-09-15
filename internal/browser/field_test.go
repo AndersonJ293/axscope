@@ -15,17 +15,17 @@ func TestClassificaCampo(t *testing.T) {
 		aceita   bool
 		contemNa string
 	}{
-		{"input de texto", campoDescritor{Tag: "INPUT", Tipo: "text"}, true, ""},
+		{"input de texto", campoDescritor{Tag: "INPUT", Type: "text"}, true, ""},
 		{"input sem type", campoDescritor{Tag: "INPUT"}, true, ""},
-		{"input number", campoDescritor{Tag: "INPUT", Tipo: "number"}, true, ""},
+		{"input number", campoDescritor{Tag: "INPUT", Type: "number"}, true, ""},
 		{"textarea", campoDescritor{Tag: "TEXTAREA"}, true, ""},
-		{"contenteditable", campoDescritor{Tag: "DIV", Editavel: true}, true, ""},
-		{"role textbox", campoDescritor{Tag: "DIV", Papel: "textbox"}, true, ""},
+		{"contenteditable", campoDescritor{Tag: "DIV", Editable: true}, true, ""},
+		{"role textbox", campoDescritor{Tag: "DIV", Role: "textbox"}, true, ""},
 		{"select", campoDescritor{Tag: "SELECT"}, false, "axscope select"},
-		{"checkbox", campoDescritor{Tag: "INPUT", Tipo: "checkbox"}, false, "axscope check"},
-		{"radio", campoDescritor{Tag: "INPUT", Tipo: "radio"}, false, "axscope check"},
-		{"file", campoDescritor{Tag: "INPUT", Tipo: "file"}, false, "axscope upload"},
-		{"botão", campoDescritor{Tag: "INPUT", Tipo: "submit"}, false, "axscope click"},
+		{"checkbox", campoDescritor{Tag: "INPUT", Type: "checkbox"}, false, "axscope check"},
+		{"radio", campoDescritor{Tag: "INPUT", Type: "radio"}, false, "axscope check"},
+		{"file", campoDescritor{Tag: "INPUT", Type: "file"}, false, "axscope upload"},
+		{"botão", campoDescritor{Tag: "INPUT", Type: "submit"}, false, "axscope click"},
 		{"label", campoDescritor{Tag: "LABEL"}, false, "não é campo de texto"},
 		{"div", campoDescritor{Tag: "DIV"}, false, "não é campo de texto"},
 	}

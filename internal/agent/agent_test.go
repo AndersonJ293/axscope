@@ -22,7 +22,7 @@ func TestRefGen(t *testing.T) {
 		{"#7", "#7", 0, false},
 		{"e12#", "e12#", 0, false},
 		{"e#a", "e#a", 0, false},
-		// Seletor CSS com "#" não é ref com geração.
+		// Selector CSS com "#" não é ref com geração.
 		{"css=#id", "css=#id", 0, false},
 	}
 	for _, c := range casos {
@@ -109,9 +109,9 @@ func TestLinhaDeRolagem(t *testing.T) {
 	}
 
 	snap := &browser.Snapshot{
-		Pagina:        &browser.Rolagem{Alvo: "página", Pos: 2275, Max: 2830},
-		Rolagens:      []browser.Rolagem{{Alvo: "#virtual", Pos: 32680, Max: 41672}},
-		RolagensTotal: 2,
+		Page:             &browser.ScrollArea{Name: "página", Pos: 2275, Max: 2830},
+		ScrollAreas:      []browser.ScrollArea{{Name: "#virtual", Pos: 32680, Max: 41672}},
+		ScrollAreasTotal: 2,
 	}
 	got := linhaDeRolagem(snap)
 	for _, querido := range []string{"página 2275/2830", "#virtual 32680/41672"} {
@@ -121,9 +121,9 @@ func TestLinhaDeRolagem(t *testing.T) {
 	}
 
 	// Muitas áreas: resume em vez de inventariar.
-	muitas := &browser.Snapshot{RolagensTotal: 9}
+	muitas := &browser.Snapshot{ScrollAreasTotal: 9}
 	for i := 0; i < 8; i++ {
-		muitas.Rolagens = append(muitas.Rolagens, browser.Rolagem{Alvo: "div", Pos: i, Max: 100})
+		muitas.ScrollAreas = append(muitas.ScrollAreas, browser.ScrollArea{Name: "div", Pos: i, Max: 100})
 	}
 	if got := linhaDeRolagem(muitas); !strings.Contains(got, "(+4)") {
 		t.Errorf("esperava o resumo das áreas que sobraram: %q", got)

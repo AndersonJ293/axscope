@@ -1,5 +1,5 @@
 // Acesso a DOM e runtime da página: um lugar só para avaliar JavaScript, medir
-// elementos e rolar. Tudo que fala com o Runtime/DOM em nome do domínio passa
+// elementos e rolar. All que fala com o Runtime/DOM em nome do domínio passa
 // por aqui, para não haver três cópias da mesma avaliação.
 package dom
 

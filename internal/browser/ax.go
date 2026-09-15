@@ -80,7 +80,7 @@ var structuralRoles = map[string]bool{
 }
 
 // textuais são papéis que somem para dentro de uma linha de tabela: só carregam
-// texto. Papel que não está aqui mantém a linha expandida — achatar é o que pode
+// texto. Role que não está aqui mantém a linha expandida — achatar é o que pode
 // esconder coisa, então o desconhecido não é achatado.
 var textuais = map[string]bool{
 	"": true, "none": true, "generic": true, "paragraph": true,

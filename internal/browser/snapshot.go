@@ -18,12 +18,12 @@ type Snapshot struct {
 	Title     string
 	URL       string
 	Truncated bool
-	// Pagina é o estado de rolagem do documento, e Rolagens são as áreas que
+	// Page é o estado de rolagem do documento, e ScrollAreas são as áreas que
 	// rolam dentro dele. Vêm do DOM: a árvore de acessibilidade não carrega
 	// rolagem.
-	Pagina        *Rolagem
-	Rolagens      []Rolagem
-	RolagensTotal int
+	Page             *ScrollArea
+	ScrollAreas      []ScrollArea
+	ScrollAreasTotal int
 }
 
 // SnapshotOptions controla o tamanho da leitura.
@@ -32,8 +32,8 @@ type SnapshotOptions struct {
 	MaxNodes int
 	// RefsOnly lista só os alvos acionáveis, sem texto solto.
 	RefsOnly bool
-	// Tudo desliga o corte de cromo de página (rodapé e links de atalho).
-	Tudo bool
+	// All desliga o corte de cromo de página (rodapé e links de atalho).
+	All bool
 	// Gen é a geração da leitura. Entra na ref (e12#7) para que uma ref de
 	// leitura antiga seja recusada em vez de apontar para outro elemento.
 	Gen int
@@ -81,7 +81,7 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	snap := montarTexto(nodes, opts)
 	meta := lerMetaDaPagina(ctx, client, session)
 	snap.Title, snap.URL = meta.Title, meta.URL
-	snap.Pagina, snap.Rolagens, snap.RolagensTotal = meta.Pagina, meta.Rolagens, meta.Total
+	snap.Page, snap.ScrollAreas, snap.ScrollAreasTotal = meta.Page, meta.ScrollAreas, meta.Total
 
 	// Alvos que a árvore não marca (div com handler de clique) entram como uma
 	// seção no fim: sem eles, o agente tem de adivinhar seletor para metade dos
@@ -111,7 +111,7 @@ func montarTexto(nodes []axNode, opts SnapshotOptions) *Snapshot {
 		alvoCache: make(map[string]bool),
 		max:       opts.MaxNodes,
 		refsOnly:  opts.RefsOnly,
-		tudo:      opts.Tudo,
+		tudo:      opts.All,
 		gen:       opts.Gen,
 	}
 	var root *axNode

@@ -91,9 +91,9 @@ func TestMontarTexto_CortaCromoERuido(t *testing.T) {
 	}
 }
 
-// Com Tudo, o corte de cromo é desligado: rodapé e skip-link reaparecem.
+// Com All, o corte de cromo é desligado: rodapé e skip-link reaparecem.
 func TestMontarTexto_TudoDesligaCorte(t *testing.T) {
-	snap := montarTexto(fixtureÁrvore(), SnapshotOptions{Tudo: true})
+	snap := montarTexto(fixtureÁrvore(), SnapshotOptions{All: true})
 
 	esperado := `- link "Home" [ref=e1]
 - link "Skip to main content"

@@ -18,9 +18,9 @@ import (
 // campoDescritor é o que a página diz do alvo antes de receber texto.
 type campoDescritor struct {
 	Tag      string `json:"tag"`
-	Tipo     string `json:"tipo"`
-	Editavel bool   `json:"editavel"`
-	Papel    string `json:"papel"`
+	Type     string `json:"tipo"`
+	Editable bool   `json:"editavel"`
+	Role     string `json:"papel"`
 }
 
 // descreveCampo pergunta à página o que é o alvo. Falha em silêncio: sem
@@ -56,9 +56,9 @@ func descreveCampo(ctx context.Context, client *cdp.Client, session, objectID st
 // comando que faz o que se queria.
 func classificaCampo(d campoDescritor) (bool, string) {
 	tag := strings.ToLower(d.Tag)
-	tipo := strings.ToLower(d.Tipo)
+	tipo := strings.ToLower(d.Type)
 	switch {
-	case tag == "textarea" || d.Editavel:
+	case tag == "textarea" || d.Editable:
 		return true, ""
 	case tag == "select":
 		return false, "é um <select> — para escolher a opção use `axscope select <alvo> <valor>`"
@@ -72,7 +72,7 @@ func classificaCampo(d campoDescritor) (bool, string) {
 			return false, "é um botão — use `axscope click <alvo>`"
 		}
 		return true, ""
-	case d.Papel == "textbox" || d.Papel == "searchbox":
+	case d.Role == "textbox" || d.Role == "searchbox":
 		return true, ""
 	default:
 		return false, "não é campo de texto (é <" + tag + ">) — texto vai em input, textarea ou contenteditable"

@@ -71,7 +71,7 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 	before := a.errCount(sess, sid)
 	tipo, mudou, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
 		DropAt: at,
-		Tipo:   req.String("tipo"),
+		Type:   req.String("tipo"),
 	}, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(err)

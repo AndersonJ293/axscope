@@ -197,9 +197,9 @@ const jsRecusaDeAcao = `
 		return '';
 	};`
 
-// Habilitado diz se o alvo aceita ação — o mesmo critério que o clique usa antes
+// Enabled diz se o alvo aceita ação — o mesmo critério que o clique usa antes
 // de clicar, para quem precisa esperar por isso em vez de adivinhar um tempo.
-func Habilitado(ctx context.Context, client *cdp.Client, session, objectID string) bool {
+func Enabled(ctx context.Context, client *cdp.Client, session, objectID string) bool {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {` + jsRecusaDeAcao + `
