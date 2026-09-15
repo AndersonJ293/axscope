@@ -40,6 +40,43 @@ func TestClassificaCampo(t *testing.T) {
 	}
 }
 
+// Regressão (laboratório v3): `press Enter` disparava o handler e não quebrava a
+// linha — o CDP só insere com `text` no keyDown, e o Enter ficava sem. "primeira"
+// + Enter + "segunda" virava "primeirasegunda".
+func TestTextoDaTecla(t *testing.T) {
+	if got := textoDaTecla("Enter"); got != "\r" {
+		t.Errorf("Enter tem de inserir a quebra, e insere %q", got)
+	}
+	if got := textoDaTecla("Tab"); got != "\t" {
+		t.Errorf("Tab tem de inserir a tabulação, e insere %q", got)
+	}
+	for _, tecla := range []string{"Escape", "Backspace", "ArrowDown", "a"} {
+		if got := textoDaTecla(tecla); got != "" {
+			t.Errorf("%q não insere nada, mas insere %q", tecla, got)
+		}
+	}
+}
+
+// Regressão (laboratório v3): digitar uma quebra de linha não inseria nada — o
+// `type` mandava o caractere como texto, e texto com `\n` não entra no campo.
+// "alfa\nbeta" virava "alfabeta", em silêncio.
+func TestTeclaParaEQuebras(t *testing.T) {
+	for _, r := range []rune{'\n', '\r'} {
+		if tecla := teclaPara(r); tecla != "Enter" {
+			t.Errorf("quebra de linha (%q) tem de virar Enter, virou %q", r, tecla)
+		}
+	}
+	for _, r := range []rune{'a', 'ç', ' ', '\t'} {
+		if tecla := teclaPara(r); tecla != "" {
+			t.Errorf("%q não é tecla nomeada, virou %q", r, tecla)
+		}
+	}
+
+	if got := normalizarQuebras("a\r\nb\rc"); got != "a\nb\rc" {
+		t.Errorf("normalizarQuebras = %q", got)
+	}
+}
+
 // Máscara muda o valor de propósito (o telefone vira "(77) 9 9999-1111"), então
 // diferença não é sinal de nada. Continuar vazio é.
 func TestAvisoDePreenchimento(t *testing.T) {

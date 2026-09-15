@@ -172,7 +172,37 @@ func TestParse_WaitComTimeout(t *testing.T) {
 		t.Errorf("args = %v", req.Args)
 	}
 	// E sem o timeout continua valendo: ele é opcional.
-	if _, err := Parse([]string{"wait", "carregando"}); err != nil {
+	req, err = Parse([]string{"wait", "carregando"})
+	if err != nil {
 		t.Errorf("wait sem timeout deveria valer: %v", err)
+	}
+}
+
+// Regressão (laboratório v3): `wait` por texto casava em qualquer lugar da
+// página — a espera por um cargo que também aparecia na barra lateral voltou em
+// 2ms, com o dropdown da busca ainda fechado. `dentro=` limita a busca; e as
+// flags de estado esperam por um alvo que só habilita depois.
+func TestParse_WaitComEscopoEEstado(t *testing.T) {
+	req, err := Parse([]string{"wait", "Senior Recruiter", "5000", "dentro=css=#suggest"})
+	if err != nil {
+		t.Fatalf("Parse recusou o escopo: %v", err)
+	}
+	if req.Args["text"] != "Senior Recruiter" || req.Args["timeout"] != "5000" || req.Args["dentro"] != "css=#suggest" {
+		t.Errorf("args = %v", req.Args)
+	}
+
+	req, err = Parse([]string{"wait", "css=#submitApply", "8000", "--habilitado"})
+	if err != nil {
+		t.Fatalf("Parse recusou o estado: %v", err)
+	}
+	if req.Args["habilitado"] != true || req.Args["text"] != "css=#submitApply" {
+		t.Errorf("args = %v", req.Args)
+	}
+
+	// waitgone também aceita escopo.
+	if req, err := Parse([]string{"waitgone", "Carregando", "dentro=css=#lista"}); err != nil {
+		t.Fatalf("waitgone com escopo: %v", err)
+	} else if req.Args["dentro"] != "css=#lista" {
+		t.Errorf("args = %v", req.Args)
 	}
 }

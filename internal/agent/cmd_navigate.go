@@ -36,10 +36,21 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 	return ok(fmt.Sprintf("ok: %s\n%s", url, title))
 }
 
+// wait espera algo acontecer: um texto aparecer (ou sumir, no waitgone), ou um
+// alvo chegar a um estado.
+//
+// O estado existe porque esperar por texto não cobre o caso mais comum de app
+// real: o botão que só habilita depois. No laboratório v3, "Enviar candidatura"
+// libera ~1,1s depois de aparecer, sem mudar de texto — e sem isto a saída era
+// injetar setTimeout por eval.
+//
+// `dentro=` limita a busca de texto a um container. Sem escopo, texto que também
+// aparece num menu lateral sempre visível casa antes do que se espera: medido no
+// v3, a espera por um cargo voltou em 2ms, com o dropdown da busca ainda fechado.
 func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	want := req.String("text")
-	if want == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu %s <texto>", req.Cmd))
+	pedido := req.String("text")
+	if pedido == "" {
+		return protocol.Fail(fmt.Errorf("uso: bu %s <texto|alvo> [timeout] [dentro=<alvo>]", req.Cmd))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
@@ -49,17 +60,27 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 	if v := req.Int("timeout", 0); v > 0 {
 		timeout = time.Duration(v) * time.Millisecond
 	}
-	present := req.Cmd == "wait"
 	start := time.Now()
 	deadline := start.Add(timeout)
+
+	if estado := estadoPedido(req); estado != "" {
+		return a.esperaEstado(ctx, sess, sid, pedido, estado, start, deadline)
+	}
+
+	raiz, err := a.raizDaBusca(ctx, sess, sid, req.String("dentro"))
+	if err != nil {
+		return protocol.Fail(err)
+	}
+
+	present := req.Cmd == "wait"
 	for time.Now().Before(deadline) {
-		onde, err := localizaTexto(ctx, a.client(), sid, want)
+		onde, err := localizaTexto(ctx, a.client(), sid, pedido, raiz)
 		if err == nil && (onde != "") == present {
-			verb := "apareceu"
+			verbo := "apareceu"
 			if !present {
-				verb = "sumiu"
+				verbo = "sumiu"
 			}
-			msg := fmt.Sprintf("ok: %q %s em %dms", want, verb, time.Since(start).Milliseconds())
+			msg := fmt.Sprintf("ok: %q %s em %dms", pedido, verbo, time.Since(start).Milliseconds())
 			if onde != "" {
 				msg += " — em " + onde
 			}
@@ -68,9 +89,82 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 		time.Sleep(120 * time.Millisecond)
 	}
 	if present {
-		return protocol.Fail(fmt.Errorf("%q não apareceu em %s", want, timeout))
+		return protocol.Fail(fmt.Errorf("%q não apareceu em %s", pedido, timeout))
 	}
-	return protocol.Fail(fmt.Errorf("%q não sumiu em %s", want, timeout))
+	return protocol.Fail(fmt.Errorf("%q não sumiu em %s", pedido, timeout))
+}
+
+// estadoPedido devolve o estado pedido por flag, ou "" quando a espera é por
+// texto.
+func estadoPedido(req protocol.Request) string {
+	for _, e := range []string{"habilitado", "visivel", "sumiu"} {
+		if req.Bool(e, false) {
+			return e
+		}
+	}
+	return ""
+}
+
+// raizDaBusca devolve o objectId de onde a busca de texto começa: o container
+// pedido em `dentro=`, ou o documento.
+func (a *Agent) raizDaBusca(ctx context.Context, sess *browser.Session, sid, dentro string) (string, error) {
+	if dentro == "" {
+		return dom.EvalObject(ctx, a.client(), sid, "document")
+	}
+	t, _, err := a.resolve(ctx, sess, dentro)
+	if err != nil {
+		return "", fmt.Errorf("dentro=%s: %w", dentro, err)
+	}
+	return t.ObjectID, nil
+}
+
+// esperaEstado espera o alvo chegar ao estado pedido: "habilitado" (aceita
+// clique), "visivel" (existe e tem caixa na tela) ou "sumiu" (deixou de
+// resolver).
+func (a *Agent) esperaEstado(ctx context.Context, sess *browser.Session, sid, alvo, estado string, start, deadline time.Time) protocol.Response {
+	if estado == "sumiu" {
+		// Confere que ele existe antes: senão um alvo escrito errado "some" na
+		// hora, e a resposta daria como certo o que nunca houve.
+		if _, _, err := a.resolve(ctx, sess, alvo); err != nil {
+			return protocol.Fail(fmt.Errorf("%s não resolve, então não tem o que sumir: %w", alvo, err))
+		}
+	}
+	for time.Now().Before(deadline) {
+		if chegou, err := a.noEstado(ctx, sess, alvo, estado); err == nil && chegou {
+			return ok(fmt.Sprintf("ok: %s %s em %dms", alvo, verboDoEstado(estado), time.Since(start).Milliseconds()))
+		}
+		time.Sleep(120 * time.Millisecond)
+	}
+	return protocol.Fail(fmt.Errorf("%s não %s em %dms", alvo, verboDoEstado(estado), time.Since(start).Milliseconds()))
+}
+
+// noEstado diz se o alvo está no estado pedido.
+func (a *Agent) noEstado(ctx context.Context, sess *browser.Session, alvo, estado string) (bool, error) {
+	t, sid, err := a.resolve(ctx, sess, alvo)
+	if err != nil {
+		// Deixar de resolver é o que "sumiu" espera — e só isso.
+		return estado == "sumiu", nil
+	}
+	switch estado {
+	case "habilitado":
+		return browser.Habilitado(ctx, a.client(), sid, t.ObjectID), nil
+	case "visivel":
+		// Resolveu e tem caixa: é o que "visível" quer dizer aqui (se está no
+		// ponto, quem cuida disso é o clique, que recusa o contrário).
+		return true, nil
+	}
+	return false, nil
+}
+
+func verboDoEstado(estado string) string {
+	switch estado {
+	case "habilitado":
+		return "habilitou"
+	case "visivel":
+		return "ficou visível"
+	default:
+		return "sumiu"
+	}
 }
 
 func (a *Agent) history(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
@@ -107,14 +201,15 @@ func (a *Agent) reload(ctx context.Context, sess *browser.Session, req protocol.
 // voltar em 1ms. Aconteceu na missão 3 do laboratório, esperando "Barreiras" —
 // que a própria lista de missões já citava. Dizer onde achou deixa o agente
 // conferir se é o lugar que ele queria.
-// expressaoLocalizaTexto procura o texto na página e descreve onde achou.
+// localizadorDeTexto procura o texto a partir do objeto onde a função roda — o
+// documento, ou o escopo pedido em `dentro=` — e descreve onde achou.
 //
-// Varre o documento, os shadow roots abertos e os iframes de mesma origem: a
-// leitura já mostra o que está lá dentro, então a espera tem de enxergar o
-// mesmo — senão o agente vê o texto e não consegue esperar por ele.
-func expressaoLocalizaTexto(want string) string {
-	return fmt.Sprintf(`(() => {
-		const want = %s;
+// Varre shadow roots abertos e iframes de mesma origem: a leitura já mostra o
+// conteúdo dos dois, então a espera enxerga o mesmo — senão o agente vê o texto
+// e não consegue esperar por ele.
+func localizadorDeTexto(want string) string {
+	return `function () {
+		const want = ` + strconv.Quote(want) + `;
 		const raizes = [];
 		const anda = (raiz, emFrame) => {
 			raizes.push([raiz, emFrame]);
@@ -125,7 +220,7 @@ func expressaoLocalizaTexto(want string) string {
 				}
 			}
 		};
-		anda(document, false);
+		anda(this, false);
 		// O menor elemento que contém o texto é o candidato mais provável de ser
 		// "o" alvo — mesma lógica do desempate por sobra na mira por texto.
 		let melhor = null, sobra = Infinity, emFrame = false;
@@ -148,20 +243,28 @@ func expressaoLocalizaTexto(want string) string {
 			marca = '.' + melhor.className.trim().split(/\s+/)[0];
 		const trecho = (melhor.innerText || '').trim().slice(0, 60);
 		return melhor.tagName.toLowerCase() + marca + (emFrame ? ' (dentro de iframe)' : '') + ' — "' + trecho + '"';
-	})()`, strconv.Quote(want))
+	}`
 }
 
-func localizaTexto(ctx context.Context, client *cdp.Client, session, want string) (string, error) {
-	raw, err := dom.Eval(ctx, client, session, expressaoLocalizaTexto(want))
+// localizaTexto roda a busca a partir da raiz dada (o documento, de
+// Runtime.evaluate, ou o container de `dentro=`) e devolve a descrição de onde
+// achou — vazia quando não achou.
+func localizaTexto(ctx context.Context, client *cdp.Client, session, want, raiz string) (string, error) {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId":            raiz,
+		"functionDeclaration": localizadorDeTexto(want),
+		"returnByValue":       true,
+	}, session)
 	if err != nil {
 		return "", err
 	}
-	if len(raw) == 0 {
-		return "", nil
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
 	}
-	var onde string
-	if err := json.Unmarshal(raw, &onde); err != nil {
+	if err := json.Unmarshal(raw, &res); err != nil {
 		return "", err
 	}
-	return onde, nil
+	return res.Result.Value, nil
 }

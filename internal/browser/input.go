@@ -179,6 +179,48 @@ const jsEstaNoPonto = `
 		return false;
 	};`
 
+// jsRecusaDeAcao define `recusaAcao(el)`: o alvo recusa clique, e por quê?
+//
+// Uma definição só, usada pela conferência antes de clicar e pela espera por
+// "habilitado": as duas discordarem seria pior do que não perguntar.
+const jsRecusaDeAcao = `
+	const recusaAcao = (el) => {
+		if (el.matches && el.matches(':disabled')) {
+			return 'o alvo está desabilitado — espere ele habilitar antes de clicar';
+		}
+		if (el.getAttribute && el.getAttribute('aria-disabled') === 'true') {
+			return 'o alvo está com aria-disabled — espere ele habilitar antes de clicar';
+		}
+		if (getComputedStyle(el).pointerEvents === 'none') {
+			return 'o alvo está com pointer-events: none — o ponteiro não chega nele';
+		}
+		return '';
+	};`
+
+// Habilitado diz se o alvo aceita ação — o mesmo critério que o clique usa antes
+// de clicar, para quem precisa esperar por isso em vez de adivinhar um tempo.
+func Habilitado(ctx context.Context, client *cdp.Client, session, objectID string) bool {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {` + jsRecusaDeAcao + `
+			return recusaAcao(this) === '';
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return false
+	}
+	var res struct {
+		Result struct {
+			Value bool `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return false
+	}
+	return res.Result.Value
+}
+
 // recusaDeClique devolve por que o clique não deve ser enviado — ou "" se o
 // caminho está livre. A frase já vem com a saída, porque quem lê é o agente.
 //
@@ -188,22 +230,15 @@ const jsEstaNoPonto = `
 func recusaDeClique(ctx context.Context, client *cdp.Client, session, objectID string, x, y float64) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
-		"functionDeclaration": `function (px, py) {` + jsEstaNoPonto + `
+		"functionDeclaration": `function (px, py) {` + jsEstaNoPonto + jsRecusaDeAcao + `
 			const descreve = (el) => {
 				const dono = (el.closest && el.closest('[id], [class]')) || el;
 				const cls = typeof dono.className === 'string' && dono.className.trim()
 					? '.' + dono.className.trim().split(/\s+/).join('.') : '';
 				return (dono.tagName || '?').toLowerCase() + (dono.id ? '#' + dono.id : '') + cls;
 			};
-			if (this.matches && this.matches(':disabled')) {
-				return 'o alvo está desabilitado — espere ele habilitar antes de clicar';
-			}
-			if (this.getAttribute && this.getAttribute('aria-disabled') === 'true') {
-				return 'o alvo está com aria-disabled — espere ele habilitar antes de clicar';
-			}
-			if (getComputedStyle(this).pointerEvents === 'none') {
-				return 'o alvo está com pointer-events: none — o ponteiro não chega nele';
-			}
+			const recusa = recusaAcao(this);
+			if (recusa) return recusa;
 			let emFrame = false;
 			try { emFrame = window.top !== window; } catch (e) { emFrame = true; }
 			let cx = px, cy = py;
@@ -340,7 +375,7 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d / 2)
 	}
-	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": text}, session); err != nil {
+	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": normalizarQuebras(text)}, session); err != nil {
 		return "", err
 	}
 	return avisoDePreenchimento(text, valorDoCampo(ctx, client, session, t.ObjectID)), nil
@@ -362,7 +397,14 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	}, session); err != nil {
 		return "", err
 	}
-	for _, r := range text {
+	for _, r := range normalizarQuebras(text) {
+		if tecla := teclaPara(r); tecla != "" {
+			if err := Press(ctx, client, session, tecla); err != nil {
+				return "", err
+			}
+			time.Sleep(8 * time.Millisecond)
+			continue
+		}
 		s := string(r)
 		if _, err := client.Send(ctx, "Input.dispatchKeyEvent", map[string]any{
 			"type": "keyDown", "text": s,
@@ -377,6 +419,22 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		time.Sleep(8 * time.Millisecond)
 	}
 	return avisoDePreenchimento(text, valorDoCampo(ctx, client, session, t.ObjectID)), nil
+}
+
+// textoDaTecla é o que a tecla insere, quando insere.
+//
+// O CDP só insere com `text` no keyDown: mandar Enter sem ele dispara o handler
+// e não quebra a linha — medido no laboratório v3, "primeira" + Enter +
+// "segunda" virava "primeirasegunda". As teclas nomeadas que produzem espaço em
+// branco precisam do mesmo cuidado que as imprimíveis.
+func textoDaTecla(key string) string {
+	switch key {
+	case "Enter":
+		return "\r"
+	case "Tab":
+		return "\t"
+	}
+	return ""
 }
 
 // Press envia uma tecla/atalho (ex.: "Enter", "Control+A").
@@ -410,8 +468,11 @@ func Press(ctx context.Context, client *cdp.Client, session, combo string) error
 	for k, v := range base {
 		down[k] = v
 	}
-	// Caractere imprimível precisa de `text` para inserir.
-	if len(key) == 1 && modifiers == 0 {
+	// Caractere imprimível precisa de `text` para inserir — e as teclas que
+	// inserem espaço em branco também (Enter vira "\r", Tab vira "\t").
+	if t := textoDaTecla(key); t != "" {
+		down["text"] = t
+	} else if len(key) == 1 && modifiers == 0 {
 		down["text"] = key
 	}
 	if _, err := client.Send(ctx, "Input.dispatchKeyEvent", down, session); err != nil {

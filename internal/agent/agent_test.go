@@ -75,8 +75,8 @@ func TestSplitTokens(t *testing.T) {
 // a leitura mostra o conteúdo dos dois, e antes a espera não via nenhum deles:
 // `wait "Iframe zone"` e `wait "SHADOW-321"` estouravam o tempo embora o snap
 // mostrasse o texto. O teste prende as duas fronteiras.
-func TestExpressaoLocalizaTexto(t *testing.T) {
-	expr := expressaoLocalizaTexto("Iframe zone")
+func TestLocalizadorDeTexto(t *testing.T) {
+	expr := localizadorDeTexto("Iframe zone")
 	for _, querido := range []string{"shadowRoot", "contentDocument", "IFRAME", "dentro de iframe"} {
 		if !strings.Contains(expr, querido) {
 			t.Errorf("a varredura do wait não atravessa %q", querido)
@@ -84,6 +84,9 @@ func TestExpressaoLocalizaTexto(t *testing.T) {
 	}
 	if !strings.Contains(expr, strconv.Quote("Iframe zone")) {
 		t.Error("o texto procurado não entrou na expressão")
+	}
+	if !strings.Contains(expr, "anda(this, false)") {
+		t.Error("a varredura precisa começar no objeto onde roda, para o dentro= limitar a busca")
 	}
 }
 

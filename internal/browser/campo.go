@@ -90,6 +90,25 @@ func avisoDePreenchimento(enviado, valor string) string {
 	return ""
 }
 
+// normalizarQuebras troca CRLF por LF: o texto vem de onde vier (Windows, um
+// arquivo, o agente), e o campo não tem o que fazer com o `\r` sobrando.
+func normalizarQuebras(texto string) string {
+	return strings.ReplaceAll(texto, "\r\n", "\n")
+}
+
+// teclaPara devolve a tecla nomeada que representa o caractere — ou "", quando o
+// caractere vai como texto mesmo.
+//
+// É só a quebra de linha, e ela importa: mandar `\n` como texto não insere nada,
+// então o caractere sumia em silêncio na digitação caractere a caractere —
+// medido no laboratório v3, `alfa\nbeta` virava `alfabeta`.
+func teclaPara(r rune) string {
+	if r == '\n' || r == '\r' {
+		return "Enter"
+	}
+	return ""
+}
+
 // valorDoCampo lê o que o campo tem depois do preenchimento.
 func valorDoCampo(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
