@@ -1,5 +1,5 @@
 // Cliente do daemon: garante que ele está de pé e envia um pedido.
-package cli
+package daemonclient
 
 import (
 	"encoding/json"

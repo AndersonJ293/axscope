@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/ajunior/browser-use/internal/dom"
 )
 
 func main() {
@@ -199,26 +200,19 @@ func createPage(ctx context.Context, c *cdp.Client, browserContextID, url string
 	return res.TargetID, att.SessionID
 }
 
+// evalString imprime o valor de uma expressão. Usa o mesmo acesso a runtime do
+// driver, para não manter uma segunda avaliação só no diagnóstico.
 func evalString(ctx context.Context, c *cdp.Client, session, expr string) string {
-	raw, err := c.SendTimeout(ctx, "Runtime.evaluate",
-		map[string]any{"expression": expr, "returnByValue": true}, session, 8*time.Second)
+	raw, err := dom.Eval(ctx, c, session, expr)
 	if err != nil {
 		return "ERRO: " + err.Error()
 	}
-	var res struct {
-		Result struct {
-			Value any `json:"value"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return "ERRO json"
-	}
-	if res.Result.Value == nil {
+	if len(raw) == 0 || string(raw) == "null" {
 		return "null"
 	}
-	if s, ok := res.Result.Value.(string); ok {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
 		return s
 	}
-	b, _ := json.Marshal(res.Result.Value)
-	return string(b)
+	return string(raw)
 }

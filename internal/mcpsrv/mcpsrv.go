@@ -13,8 +13,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ajunior/browser-use/internal/cli"
 	"github.com/ajunior/browser-use/internal/command"
+	"github.com/ajunior/browser-use/internal/daemonclient"
 	"github.com/ajunior/browser-use/internal/protocol"
 )
 
@@ -126,7 +126,7 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 	if args == nil {
 		args = map[string]any{}
 	}
-	resp, err := cli.Send(protocol.Request{Cmd: name, Args: args})
+	resp, err := daemonclient.Send(protocol.Request{Cmd: name, Args: args})
 	if err != nil {
 		return toolText("erro: "+err.Error(), true)
 	}

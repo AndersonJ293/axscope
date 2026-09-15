@@ -19,9 +19,9 @@ import (
 	"syscall"
 
 	"github.com/ajunior/browser-use/internal/browser"
-	"github.com/ajunior/browser-use/internal/cli"
 	"github.com/ajunior/browser-use/internal/command"
 	"github.com/ajunior/browser-use/internal/daemon"
+	"github.com/ajunior/browser-use/internal/daemonclient"
 	"github.com/ajunior/browser-use/internal/installer"
 	"github.com/ajunior/browser-use/internal/mcpsrv"
 	"github.com/ajunior/browser-use/internal/paths"
@@ -130,7 +130,7 @@ func run() error {
 		delete(req.Args, "path")
 	}
 
-	resp, err := cli.Send(req)
+	resp, err := daemonclient.Send(req)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func runStopAll() error {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 			continue
 		}
-		if _, err := cli.SendTo(socketPath, protocol.Request{Cmd: "stop"}); err == nil {
+		if _, err := daemonclient.SendTo(socketPath, protocol.Request{Cmd: "stop"}); err == nil {
 			fmt.Printf("encerrei a sessão %q\n", session)
 			stopped++
 		}
