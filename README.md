@@ -408,6 +408,12 @@ internal/installer/ download do Chrome for Testing
 - `hover` entra de fora para dentro de propósito: mover o ponteiro para onde ele
   já está não gera `pointerenter`, e a ação responderia `ok` sem a página ver
   nada.
+- **`wait` e `text=` casam por texto parcial — e a página costuma repetir a
+  palavra.** Na missão 16 do laboratório, `wait "AGORA"` voltou em 3 ms casando
+  com a *descrição* da própria tarefa ("…clique quando ele disser “AGORA”"), não
+  com o botão que dizia AGORA. A resposta diz onde achou (`em p.desc`), que é
+  como se percebe, e a saída é esperar um texto que só exista no alvo
+  (`waitgone "Ainda não"`).
 - `upload` por `<input type=file>` manda o **caminho**, que quem lê é o
   navegador — vale para navegador e daemon na mesma máquina (o caso da
   extensão). Numa dropzone o conteúdo viaja em bytes, então o caminho não

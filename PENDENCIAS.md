@@ -157,11 +157,13 @@ component não muda de alvo.
 
 ---
 
-## Laboratório: missões pendentes
+## Laboratório: missões
 
-Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15** (placar em 10/16
-porque o botão *Resetar estado* apaga as concluídas — é o desenho dele).
+Todas as **16** feitas. O placar do laboratório não reflete isso porque o botão
+*Resetar estado* apaga as concluídas a cada uso — é o desenho dele.
 
-| Missão | Assunto | Observação |
-|---|---|---|
-| 16 | elemento mutante (clicar quando disser AGORA) | depende de `wait` + clique; deve passar |
+As que pediram mudança na ferramenta estão nos itens acima, com o que ensinaram:
+upload (11 → item 4), Shadow DOM (12 → item 5), iframe (13 → item 3) e clique em
+alvo que recusa ação (15 → README, na seção *Uso*). Canvas (14) e
+elemento mutante (16) passaram com o que já existia — nos dois o trabalho foi
+escolher o ponto e o momento, não mexer na ferramenta.
