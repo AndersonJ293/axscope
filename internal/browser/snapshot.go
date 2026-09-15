@@ -142,9 +142,6 @@ type snapBuilder struct {
 
 // TakeSnapshot lê a tela da sessão (aba) informada.
 func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts SnapshotOptions) (*Snapshot, error) {
-	if opts.MaxNodes <= 0 {
-		opts.MaxNodes = 1500
-	}
 	var tree struct {
 		Nodes []axNode `json:"nodes"`
 	}
@@ -155,8 +152,22 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 		return nil, fmt.Errorf("árvore de acessibilidade vazia")
 	}
 
+	snap := montarTexto(tree.Nodes, opts)
+	snap.Title, _ = evalString(ctx, client, session, "document.title")
+	snap.URL, _ = evalString(ctx, client, session, "location.href")
+	return snap, nil
+}
+
+// montarTexto é a parte pura da leitura: transforma a árvore de acessibilidade
+// crua em linhas e refs, sem tocar CDP. Fica separada de TakeSnapshot porque é
+// onde mora todo o corte de ruído — a lógica mais frágil do projeto — e é o que
+// dá para testar com fixture.
+func montarTexto(nodes []axNode, opts SnapshotOptions) *Snapshot {
+	if opts.MaxNodes <= 0 {
+		opts.MaxNodes = 1500
+	}
 	b := &snapBuilder{
-		nodes:    make(map[string]*axNode, len(tree.Nodes)),
+		nodes:    make(map[string]*axNode, len(nodes)),
 		children: make(map[string][]string),
 		refs:     make(map[string]int),
 		consumed: make(map[string]bool),
@@ -166,35 +177,32 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 		gen:      opts.Gen,
 	}
 	var root *axNode
-	for i := range tree.Nodes {
-		n := &tree.Nodes[i]
+	for i := range nodes {
+		n := &nodes[i]
 		b.nodes[n.NodeID] = n
 		if n.ParentID == "" {
 			root = n
 		}
 	}
-	for _, n := range tree.Nodes {
+	for _, n := range nodes {
 		if n.ParentID != "" {
 			b.children[n.ParentID] = append(b.children[n.ParentID], n.NodeID)
 		}
 	}
 	if root == nil {
-		root = &tree.Nodes[0]
+		root = &nodes[0]
 	}
 
 	for _, child := range b.children[root.NodeID] {
 		b.walk(child, 0, "")
 	}
 
-	snap := &Snapshot{
+	return &Snapshot{
 		Text:      strings.Join(b.out, "\n"),
 		Refs:      b.refs,
 		Count:     len(b.out),
 		Truncated: b.truncated,
 	}
-	snap.Title, _ = evalString(ctx, client, session, "document.title")
-	snap.URL, _ = evalString(ctx, client, session, "location.href")
-	return snap, nil
 }
 
 func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
