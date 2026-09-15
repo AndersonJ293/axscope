@@ -230,7 +230,10 @@ func pontoFora(ctx context.Context, client *cdp.Client, session string, r dom.Re
 }
 
 // Fill substitui o conteúdo do campo (foco + seleção + insertText).
-func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) error {
+func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
+	if ok, motivo := classificaCampo(descreveCampo(ctx, client, session, t.ObjectID)); !ok {
+		return "", fmt.Errorf("%s", motivo)
+	}
 	cx, cy := t.ondeAgir()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
@@ -251,17 +254,22 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		}`,
 		"returnByValue": true,
 	}, session); err != nil {
-		return err
+		return "", err
 	}
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d / 2)
 	}
-	_, err := client.Send(ctx, "Input.insertText", map[string]any{"text": text}, session)
-	return err
+	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": text}, session); err != nil {
+		return "", err
+	}
+	return avisoDePreenchimento(text, valorDoCampo(ctx, client, session, t.ObjectID)), nil
 }
 
 // Type digita caractere a caractere (dispara handlers de teclado).
-func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) error {
+func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
+	if ok, motivo := classificaCampo(descreveCampo(ctx, client, session, t.ObjectID)); !ok {
+		return "", fmt.Errorf("%s", motivo)
+	}
 	cx, cy := t.ondeAgir()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
@@ -271,23 +279,23 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		"functionDeclaration": `function () { if (this.focus) this.focus(); return true; }`,
 		"returnByValue":       true,
 	}, session); err != nil {
-		return err
+		return "", err
 	}
 	for _, r := range text {
 		s := string(r)
 		if _, err := client.Send(ctx, "Input.dispatchKeyEvent", map[string]any{
 			"type": "keyDown", "text": s,
 		}, session); err != nil {
-			return err
+			return "", err
 		}
 		if _, err := client.Send(ctx, "Input.dispatchKeyEvent", map[string]any{
 			"type": "keyUp",
 		}, session); err != nil {
-			return err
+			return "", err
 		}
 		time.Sleep(8 * time.Millisecond)
 	}
-	return nil
+	return avisoDePreenchimento(text, valorDoCampo(ctx, client, session, t.ObjectID)), nil
 }
 
 // Press envia uma tecla/atalho (ex.: "Enter", "Control+A").

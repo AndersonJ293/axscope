@@ -98,15 +98,19 @@ func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protoco
 		return protocol.Fail(err)
 	}
 	before := a.errCount(sess, sid)
+	var aviso string
 	if req.Cmd == "fill" {
-		err = browser.Fill(ctx, a.client(), sid, t, text, sess.Presenter)
+		aviso, err = browser.Fill(ctx, a.client(), sid, t, text, sess.Presenter)
 	} else {
-		err = browser.Type(ctx, a.client(), sid, t, text, sess.Presenter)
+		aviso, err = browser.Type(ctx, a.client(), sid, t, text, sess.Presenter)
 	}
 	if err != nil {
-		return protocol.Fail(err)
+		return protocol.Fail(falhaDeAcao(req.Cmd, target, err))
 	}
 	label := fmt.Sprintf("%s %s = %s", req.Cmd, target, strconv.Quote(text))
+	if aviso != "" {
+		label += " (" + aviso + ")"
+	}
 	return ok(a.finish(ctx, sess, sid, label, before))
 }
 
