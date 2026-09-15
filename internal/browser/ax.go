@@ -76,6 +76,24 @@ var structuralRoles = map[string]bool{
 	"toolbar": true, "radiogroup": true,
 }
 
+// textuais são papéis que somem para dentro de uma linha de tabela: só carregam
+// texto. Papel que não está aqui mantém a linha expandida — achatar é o que pode
+// esconder coisa, então o desconhecido não é achatado.
+var textuais = map[string]bool{
+	"": true, "none": true, "generic": true, "paragraph": true,
+	"strong": true, "emphasis": true, "code": true, "term": true,
+	"definition": true, "blockquote": true, "note": true,
+	// A célula entra porque é ela o invólucro do texto dentro da linha: sem
+	// isso a linha nunca poderia ser achatada — a conferência é feita na célula.
+	"cell": true, "gridcell": true, "columnheader": true, "rowheader": true,
+}
+
+// celulasPapel são os papéis que a linha de tabela precisa ter como filhos para
+// caber numa linha só.
+var celulasPapel = map[string]bool{
+	"cell": true, "gridcell": true, "columnheader": true, "rowheader": true,
+}
+
 type axNode struct {
 	NodeID     string   `json:"nodeId"`
 	Ignored    bool     `json:"ignored"`

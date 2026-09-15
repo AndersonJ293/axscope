@@ -123,6 +123,62 @@ func TestMontarTexto_GeracaoNaRef(t *testing.T) {
 	}
 }
 
+// Linha de tabela cujo conteúdo é só texto vira uma linha só; com alvo dentro,
+// ela fica como sempre foi — uma linha por célula, que é o que carrega a ref.
+//
+// O caso com imagem cobre o outro lado: papel que carrega estrutura própria não
+// é achatado, senão a leitura perderia que existe uma imagem ali.
+func TestMontarTexto_AchataLinhaDeTabela(t *testing.T) {
+	nodes := []axNode{
+		ax("root", "", "RootWebArea", "", 0),
+		ax("tab", "root", "table", "", 0),
+
+		ax("r1", "tab", "row", "", 0),
+		ax("c11", "r1", "cell", "1", 0),
+		ax("c12", "r1", "cell", "Salvador", 0),
+
+		ax("r2", "tab", "row", "", 0),
+		ax("c21", "r2", "cell", "", 0),
+		ax("c21t", "c21", "StaticText", "2", 0),
+		ax("c22", "r2", "cell", "", 0),
+		ax("c22a", "c22", "link", "Recife", 9),
+
+		ax("r3", "tab", "row", "", 0),
+		ax("c31", "r3", "cell", "", 0),
+		ax("c31i", "c31", "img", "Capa", 0),
+	}
+
+	snap := montarTexto(nodes, SnapshotOptions{})
+	esperado := `- table
+  - row: 1 · Salvador
+  - row
+    - cell: 2
+    - cell
+      - link "Recife" [ref=e1]
+  - row
+    - cell
+      - img "Capa"`
+	if snap.Text != esperado {
+		t.Errorf("texto divergiu:\n--- obtido ---\n%s\n--- esperado ---\n%s", snap.Text, esperado)
+	}
+}
+
+// Em RefsOnly a linha achatada não aparece: ela não tem alvo, e a promessa do
+// modo é listar só o que dá para acionar.
+func TestMontarTexto_AchatamentoNaoVazaNoRefsOnly(t *testing.T) {
+	nodes := []axNode{
+		ax("root", "", "RootWebArea", "", 0),
+		ax("tab", "root", "table", "", 0),
+		ax("r1", "tab", "row", "", 0),
+		ax("c11", "r1", "cell", "1", 0),
+		ax("c12", "r1", "cell", "Salvador", 0),
+	}
+	snap := montarTexto(nodes, SnapshotOptions{RefsOnly: true})
+	if snap.Text != "" {
+		t.Errorf("texto = %q, esperado vazio", snap.Text)
+	}
+}
+
 // RefsOnly lista só os alvos acionáveis, sem texto solto.
 func TestMontarTexto_RefsOnly(t *testing.T) {
 	nodes := []axNode{

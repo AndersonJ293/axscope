@@ -146,6 +146,18 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		}
 	}
 
+	// Linha de tabela cujo conteúdo é só texto cabe numa linha só. Tabela é
+	// conteúdo, não ruído: o que pesa é o formato — uma linha por célula custa
+	// cinco linhas por linha de dados (medido: 305 das 508 linhas da leitura
+	// numa tabela de 60 linhas). Com alvo dentro, a expansão fica, porque é ela
+	// que carrega a ref.
+	if role == "row" && name == "" && !b.refsOnly {
+		if compacta, ok := b.linhaDeRow(nodeID); ok {
+			b.emit(depth, "- row: "+compacta)
+			return
+		}
+	}
+
 	if role == "StaticText" || role == "InlineTextBox" {
 		if parentName == "" && !b.refsOnly {
 			text := norm(n.Name.str())
@@ -205,8 +217,6 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		}
 	}
 
-	// Invólucro anônimo (sem nome, sem texto próprio, sem alvo): não vira linha
-	// — some, e os filhos sobem no lugar.
 	// Invólucro anônimo (sem nome, sem texto próprio, sem alvo): não vira linha
 	// — some, e os filhos sobem no lugar.
 	if name == "" && !hadText && ref == "" && anonRoles[role] {
@@ -379,4 +389,72 @@ func (b *snapBuilder) collectText(nodeID string) string {
 		}
 	}
 	return truncate(strings.Join(parts, " "), 220)
+}
+
+// separadorCelula separa as células de uma linha de tabela achatada.
+const separadorCelula = " · "
+
+// linhaDeRow tenta resumir uma linha de tabela numa linha só, devolvendo `false`
+// quando não dá — e aí a leitura sai como sempre saiu, uma linha por célula.
+//
+// A conferência vem antes da coleta de propósito: juntar o texto marca os nós
+// como consumidos, e isso não tem volta.
+func (b *snapBuilder) linhaDeRow(nodeID string) (string, bool) {
+	var celulas []string
+	for _, cid := range b.children[nodeID] {
+		c := b.nodes[cid]
+		if c == nil || c.Ignored {
+			continue
+		}
+		if !celulasPapel[c.Role.str()] {
+			return "", false
+		}
+		if !b.podeAchatar(cid) {
+			return "", false
+		}
+		celulas = append(celulas, cid)
+	}
+	if len(celulas) == 0 {
+		return "", false
+	}
+
+	var vals []string
+	for _, cid := range celulas {
+		c := b.nodes[cid]
+		t := norm(c.Name.str())
+		if t == "" {
+			t = b.collectText(cid)
+		}
+		// O separador não pode vir de dentro: viraria uma célula a mais na
+		// leitura de quem lê.
+		if strings.Contains(t, separadorCelula) {
+			return "", false
+		}
+		vals = append(vals, t)
+	}
+	return strings.Join(vals, separadorCelula), true
+}
+
+// podeAchatar diz se o nó pode virar texto dentro de outra linha sem perder
+// nada: sem alvo (senão a ref some), sem propriedade que a leitura mostra
+// (`[checked]`, `[level=2]`…), e sem papel que carregue estrutura própria —
+// imagem, lista, tabela aninhada continuam valendo linha.
+func (b *snapBuilder) podeAchatar(nodeID string) bool {
+	n := b.nodes[nodeID]
+	if n == nil || n.Ignored || skipRoles[n.Role.str()] {
+		return true
+	}
+	role := n.Role.str()
+	if b.eligibleRef(n) || b.props(n) != "" {
+		return false
+	}
+	if role != "StaticText" && role != "InlineTextBox" && !textuais[role] {
+		return false
+	}
+	for _, c := range b.children[nodeID] {
+		if !b.podeAchatar(c) {
+			return false
+		}
+	}
+	return true
 }

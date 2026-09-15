@@ -37,21 +37,27 @@ momento em que importa (depois de rolar), sem custo por leitura.
 
 ---
 
-## 2. Linha de tabela custa 4 linhas de leitura
+## 2. Linha de tabela custava 4 linhas de leitura — resolvido
 
-**Medido** (missão 7, tabela de 60 linhas): **240 das 489 linhas** da leitura —
-49% — e 12,8 KB. Cada linha da tabela vira uma linha por célula.
+**Medido antes** (tabela de 60 linhas do laboratório): **305 das 508 linhas** da
+leitura, 60%. Cada linha de dados custava cinco: a linha e as quatro células.
 
-**A proposta:** linha cujas células sejam **só texto** vira uma linha só —
-`- row: 30, Pessoa 30, Barreiras, 100`. Linha com link/botão dentro continua
-expandida, porque aí há alvo a preservar. Seria 240 → 60 linhas, **−37% da
-leitura inteira, sem perder valor nenhum**.
+**Feito:** linha cujas células sejam **só texto** vira uma linha —
+`- row: 1 · Pessoa 01 · Salvador · 37`. A regra de segurança é a que separa
+"cabe" de "some": a linha só achata se **nenhum** descendente puder receber ref,
+não tiver propriedade que a leitura mostra (`[checked]`, `[level=2]`…) e não
+carregar estrutura própria — imagem, lista ou tabela aninhada continuam valendo
+linha. Papel desconhecido também não achata: o pior erro aqui é esconder alguma
+coisa, e o comportamento antigo é o padrão.
 
-**Por que não foi feito:** muda o formato do artefato central e eu só tinha
-**um** caso medido. A lista de infinite scroll, que eu supunha igual, custa
-**~1,15 linha por item** — ou seja, o peso é específico de tabela, não de
-repetição. Com dois casos na mão dá para decidir com dado; a suíte de testes do
-snapshot (criada hoje) é a rede para mexer nisso.
+**Medido depois:** a leitura inteira foi de **508 → 264 linhas** (−48%), e as
+linhas de tabela (linha + células), de **305 → 61**. O `--refs` não mostra linha
+achatada (ela não tem alvo), e
+mirar no cabeçalho por `text=Score ↕` continua funcionando — a ação anda no DOM,
+não na leitura.
+
+**O separador:** ` · `. Se o texto de uma célula já contiver o separador, a linha
+não achata — senão a leitura inventaria uma coluna.
 
 ---
 
