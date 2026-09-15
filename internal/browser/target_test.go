@@ -48,3 +48,33 @@ func TestExpressoesDeAlvoAtravessamShadowRoot(t *testing.T) {
 		t.Error("expressaoCSS não cai na sombra quando o claro não acha")
 	}
 }
+
+// Regressão (laboratório v2): o alvo de texto sem área visível rendia só "sem
+// área visível" — e quem lê ficava sem saber que a causa era o menu estar
+// fechado, nem quantos candidatos existiam. Seis "Ocultar publicação" casavam e
+// nenhum estava à vista.
+func TestMensagemTextoEscondido(t *testing.T) {
+	got := mensagemTextoEscondido("Ocultar publicação", 6)
+	for _, querido := range []string{"6", `"Ocultar publicação"`, "escondidos", "abra o que os revela"} {
+		if !strings.Contains(got, querido) {
+			t.Errorf("mensagem %q não diz %q", got, querido)
+		}
+	}
+
+	// A preferência por visível precisa estar na busca, e depois do nome exato.
+	expr := expressaoTexto("Ocultar publicação")
+	if !strings.Contains(expr, "oculto(el)") {
+		t.Error("expressaoTexto não prefere candidato à vista")
+	}
+	if strings.Index(expr, "exato ? 0 : 1, oculto(el)") < 0 {
+		t.Error("a ordem mudou: exato tem de vir antes de à vista")
+	}
+
+	// textoPedido só reconhece a forma text=.
+	if textoPedido("css=#x") != "" || textoPedido("e12") != "" {
+		t.Error("textoPedido só vale para text=")
+	}
+	if textoPedido("text= Aguardando ") != "Aguardando" {
+		t.Errorf("textoPedido = %q", textoPedido("text= Aguardando "))
+	}
+}

@@ -139,6 +139,11 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		}
 	}
 	if err != nil {
+		if want := textoPedido(spec); want != "" {
+			if msg := textoEscondido(ctx, client, session, want); msg != "" {
+				return nil, fmt.Errorf("%s", msg)
+			}
+		}
 		return nil, fmt.Errorf("alvo %q sem área visível: %w", spec, err)
 	}
 	t.ObjectID = objectID
@@ -161,6 +166,34 @@ const sobASombra = `
 		return acc;
 	};`
 
+// jsCandidatos lista os elementos que podem ser alvo de texto.
+const jsCandidatos = `
+	const sel = 'a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div';`
+
+// jsTextoDeElemento diz o texto/nome de um elemento e se ele está à vista.
+//
+// Compartilhado entre a busca por texto e a contagem de candidatos, para as duas
+// concordarem — contar por um critério e escolher por outro seria pior do que não
+// contar.
+const jsTextoDeElemento = `
+	const texto = el => {
+		const aria = (el.getAttribute('aria-label') || '').trim();
+		if (aria) return aria;
+		if (el.labels && el.labels.length) {
+			const rotulo = (el.labels[0].innerText || '').trim();
+			if (rotulo) return rotulo;
+		}
+		const visivel = (el.innerText || '').trim();
+		if (visivel) return visivel;
+		const dica = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
+		if (dica) return dica;
+		return (el.value || '').trim();
+	};
+	const oculto = el => {
+		if (el.getClientRects().length === 0) return 1;
+		return getComputedStyle(el).visibility === 'hidden' ? 1 : 0;
+	};`
+
 // expressaoTexto monta a busca por texto visível/nome acessível.
 //
 // Separada de ResolveTarget porque é testável — e o teste existe para fixar que
@@ -168,34 +201,20 @@ const sobASombra = `
 func expressaoTexto(want string) string {
 	return fmt.Sprintf(`(() => {
 		const want = %s;
-		const sel = 'a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div';
+		%s
+		%s
 		%s
 		const nodes = sobASombra(document, sel, []);
 		// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
 		// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
 		const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
-		// O nome acessível manda: é o que a árvore mostra e por onde o agente
-		// lê a tela. Sem o placeholder e o rótulo associado aqui, mirar por
-		// texto discordava do snap: o campo aparecia como "CAPTCHA" na
-		// leitura e era inalcançável por esse nome.
-		const texto = el => {
-			const aria = (el.getAttribute('aria-label') || '').trim();
-			if (aria) return aria;
-			if (el.labels && el.labels.length) {
-				const rotulo = (el.labels[0].innerText || '').trim();
-				if (rotulo) return rotulo;
-			}
-			const visivel = (el.innerText || '').trim();
-			if (visivel) return visivel;
-			const dica = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
-			if (dica) return dica;
-			return (el.value || '').trim();
-		};
-		// Ordem de preferência: nome exato antes de parcial; depois o mais
-		// justo (menos sobra de texto); acionável só desempata. Sem o "mais
-		// justo", o primeiro que contém o texto é sempre o container da
-		// página inteira — e o alvo vira a tela toda.
-		const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3];
+		// Ordem de preferência: nome exato, depois à vista, depois o mais justo
+		// (menos sobra de texto); acionável só desempata. O "à vista" vem cedo
+		// de propósito: um item de menu fechado casando antes do visível é o que
+		// fazia o clique por texto mirar num botão de outro menu. E vem depois do
+		// exato porque mirar por texto é mirar pelo nome: nome exato escondido
+		// ainda ganha de nome parcial visível.
+		const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4];
 		// Nome que colide com o cromo da página é armadilha: o menu "⋯" do
 		// LinkedIn se chama "Resources", igual ao "Resources" do topo. Fora
 		// do cromo ganha o desempate.
@@ -206,14 +225,31 @@ func expressaoTexto(want string) string {
 			if (!t) continue;
 			const exato = t === want;
 			if (!exato && !t.includes(want)) continue;
-			const atual = [exato ? 0 : 1, t.length - want.length, cromo(el), acionavel(el) ? 0 : 1];
+			const atual = [exato ? 0 : 1, oculto(el), t.length - want.length, cromo(el), acionavel(el) ? 0 : 1];
 			if (chave === null || melhorQue(atual, chave) < 0) {
 				escolhido = el;
 				chave = atual;
 			}
 		}
 		return escolhido;
-	})()`, strconv.Quote(want), sobASombra)
+	})()`, strconv.Quote(want), sobASombra, jsCandidatos, jsTextoDeElemento)
+}
+
+// expressaoContagem conta quantos elementos casam com o texto e quantos estão à
+// vista. É o que deixa a recusa dizer por que não deu, em vez de só dizer que não
+// deu — quem lê fica sabendo se precisa abrir um menu ou um modal.
+func expressaoContagem(want string) string {
+	return fmt.Sprintf(`(() => {
+		const want = %s;
+		%s
+		%s
+		%s
+		const todos = sobASombra(document, sel, []).filter(el => {
+			const t = texto(el);
+			return t !== '' && (t === want || t.includes(want));
+		});
+		return { total: todos.length, visiveis: todos.filter(el => !oculto(el)).length };
+	})()`, strconv.Quote(want), sobASombra, jsCandidatos, jsTextoDeElemento)
 }
 
 // expressaoCSS monta a busca por seletor CSS.
@@ -306,6 +342,40 @@ const scrollScript = `function (intervalo) {
 
 // ondeAgir devolve o ponto exato onde a ação acontece: o ponto pedido, quando o
 // alvo veio de `pos=x,y`; senão o centro do elemento.
+// textoPedido devolve o texto de um alvo `text=`, ou "" para as outras formas.
+func textoPedido(spec string) string {
+	if !strings.HasPrefix(spec, "text=") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(spec, "text="))
+}
+
+// textoEscondido explica por que um alvo de texto não tem área visível, quando a
+// causa é todos os candidatos estarem escondidos — o caso do menu fechado, que
+// antes só rendia "sem área visível" e deixava quem lê sem próximo passo.
+func textoEscondido(ctx context.Context, client *cdp.Client, session, want string) string {
+	raw, err := dom.Eval(ctx, client, session, expressaoContagem(want))
+	if err != nil {
+		return ""
+	}
+	var res struct {
+		Total    int `json:"total"`
+		Visiveis int `json:"visiveis"`
+	}
+	if json.Unmarshal(raw, &res) != nil || res.Total == 0 || res.Visiveis > 0 {
+		return ""
+	}
+	return mensagemTextoEscondido(want, res.Total)
+}
+
+// mensagemTextoEscondido é a frase da recusa — separada para o teste prender o
+// que ela precisa dizer: quantos são, e o próximo passo.
+func mensagemTextoEscondido(want string, total int) string {
+	return fmt.Sprintf(
+		"achei %d elementos com texto %q e todos estão escondidos — abra o que os revela (um menu, um painel) e tente de novo",
+		total, want)
+}
+
 func (t *Target) ondeAgir() (float64, float64) {
 	if t.Ponto != nil {
 		return t.Ponto.X, t.Ponto.Y
