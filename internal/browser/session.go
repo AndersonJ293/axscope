@@ -529,7 +529,7 @@ func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Du
 		return fmt.Errorf("navegação falhou: %s", res.ErrorText)
 	}
 	_ = s.WaitForLoad(ctx, sid, timeout)
-	s.Settle(ctx, sid, 300*time.Millisecond, timeout)
+	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
 
@@ -553,7 +553,7 @@ func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeou
 		return err
 	}
 	_ = s.WaitForLoad(ctx, sid, timeout)
-	s.Settle(ctx, sid, 300*time.Millisecond, timeout)
+	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
 
@@ -563,7 +563,7 @@ func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration)
 		return err
 	}
 	_ = s.WaitForLoad(ctx, sid, timeout)
-	s.Settle(ctx, sid, 300*time.Millisecond, timeout)
+	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
 
@@ -590,9 +590,19 @@ func (s *Session) WaitForLoad(ctx context.Context, sid string, timeout time.Dura
 	return fmt.Errorf("timeout esperando a página carregar")
 }
 
-// Settle espera a rede sossegar: sem requisições em voo por `idle`.
-func (s *Session) Settle(ctx context.Context, sid string, idle, timeout time.Duration) {
-	deadline := time.Now().Add(timeout)
+// settleCap é o teto da espera por sossego (ver Settle).
+//
+// Navegação e ação têm bolsas diferentes (45s / 8s), mas nenhuma delas é uma
+// espera por sossego: é o tempo máximo para a página responder. Num app que
+// nunca fica quieto — polling, websocket, telemetria — "sossegar" nunca chega,
+// e usar a bolsa inteira aqui é só tempo perdido em toda ação.
+const settleCap = 1500 * time.Millisecond
+
+// Settle espera a rede sossegar: sem requisições em voo por `idle`, ou até
+// settleCap. Quem precisa de mais usa `wait` (por texto), que é o critério
+// confiável.
+func (s *Session) Settle(ctx context.Context, sid string, idle time.Duration) {
+	deadline := time.Now().Add(settleCap)
 	for time.Now().Before(deadline) {
 		s.mu.Lock()
 		inflight := len(s.inflight[sid])

@@ -20,9 +20,8 @@ import (
 )
 
 const (
-	actionIdle    = 300 * time.Millisecond
-	actionTimeout = 8 * time.Second
-	navTimeout    = 45 * time.Second
+	actionIdle = 300 * time.Millisecond
+	navTimeout = 45 * time.Second
 )
 
 // Agent mantém o browser e o estado entre comandos.
@@ -361,7 +360,7 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 
 // finish resume o resultado de uma ação e anexa avisos de console.
 func (a *Agent) finish(ctx context.Context, sess *browser.Session, sid, label string, errCountBefore int) string {
-	sess.Settle(ctx, sid, actionIdle, actionTimeout)
+	sess.Settle(ctx, sid, actionIdle)
 	sess.UpdateHUD(ctx, label)
 	var b strings.Builder
 	fmt.Fprintf(&b, "ok: %s", label)
@@ -537,7 +536,7 @@ func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.
 	if err := browser.Scroll(ctx, a.client(), sid, 0, dy); err != nil {
 		return protocol.Fail(err)
 	}
-	sess.Settle(ctx, sid, actionIdle, actionTimeout)
+	sess.Settle(ctx, sid, actionIdle)
 	sess.UpdateHUD(ctx, fmt.Sprintf("scroll %.0f", dy))
 	return ok(fmt.Sprintf("ok: rolei %.0f", dy))
 }
