@@ -1,5 +1,6 @@
-// Ações: agir por identidade (ref/css/texto), com cursor renderizado, auto-scroll
-// e espera de convergência. Nada de coordenada como primeira opção.
+// Resolução de alvo: ref, seletor CSS, texto visível ou posição viram um alvo
+// com geometria na tela — trazido ao alcance com rolagem visível, para quem
+// olha acompanhar em vez de a página pular.
 package browser
 
 import (
@@ -8,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ajunior/browser-use/internal/cdp"
 	"github.com/ajunior/browser-use/internal/dom"
@@ -20,22 +20,6 @@ type Target struct {
 	BackendNodeID int
 	Rect          dom.Rect
 	Description   string
-}
-
-func visualDelay() time.Duration {
-	if v := cursorDelayMs(); v > 0 {
-		return time.Duration(v) * time.Millisecond
-	}
-	return 0
-}
-
-// cursorDelayMs lê BROWSER_USE_CURSOR_DELAY (ms). Default 160.
-func cursorDelayMs() int {
-	raw := envInt("BROWSER_USE_CURSOR_DELAY", 160)
-	if raw < 0 {
-		return 0
-	}
-	return raw
 }
 
 // ResolveTarget resolve uma referência em um alvo com geometria.

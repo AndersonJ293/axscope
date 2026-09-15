@@ -13,6 +13,22 @@ import (
 	"github.com/ajunior/browser-use/internal/cdp"
 )
 
+func visualDelay() time.Duration {
+	if v := cursorDelayMs(); v > 0 {
+		return time.Duration(v) * time.Millisecond
+	}
+	return 0
+}
+
+// cursorDelayMs lê BROWSER_USE_CURSOR_DELAY (ms). Default 160.
+func cursorDelayMs() int {
+	raw := envInt("BROWSER_USE_CURSOR_DELAY", 160)
+	if raw < 0 {
+		return 0
+	}
+	return raw
+}
+
 // Click clica no alvo com mouse real (e cursor visível).
 func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) error {
 	if button == "" {
