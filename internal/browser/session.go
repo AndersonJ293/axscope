@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +54,11 @@ type Session struct {
 	tabs   map[string]*Tab
 	order  []string
 	active string
+	// activeFile é onde a aba ativa é lembrada, e prefActive é o que estava
+	// gravado. Reiniciar o daemon não pode trocar a aba ativa por baixo do
+	// agente — o primeiro comando depois iria para a aba errada.
+	activeFile string
+	prefActive string
 	// attaching evita anexar duas vezes ao mesmo target (corrida entre o
 	// targetCreated e o attach explícito do bootstrap).
 	attaching map[string]bool
@@ -204,10 +211,48 @@ func (s *Session) remember(targetID, url, title string) *Tab {
 	}
 	s.tabs[targetID] = tab
 	s.order = append(s.order, targetID)
-	if s.active == "" {
+	if s.podeAtivar(targetID) {
 		s.active = targetID
 	}
 	return tab
+}
+
+// podeAtivar decide se a aba pode virar ativa: só a que estava gravada, ou
+// qualquer uma quando não há preferência.
+func (s *Session) podeAtivar(targetID string) bool {
+	return s.active == "" && (s.prefActive == "" || targetID == s.prefActive)
+}
+
+// SetActiveFile aponta onde a aba ativa é lembrada e carrega o que há lá.
+func (s *Session) SetActiveFile(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.activeFile = path
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	id := strings.TrimSpace(string(b))
+	if id == "" {
+		return
+	}
+	s.prefActive = id
+	// O bootstrap já escolheu uma aba antes desta chamada; a preferência vem
+	// depois e manda — desde que a aba ainda exista.
+	if _, ok := s.tabs[id]; ok {
+		s.active = id
+	}
+}
+
+// saveActive grava a aba ativa (fora do lock: erro de disco não trava o resto).
+func (s *Session) saveActive() {
+	s.mu.Lock()
+	path, id := s.activeFile, s.active
+	s.mu.Unlock()
+	if path == "" || id == "" {
+		return
+	}
+	_ = os.WriteFile(path, []byte(id), 0o644)
 }
 
 // attachTarget anexa a uma aba registrada, uma única vez. Bloqueia num Send:
@@ -219,7 +264,7 @@ func (s *Session) attachTarget(targetID, url, title string) {
 		tab = &Tab{TargetID: targetID, URL: url, Title: title, ready: make(chan struct{})}
 		s.tabs[targetID] = tab
 		s.order = append(s.order, targetID)
-		if s.active == "" {
+		if s.podeAtivar(targetID) {
 			s.active = targetID
 		}
 	}
@@ -397,10 +442,15 @@ func (s *Session) activeTab() (*Tab, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := s.active
+	if id == "" {
+		if _, ok := s.tabs[s.prefActive]; ok {
+			id = s.prefActive
+		}
+	}
 	if id == "" && len(s.order) > 0 {
 		id = s.order[0]
-		s.active = id
 	}
+	s.active = id
 	tab := s.tabs[id]
 	if tab == nil {
 		return nil, fmt.Errorf("nenhuma aba aberta")
@@ -475,6 +525,7 @@ func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, 
 	s.mu.Lock()
 	s.active = tab.TargetID
 	s.mu.Unlock()
+	s.saveActive()
 	s.attachIfNeeded(tab)
 	<-tab.ready
 	if tab.initErr != nil {

@@ -50,6 +50,12 @@ func DaemonInfoPath(session string) string {
 	return filepath.Join(StateDir(), "sessions", session+".json")
 }
 
+// ActiveTabPath lembra qual aba estava ativa, para reiniciar o daemon não
+// trocar a aba por baixo do agente.
+func ActiveTabPath(session string) string {
+	return filepath.Join(StateDir(), "sessions", session+".active")
+}
+
 func DaemonLogPath(session string) string {
 	return filepath.Join(StateDir(), "logs", session+".log")
 }

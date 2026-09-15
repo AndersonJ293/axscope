@@ -31,6 +31,9 @@ type SnapshotOptions struct {
 	RefsOnly bool
 	// Tudo desliga o corte de cromo de página (rodapé e links de atalho).
 	Tudo bool
+	// Gen é a geração da leitura. Entra na ref (e12#7) para que uma ref de
+	// leitura antiga seja recusada em vez de apontar para outro elemento.
+	Gen int
 }
 
 // noiseNameRe reconhece o "cromo de página": blocos de pular navegação, padrão
@@ -133,6 +136,7 @@ type snapBuilder struct {
 	max       int
 	refsOnly  bool
 	tudo      bool
+	gen       int
 	truncated bool
 }
 
@@ -159,6 +163,7 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 		max:      opts.MaxNodes,
 		refsOnly: opts.RefsOnly,
 		tudo:     opts.Tudo,
+		gen:      opts.Gen,
 	}
 	var root *axNode
 	for i := range tree.Nodes {
@@ -383,6 +388,9 @@ func (b *snapBuilder) refFor(n *axNode) string {
 	}
 	b.nextRef++
 	ref := "e" + strconv.Itoa(b.nextRef)
+	if b.gen > 0 {
+		ref += "#" + strconv.Itoa(b.gen)
+	}
 	b.refs[ref] = n.BackendDOMNodeID
 	return ref
 }

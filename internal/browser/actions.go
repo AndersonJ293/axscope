@@ -69,11 +69,14 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
 		expr := fmt.Sprintf(`(() => {
 			const want = %s;
-			const nodes = document.querySelectorAll('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div');
+			const nodes = document.querySelectorAll('a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div');
 			// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
 			// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
 			const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
-			const texto = el => (el.innerText || el.value || el.getAttribute('aria-label') || '').trim();
+			// O nome acessível manda: quando o alvo não tem texto nenhum e só um
+			// aria-label, é ele que a árvore mostra — e é por ele que o agente lê
+			// a tela. Olhar só o texto deixaria esse alvo inalcançável.
+			const texto = el => (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
 			let exatoAcionavel = null, exato = null, parcialAcionavel = null, parcial = null;
 			for (const el of nodes) {
 				const t = texto(el);
@@ -120,9 +123,12 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec}
 
-	// Rola até aparecer (a ação sempre alcança o que está fora da dobra).
-	_, _ = client.Send(ctx, "DOM.scrollIntoViewIfNeeded",
-		map[string]any{"objectId": objectID}, session)
+	// Traz para a tela em passos visíveis; se não bastar, garante com o scroll
+	// direto — o que não pode é a ação não alcançar o alvo.
+	if !scrollAoAlcance(ctx, client, session, objectID) {
+		_, _ = client.Send(ctx, "DOM.scrollIntoViewIfNeeded",
+			map[string]any{"objectId": objectID}, session)
+	}
 
 	rect, err := boxOf(ctx, client, session, objectID)
 	if err != nil {
@@ -131,6 +137,78 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	t.Rect = rect
 	return t, nil
 }
+
+// scrollAoAlcance rola em passos até o elemento ficar visível, para quem olha
+// acompanhar o movimento em vez de ver a página pular. Devolve true se alcançou.
+//
+// Rola pelo `scrollTop` do ancestral que de fato rola, e não por roda de mouse
+// num ponto fixo: a roda vai para quem estiver sob o ponteiro, e numa página com
+// container rolável no meio do caminho (caixa de rolagem interna, lista virtual)
+// ela rola o container errado — e a página não anda.
+func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID string) bool {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId":            objectID,
+		"functionDeclaration": scrollScript,
+		"arguments":           []any{map[string]any{"value": 40}},
+		"returnByValue":       true,
+		"awaitPromise":        true,
+	}, session)
+	if err != nil {
+		return false
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return false
+	}
+	// "ja" já estava visível, "ok" rolou e chegou. O resto é "não deu" — aí o
+	// chamador cai no scroll direto, em vez de fingir que está tudo bem.
+	return res.Result.Value == "ja" || res.Result.Value == "ok"
+}
+
+// scrollScript rola o ancestral rolável do elemento, em passos, e confirma.
+const scrollScript = `function (intervalo) {
+	const el = this;
+	if (!el || !el.getBoundingClientRect) return Promise.resolve('sem alvo');
+	const margem = 60;
+	const visivel = () => {
+		const r = el.getBoundingClientRect();
+		return r.top >= margem && r.bottom <= innerHeight - margem;
+	};
+	if (visivel()) return Promise.resolve('ja');
+
+	const rolavel = (() => {
+		let c = el.parentElement;
+		while (c) {
+			const st = getComputedStyle(c);
+			if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) return c;
+			c = c.parentElement;
+		}
+		return document.scrollingElement || document.documentElement;
+	})();
+
+	const de = rolavel.scrollTop;
+	const r = el.getBoundingClientRect();
+	const delta = (r.top - innerHeight / 2 + r.height / 2);
+	const passos = 6;
+	let i = 0;
+	return new Promise((pronto) => {
+		const passo = () => {
+			i++;
+			// behavior 'instant' é obrigatório: com scroll-behavior smooth no
+			// CSS, atribuir scrollTop anima — e o passo seguinte reinicia a
+			// animação, de modo que a rolagem nunca anda. A animação é a nossa,
+			// nos passos acima.
+			rolavel.scrollTo({ top: de + delta * (i / passos), behavior: 'instant' });
+			if (i < passos) { setTimeout(passo, intervalo); return; }
+			pronto(visivel() ? 'ok' : 'nao');
+		};
+		passo();
+	});
+}`
 
 func (t *Target) center() (float64, float64) {
 	return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height/2
@@ -287,22 +365,67 @@ type DragOptions struct {
 	// DropAt diz onde soltar sobre o alvo: "" (centro), "top" (25% do topo) ou
 	// "bottom" (75%). Importa quando o alvo decide antes/depois pela posição.
 	DropAt string
+	// Tipo força a família do arraste: "html5" ou "ponteiro". Vazio detecta.
+	Tipo string
+	// Steps é quantos passos de mouse no caminho do arraste por ponteiro.
+	Steps int
 }
 
 // Drag arrasta `from` até `to`.
 //
-// Arraste HTML5 (draggable/dragstart/drop) não nasce de mouse injetado: o Chrome
-// só inicia o gesto a partir de entrada real do usuário, e o caminho previsto no
-// CDP para automação (`Input.setInterceptDrags` + `dragIntercepted`) também não
-// dispara — medido com contador na própria página, dragstart/dragover/drop
-// ficaram em zero, e o que sobrava era um clique de verdade no alvo.
+// Duas famílias de arraste convivem na web e não se falam:
 //
-// Então o arraste é montado na página: emitimos dragstart/dragenter/dragover/
-// drop/dragend com um DataTransfer real, sobre o elemento que está sob o ponto
-// de soltura (o evento sobe, então quem escuta no container também recebe).
-// Funciona com DnD feito em JS — a maioria. Não funciona para arrastar arquivo
-// do sistema, nem quando o site exige evento confiável (`isTrusted`).
-func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) error {
+//   - HTML5 (`draggable`, dragstart/dragover/drop): mouse injetado NÃO inicia o
+//     gesto — o Chrome só cria o dragstart a partir de entrada real do usuário.
+//     Aqui o arraste é montado na página, com DataTransfer de verdade.
+//   - por ponteiro (pointerdown/move/up movendo o elemento, ex.: dnd-kit): é o
+//     inverso — o que funciona é mouse de verdade, e evento sintético é ignorado.
+//
+// A origem com `draggable="true"` (nela ou num ancestral) diz de qual família se
+// trata. `tipo=ponteiro|html5` força, se a detecção errar.
+func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) (string, error) {
+	tipo := opts.Tipo
+	if tipo == "" {
+		tipo = dragKind(ctx, client, session, from.ObjectID)
+	}
+	if tipo == "ponteiro" {
+		return tipo, dragPointer(ctx, client, session, from, to, opts)
+	}
+	return "html5", dragHTML5(ctx, client, session, from, to, opts)
+}
+
+// dragKind diz de que família é o arraste: "html5" ou "ponteiro".
+//
+// O sinal é o atributo explícito `draggable="true"` — a propriedade `draggable`
+// sozinha não serve, porque imagem e link já são arrastáveis por padrão e
+// marcariam como HTML5 qualquer clique sobre eles.
+func dragKind(ctx context.Context, client *cdp.Client, session, objectID string) string {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			return this.closest && this.closest('[draggable="true"]') ? 'html5' : 'ponteiro';
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return "html5"
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) == nil && res.Result.Value == "ponteiro" {
+		return "ponteiro"
+	}
+	return "html5"
+}
+
+// dragHTML5 monta o arraste na página. É o caminho da família HTML5, que ignora
+// mouse injetado: emitimos dragstart/dragenter/dragover/drop/dragend com um
+// DataTransfer real, sobre o elemento que está sob o ponto de soltura (o evento
+// sobe, então quem escuta no container também recebe).
+func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) error {
 	fx, fy := from.center()
 	tx, ty := dropPoint(to, opts.DropAt)
 
@@ -352,6 +475,58 @@ func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Tar
 		return fmt.Errorf("arraste não montou: %s", res.Result.Value)
 	}
 	time.Sleep(40 * time.Millisecond)
+	return nil
+}
+
+// dragPointer arrasta com mouse de verdade: é o que a família por ponteiro
+// entende (pointerdown/move/up). Se a página ignorar o gesto, sobra um clique —
+// por isso este caminho só é usado quando a origem NÃO é `draggable`.
+func dragPointer(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) error {
+	if opts.Steps <= 0 {
+		opts.Steps = 16
+	}
+	fx, fy := from.center()
+	tx, ty := dropPoint(to, opts.DropAt)
+
+	_ = overlay.Spotlight(ctx, client, session, &from.Rect)
+	_ = overlay.MoveCursor(ctx, client, session, fx, fy)
+	if d := visualDelay(); d > 0 {
+		time.Sleep(d)
+	}
+	if _, err := client.Send(ctx, "Input.dispatchMouseEvent",
+		map[string]any{"type": "mouseMoved", "x": fx, "y": fy}, session); err != nil {
+		return err
+	}
+	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
+		"type": "mousePressed", "x": fx, "y": fy,
+		"button": "left", "buttons": 1, "clickCount": 1,
+	}, session); err != nil {
+		return err
+	}
+	// Uma pausa antes de andar: biblioteca de ponteiro costuma armar o gesto no
+	// pointerdown e só passar a acompanhar o movimento no quadro seguinte.
+	time.Sleep(40 * time.Millisecond)
+
+	for i := 1; i <= opts.Steps; i++ {
+		x := fx + (tx-fx)*float64(i)/float64(opts.Steps)
+		y := fy + (ty-fy)*float64(i)/float64(opts.Steps)
+		if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
+			"type": "mouseMoved", "x": x, "y": y, "buttons": 1,
+		}, session); err != nil {
+			return err
+		}
+		time.Sleep(14 * time.Millisecond)
+	}
+
+	_ = overlay.Spotlight(ctx, client, session, &to.Rect)
+	_ = overlay.MoveCursor(ctx, client, session, tx, ty)
+	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
+		"type": "mouseReleased", "x": tx, "y": ty,
+		"button": "left", "buttons": 0, "clickCount": 1,
+	}, session); err != nil {
+		return err
+	}
+	time.Sleep(60 * time.Millisecond)
 	return nil
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/ajunior/browser-use/internal/browser"
 	"github.com/ajunior/browser-use/internal/cdp"
 	"github.com/ajunior/browser-use/internal/command"
+	"github.com/ajunior/browser-use/internal/paths"
 	"github.com/ajunior/browser-use/internal/protocol"
 )
 
@@ -33,10 +34,14 @@ type Agent struct {
 
 	runMu sync.Mutex
 
-	mu             sync.Mutex
-	handle         *browser.Handle
-	sess           *browser.Session
-	refs           map[string]int
+	mu     sync.Mutex
+	handle *browser.Handle
+	sess   *browser.Session
+	refs   map[string]int
+	// snapGen é a geração da última leitura. Toda ref carrega a geração em que
+	// nasceu (e12#7): ref de leitura antiga é recusada, em vez de clicar no que
+	// hoje ocupa aquela posição.
+	snapGen        int
 	overlayVisible bool
 	bridge         *bridge.Server
 	extClient      *cdp.Client
@@ -142,6 +147,7 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 		handle.Client.Close()
 		return nil, err
 	}
+	sess.SetActiveFile(paths.ActiveTabPath(a.Session))
 	a.handle = handle
 	a.sess = sess
 	a.overlayVisible = true
@@ -256,10 +262,31 @@ func (a *Agent) activeSID(sess *browser.Session) (string, error) {
 	return sess.ActiveSID()
 }
 
-func (a *Agent) setRefs(refs map[string]int) {
+func (a *Agent) setRefs(refs map[string]int, gen int) {
 	a.mu.Lock()
 	a.refs = refs
+	a.snapGen = gen
 	a.mu.Unlock()
+}
+
+// nextGen é a geração da próxima leitura (a atual + 1).
+func (a *Agent) nextGen() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.snapGen + 1
+}
+
+// refGen separa a ref da geração: "e12#7" -> ("e12", 7, true).
+func refGen(spec string) (string, int, bool) {
+	i := strings.LastIndex(spec, "#")
+	if i <= 0 || i == len(spec)-1 {
+		return spec, 0, false
+	}
+	n, err := strconv.Atoi(spec[i+1:])
+	if err != nil {
+		return spec, 0, false
+	}
+	return spec[:i], n, true
 }
 
 func (a *Agent) currentRefs() map[string]int {
@@ -325,14 +352,16 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
+	gen := a.nextGen()
 	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, browser.SnapshotOptions{
 		RefsOnly: req.Bool("refs", false),
 		Tudo:     req.Bool("tudo", false),
+		Gen:      gen,
 	})
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	a.setRefs(snap.Refs)
+	a.setRefs(snap.Refs, gen)
 	sess.UpdateHUD(ctx, "snap")
 
 	var b strings.Builder
@@ -350,6 +379,19 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 	sid, err := a.activeSID(sess)
 	if err != nil {
 		return nil, "", err
+	}
+	// Ref carrega a geração da leitura em que nasceu. Usar uma de leitura antiga
+	// não erra com aviso: aponta para o que hoje ocupa aquela posição. Recusa.
+	if !strings.HasPrefix(target, "css=") && !strings.HasPrefix(target, "text=") {
+		if _, gen, ok := refGen(target); ok {
+			a.mu.Lock()
+			atual := a.snapGen
+			a.mu.Unlock()
+			if gen != atual {
+				return nil, sid, fmt.Errorf(
+					"ref %q é de uma leitura antiga (a atual é #%d) — rode `snap` de novo", target, atual)
+			}
+		}
 	}
 	t, err := browser.ResolveTarget(ctx, a.client(), sid, a.currentRefs(), target)
 	if err != nil {
@@ -436,10 +478,14 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 		at = "bottom"
 	}
 	before := a.errCount(sess, sid)
-	if err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{DropAt: at}); err != nil {
+	tipo, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
+		DropAt: at,
+		Tipo:   req.String("tipo"),
+	})
+	if err != nil {
 		return protocol.Fail(err)
 	}
-	return ok(a.finish(ctx, sess, sid, fmt.Sprintf("drag %s -> %s", fromSpec, toSpec), before))
+	return ok(a.finish(ctx, sess, sid, fmt.Sprintf("drag %s -> %s [%s]", fromSpec, toSpec, tipo), before))
 }
 
 func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
@@ -523,7 +569,7 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	raw := req.String("dy")
 	if raw == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu scroll <dy> (dy negativo desce)"))
+		return protocol.Fail(fmt.Errorf("uso: bu scroll <dy> (dy positivo desce)"))
 	}
 	dy, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
