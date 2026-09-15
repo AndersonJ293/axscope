@@ -43,6 +43,9 @@ type Session struct {
 	tabs   map[string]*Tab
 	order  []string
 	active string
+	// attaching evita anexar duas vezes ao mesmo target (corrida entre o
+	// targetCreated e o attach explícito do bootstrap).
+	attaching map[string]bool
 
 	inflight     map[string]map[string]struct{}
 	lastActivity map[string]time.Time
@@ -64,6 +67,7 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool) (*S
 		client:        client,
 		Observe:       NewObserve(500),
 		tabs:          make(map[string]*Tab),
+		attaching:     make(map[string]bool),
 		inflight:      make(map[string]map[string]struct{}),
 		lastActivity:  make(map[string]time.Time),
 		acceptDialogs: acceptDialogs,
@@ -77,15 +81,18 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool) (*S
 }
 
 func (s *Session) wireTargets() {
-	s.client.On("Target.attachedToTarget", func(params json.RawMessage, _ string) {
+	// Anexamos a partir de targetCreated (discover), e não de setAutoAttach:
+	// autoAttach + attach explícito criavam duas sessões para o mesmo target e
+	// o comando ia para a sessão errada (Page.enable travava).
+	s.client.On("Target.targetCreated", func(params json.RawMessage, _ string) {
 		var p struct {
-			SessionID  string     `json:"sessionId"`
 			TargetInfo targetInfo `json:"targetInfo"`
 		}
 		if json.Unmarshal(params, &p) != nil || p.TargetInfo.Type != "page" {
 			return
 		}
-		s.register(p.TargetInfo.TargetID, p.SessionID, p.TargetInfo.URL, p.TargetInfo.Title)
+		// Handler roda no laço de leitura: não pode bloquear num Send.
+		go s.attachTarget(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title)
 	})
 
 	s.client.On("Target.detachedFromTarget", func(params json.RawMessage, _ string) {
@@ -129,10 +136,6 @@ func (s *Session) bootstrap(ctx context.Context) error {
 		map[string]any{"discover": true}, ""); err != nil {
 		return err
 	}
-	if _, err := s.client.Send(ctx, "Target.setAutoAttach",
-		map[string]any{"autoAttach": true, "waitForDebuggerOnStart": false, "flatten": true}, ""); err != nil {
-		return err
-	}
 
 	var got struct {
 		TargetInfos []targetInfo `json:"targetInfos"`
@@ -140,21 +143,31 @@ func (s *Session) bootstrap(ctx context.Context) error {
 	if err := s.client.SendJSON(ctx, "Target.getTargets", map[string]any{}, "", &got); err != nil {
 		return err
 	}
+	attached := 0
 	for _, ti := range got.TargetInfos {
-		if ti.Type != "page" || s.has(ti.TargetID) {
+		if ti.Type != "page" {
 			continue
 		}
-		var res struct {
-			SessionID string `json:"sessionId"`
+		s.attachTarget(ti.TargetID, ti.URL, ti.Title)
+		if s.has(ti.TargetID) {
+			attached++
 		}
-		if err := s.client.SendJSON(ctx, "Target.attachToTarget",
-			map[string]any{"targetId": ti.TargetID, "flatten": true}, "", &res); err != nil {
-			continue
-		}
-		s.register(ti.TargetID, res.SessionID, ti.URL, ti.Title)
 	}
+
+	// Engines como chrome-headless-shell não nascem com uma página: é preciso
+	// criá-la. Sem isso o daemon fica vivo e sem aba nenhuma.
+	if attached == 0 {
+		var created struct {
+			TargetID string `json:"targetId"`
+		}
+		if err := s.client.SendJSON(ctx, "Target.createTarget",
+			map[string]any{"url": "about:blank"}, "", &created); err == nil && created.TargetID != "" {
+			s.attachTarget(created.TargetID, "about:blank", "")
+		}
+	}
+
 	// Dá um instante para a primeira aba ficar pronta.
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		if len(s.Tabs()) > 0 {
 			return nil
@@ -162,6 +175,34 @@ func (s *Session) bootstrap(ctx context.Context) error {
 		time.Sleep(25 * time.Millisecond)
 	}
 	return nil
+}
+
+// attachTarget anexa a um target uma única vez, seguro para chamadas
+// concorrentes (targetCreated e bootstrap). Bloqueia num Send: nunca chame do
+// laço de leitura sem goroutine.
+func (s *Session) attachTarget(targetID, url, title string) {
+	s.mu.Lock()
+	if _, ok := s.tabs[targetID]; ok || s.attaching[targetID] {
+		s.mu.Unlock()
+		return
+	}
+	s.attaching[targetID] = true
+	s.mu.Unlock()
+
+	var res struct {
+		SessionID string `json:"sessionId"`
+	}
+	err := s.client.SendJSON(s.ctx, "Target.attachToTarget",
+		map[string]any{"targetId": targetID, "flatten": true}, "", &res)
+
+	s.mu.Lock()
+	delete(s.attaching, targetID)
+	s.mu.Unlock()
+
+	if err != nil || res.SessionID == "" {
+		return
+	}
+	s.register(targetID, res.SessionID, url, title)
 }
 
 func (s *Session) has(targetID string) bool {
@@ -173,13 +214,8 @@ func (s *Session) has(targetID string) bool {
 
 func (s *Session) register(targetID, sessionID, url, title string) {
 	s.mu.Lock()
-	if existing, ok := s.tabs[targetID]; ok {
+	if _, ok := s.tabs[targetID]; ok {
 		s.mu.Unlock()
-		// Já tinha sessão: descarta a duplicada para não vazar.
-		if existing.SessionID != "" && existing.SessionID != sessionID {
-			_, _ = s.client.Send(s.ctx, "Target.detachFromTarget",
-				map[string]any{"sessionId": sessionID}, "")
-		}
 		return
 	}
 	tab := &Tab{
@@ -245,7 +281,9 @@ func (s *Session) initTab(tab *Tab) error {
 		if s2 != sid {
 			return
 		}
-		s.handleDialog(sid, params)
+		// Precisa ser assíncrono: o handler roda no laço de leitura e
+		// handleDialog faz um Send (que espera resposta do próprio laço).
+		go s.handleDialog(sid, params)
 	})
 	return nil
 }

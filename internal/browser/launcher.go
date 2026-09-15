@@ -28,11 +28,21 @@ import (
 
 var devToolsRe = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
 
+// Engines suportados.
+const (
+	// EngineChrome é o Chrome for Testing: janela de verdade, cursor visível.
+	EngineChrome = "chrome"
+	// EngineShell é o chrome-headless-shell: o mesmo motor e o mesmo CDP,
+	// sem janela — mais leve, mas sem cursor renderizado.
+	EngineShell = "shell"
+)
+
 var systemCandidates = []string{
 	"google-chrome-stable",
 	"google-chrome",
 	"chromium",
 	"chromium-browser",
+	"brave",
 	"brave-browser",
 	"microsoft-edge-stable",
 	"microsoft-edge",
@@ -41,6 +51,7 @@ var systemCandidates = []string{
 // LaunchOptions descreve como subir o browser.
 type LaunchOptions struct {
 	Session    string
+	Engine     string
 	Headless   bool
 	Executable string
 	WindowSize string
@@ -59,15 +70,23 @@ type Handle struct {
 	Cmd        *exec.Cmd
 }
 
+func engineProduct(engine string) string {
+	if engine == EngineShell {
+		return "chrome-headless-shell"
+	}
+	return "chrome"
+}
+
 // ResolveExecutable acha o Chromium: flag, env, baixado por `bu install`, sistema.
-func ResolveExecutable(explicit string) (string, error) {
+func ResolveExecutable(engine, explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
 	if v := os.Getenv("BROWSER_USE_CHROME"); v != "" {
 		return v, nil
 	}
-	if marker, err := os.ReadFile(paths.BrowserExecutableMarker()); err == nil {
+	product := engineProduct(engine)
+	if marker, err := os.ReadFile(paths.BrowserExecutableMarker(product)); err == nil {
 		p := strings.TrimSpace(string(marker))
 		if p != "" {
 			if _, statErr := os.Stat(p); statErr == nil {
@@ -75,12 +94,43 @@ func ResolveExecutable(explicit string) (string, error) {
 			}
 		}
 	}
+	if engine == EngineShell {
+		return "", fmt.Errorf("chrome-headless-shell não instalado: rode `browser-use install --engine shell`")
+	}
 	for _, name := range systemCandidates {
 		if p, err := exec.LookPath(name); err == nil {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("nenhum Chromium encontrado: rode `bu install` ou defina BROWSER_USE_CHROME")
+	return "", fmt.Errorf("nenhum Chromium encontrado: rode `browser-use install` ou defina BROWSER_USE_CHROME")
+}
+
+// Engine é um motor disponível no sistema.
+type Engine struct {
+	Product string
+	Path    string
+	Exists  bool
+}
+
+// DetectEngines lista os motores instalados (baixados e do sistema).
+func DetectEngines() []Engine {
+	var out []Engine
+	for _, product := range []string{"chrome", "chrome-headless-shell"} {
+		e := Engine{Product: product}
+		if marker, err := os.ReadFile(paths.BrowserExecutableMarker(product)); err == nil {
+			e.Path = strings.TrimSpace(string(marker))
+			if _, statErr := os.Stat(e.Path); statErr == nil {
+				e.Exists = true
+			}
+		}
+		out = append(out, e)
+	}
+	for _, name := range systemCandidates {
+		if p, err := exec.LookPath(name); err == nil {
+			out = append(out, Engine{Product: name, Path: p, Exists: true})
+		}
+	}
+	return out
 }
 
 func buildArgs(opts LaunchOptions, profile string) []string {
@@ -111,8 +161,12 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 		"--window-size=" + size,
 		"--window-position=60,60",
 	}
-	if opts.Headless {
-		args = append(args, "--headless=new", "--disable-gpu")
+	// chrome-headless-shell já é headless: não recebe --headless=new.
+	if opts.Headless && opts.Engine != EngineShell {
+		args = append(args, "--headless=new")
+	}
+	if opts.Headless || opts.Engine == EngineShell {
+		args = append(args, "--disable-gpu")
 	}
 	// A árvore de acessibilidade é ligada sob demanda pelo domínio Accessibility.
 	// Forçá-la no arranque custa memória em todo processo; só ligamos se pedido.
@@ -125,7 +179,7 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 
 // Launch sobe o Chromium e devolve a conexão CDP pronta.
 func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
-	executable, err := ResolveExecutable(opts.Executable)
+	executable, err := ResolveExecutable(opts.Engine, opts.Executable)
 	if err != nil {
 		return nil, err
 	}

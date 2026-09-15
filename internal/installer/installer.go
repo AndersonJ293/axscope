@@ -84,6 +84,9 @@ func Install(ctx context.Context, opts Options) (string, error) {
 
 	dest := filepath.Join(paths.BrowsersDir(), fmt.Sprintf("%s-%s-%s", opts.Product, version, platform))
 	if exe, ok := findExecutable(dest, opts.Product); ok {
+		if err := markInstalled(opts.Product, exe); err != nil {
+			return "", err
+		}
 		fmt.Printf("já instalado: %s\n", exe)
 		return exe, nil
 	}
@@ -113,13 +116,20 @@ func Install(ctx context.Context, opts Options) (string, error) {
 	if err := os.MkdirAll(paths.BrowsersDir(), 0o755); err != nil {
 		return "", err
 	}
-	if opts.Product == "chrome" {
-		if err := os.WriteFile(paths.BrowserExecutableMarker(), []byte(exe), 0o644); err != nil {
-			return "", err
-		}
+	// Marca o caminho do produto instalado (chrome ou chrome-headless-shell).
+	if err := markInstalled(opts.Product, exe); err != nil {
+		return "", err
 	}
 	fmt.Printf("pronto: %s\n", exe)
 	return exe, nil
+}
+
+// markInstalled grava o marcador que o launcher lê para achar o binário.
+func markInstalled(product, exe string) error {
+	if err := os.MkdirAll(paths.BrowsersDir(), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(paths.BrowserExecutableMarker(product), []byte(exe), 0o644)
 }
 
 func resolveDownload(ctx context.Context, opts Options, platform string) (string, string, error) {

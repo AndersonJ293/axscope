@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/ajunior/browser-use/internal/browser"
 	"github.com/ajunior/browser-use/internal/cli"
 	"github.com/ajunior/browser-use/internal/command"
 	"github.com/ajunior/browser-use/internal/daemon"
@@ -54,6 +55,7 @@ func run() error {
 		return daemon.Run(ctx, daemon.Options{
 			Session:  paths.Session(),
 			Attach:   os.Getenv("BROWSER_USE_ATTACH"),
+			Engine:   envOr("BROWSER_USE_ENGINE", browser.EngineChrome),
 			Headless: envBool("BROWSER_USE_HEADLESS", false),
 		})
 
@@ -63,12 +65,17 @@ func run() error {
 		return mcpsrv.Run(ctx)
 
 	case "install", "instalar":
-		product := "chrome"
-		if len(args) > 1 && (args[1] == "--headless" || args[1] == "headless") {
-			product = "chrome-headless-shell"
+		return runInstall(args[1:])
+
+	case "engines", "motores":
+		for _, e := range browser.DetectEngines() {
+			mark := " "
+			if e.Exists {
+				mark = "*"
+			}
+			fmt.Printf("%s %-22s %s\n", mark, e.Product, e.Path)
 		}
-		_, err := installer.Install(context.Background(), installer.Options{Product: product})
-		return err
+		return nil
 	}
 
 	req, err := command.Parse(args)
@@ -107,4 +114,38 @@ func envBool(key string, def bool) bool {
 		return false
 	}
 	return def
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// runInstall baixa os motores pedidos. `--engine` aceita chrome, shell ou all.
+func runInstall(args []string) error {
+	engine := "chrome"
+	for i, a := range args {
+		if (a == "--engine" || a == "--motor") && i+1 < len(args) {
+			engine = args[i+1]
+		} else if a == "shell" || a == "headless" {
+			engine = "shell"
+		}
+	}
+	var products []string
+	switch engine {
+	case "shell", "headless", "chrome-headless-shell":
+		products = []string{"chrome-headless-shell"}
+	case "all", "todos":
+		products = []string{"chrome", "chrome-headless-shell"}
+	default:
+		products = []string{"chrome"}
+	}
+	for _, product := range products {
+		if _, err := installer.Install(context.Background(), installer.Options{Product: product}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

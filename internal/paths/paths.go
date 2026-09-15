@@ -58,7 +58,8 @@ func BrowsersDir() string {
 	return filepath.Join(StateDir(), "browsers")
 }
 
-// BrowserExecutableMarker aponta para o Chromium baixado por `bu install`.
-func BrowserExecutableMarker() string {
-	return filepath.Join(BrowsersDir(), "executable")
+// BrowserExecutableMarker aponta para o Chromium baixado por `bu install`,
+// por produto (chrome ou chrome-headless-shell).
+func BrowserExecutableMarker(product string) string {
+	return filepath.Join(BrowsersDir(), "executable-"+product)
 }

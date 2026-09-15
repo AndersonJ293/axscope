@@ -29,6 +29,7 @@ type Agent struct {
 	Session  string
 	Attach   string
 	Headless bool
+	Engine   string
 
 	runMu sync.Mutex
 
@@ -91,6 +92,7 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 	} else {
 		handle, err = browser.Launch(ctx, browser.LaunchOptions{
 			Session:  a.Session,
+			Engine:   a.Engine,
 			Headless: a.Headless,
 		})
 	}

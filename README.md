@@ -45,15 +45,18 @@ E Node não é dependência: o cliente CDP é Go + `WebSocket`.
 ## Instalação
 
 ```bash
-make install        # → ~/.local/bin/browser-use (atalho: bu)
-browser-use install # baixa o Chrome for Testing, perfil dedicado
+make install                    # → ~/.local/bin/browser-use (atalho: bu)
+browser-use install --engine all  # Chrome for Testing + chrome-headless-shell
+browser-use engines             # o que está disponível
 ```
 
 Se `~/.local/bin` não estiver no seu `PATH`, use `PREFIX=/usr/local/bin make install`.
 
-O Chrome baixado vive em `~/.local/share/browser-use/browsers/`. O perfil fica
-em `~/.local/share/browser-use/profiles/<sessão>/` — é persistente, então login
+Os binários ficam em `~/.local/share/browser-use/browsers/`. O perfil fica em
+`~/.local/share/browser-use/profiles/<sessão>/` — é persistente, então login
 sobrevive entre rodadas.
+
+`--engine` aceita `chrome` (padrão), `shell` (chrome-headless-shell) ou `all`.
 
 ### MCP no opencode
 
@@ -105,17 +108,38 @@ snap
 shot /tmp/painel.png
 ```
 
-## Modos
+## Modos: ver ou não ver
 
-| Modo | Como | Quando |
-|---|---|---|
-| Visual (padrão) | `bu open ...` | você quer ver abas + cursor |
-| Cego | `BROWSER_USE_HEADLESS=1` | rodada sem janela |
-| Anexar | `BROWSER_USE_ATTACH=host:porta` | usar um Chromium já aberto |
+Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.
 
-Para anexar, o Chromium precisa ter sido iniciado com
-`--remote-debugging-port=PORTA`. Assim o mesmo driver serve no seu Brave/Chrome
-do dia a dia.
+| Modo | Motor | RAM (1 aba) | Processos | Vê a tela? |
+|---|---|---|---|---|
+| **ver** (padrão) | Chrome for Testing | ~1850 MB | 16 | ✅ abas + cursor |
+| **leve** | chrome-headless-shell | ~505 MB | 7 | ❌ |
+| anexar | um Chromium seu | — | — | depende |
+
+```bash
+# ver (padrão): janela de verdade, cursor renderizado
+browser-use open https://exemplo.com
+
+# leve: o mesmo Chromium sem casca de janela — ~3,7x menos RAM
+BROWSER_USE_SESSION=batch BROWSER_USE_ENGINE=shell browser-use script roteiro.txt
+
+# voltar ao modo ver numa sessão que já subiu no leve
+BROWSER_USE_SESSION=batch browser-use stop
+```
+
+O motor é propriedade da **sessão**: o daemon sobe o browser com o motor escolhido
+na primeira chamada. Trocar de motor numa sessão já viva exige `stop` (ou use
+outra sessão). `browser-use engines` mostra o que está instalado.
+
+O modo leve **não é** um Chromium capado: é o mesmo motor com o mesmo CDP, a
+mesma árvore de acessibilidade, a mesma geometria real e o mesmo clique por
+coordenada. Só não há janela — então não há cursor desenhado.
+
+Anexar continua valendo para qualquer Chromium já aberto com
+`--remote-debugging-port=PORTA` (`BROWSER_USE_ATTACH=host:porta`), e aí você usa
+o seu navegador do dia a dia, com seus logins.
 
 ## Motor: o que a pesquisa provou
 
@@ -123,7 +147,8 @@ A pergunta "existe browser mais leve?" tem resposta medida, não de opinião.
 
 | Engine | Renderiza? | CDP | Veredito |
 |---|---|---|---|
-| **Chrome for Testing** | sim | completo | padrão |
+| **Chrome for Testing** | sim | completo | padrão do modo **ver** |
+| **chrome-headless-shell** | sim (sem janela) | completo | modo **leve**: mesmo motor, ~3,7x menos RAM |
 | Thorium / Helium / ungoogled / Cromite | sim | completo | mesmo Chromium com patch; não é menor |
 | Servo / WebKitGTK / QtWebEngine | sim | não (WebDriver) | perde o CDP |
 | **Lightpanda** | **não** (sem engine de renderização) | parcial | ver abaixo |
@@ -140,20 +165,27 @@ Accessibility.getFullAXTree        OK    (árvore real, com role/name)
 Runtime.evaluate                   OK    document.title = "Example Domain"
 DOM.getDocument                    OK
 Page.captureScreenshot             OK    (PNG de renderização textual)
-Input.dispatchMouseEvent           OK
+DOM.resolveNode                    OK    => refs funcionam
+Accessibility (2 conexões)         OK    duas páginas independentes
+geometria: <a> getBoundingClientRect  {width:5, height:5}  ← não é layout real
 ```
 
-Conclusões:
+Conclusões (corrigidas por medição, não por suposição):
 
-- **Não serve para o objetivo visual**: sem engine de renderização não há
-  janela, abas visíveis nem cursor pintado. As duas exigências caem.
-- **É mais completo do que parece**: implementa a Accessibility domain e o
-  Protocol completo o bastante para um modo `headless` de extração.
-- **O bootstrap difere**: como `Target.getTargets` volta vazio, é preciso
-  `Target.createTarget` em vez de descobrir e anexar. Nosso `bootstrap` assume
-  o modelo do Chromium.
-- **Memória é o ganho real**: ~16x menos RAM e ~9x mais rápido para crawl em
-  lote — mas isso é outro caso de uso, não "browser use com cursor".
+- **Abas: tem.** Cada conexão é uma sessão independente, com página, cookies e
+  memória próprios — é o `session_new` do MCP dele e o "MultiClient" do blog.
+  Não são abas numa barra visível, mas são páginas independentes gerenciáveis.
+- **Cursor: não tem, e não pode ter.** A doc do screenshot é explícita: *"the
+  text layout Lightpanda computes, not a pixel-accurate browser rendering (no
+  images, fonts or CSS colours)"*. Sem pixel fiel, mouse desenhado é decoração.
+- **Ação por coordenada: não dá.** O `<a>` mediu 5×5 — não há layout real. Por
+  isso todos os tools de clique dele são por `selector`/`backendNodeId`. O nosso
+  clique (centro + `Input.dispatchMouseEvent`) não se aplica; seria trocar por
+  disparo de evento no nó.
+- **AX + refs: funciona.** 15 nós, 11 com `backendNodeId`, e `DOM.resolveNode` OK.
+- **Memória é o ganho real**: 36 MB contra ~505 MB do headless-shell. Ainda
+  assim, o headless-shell entrega tudo (geometria, clique por coordenada,
+  screenshot fiel) — exceto a janela.
 
 Uso recomendado do Lightpanda: o MCP nativo dele, para crawl/extração em massa.
 Não como motor visual.
@@ -177,6 +209,7 @@ quanto o cursor "chega antes" de agir; `0` remove a pausa.
 | Variável | Efeito |
 |---|---|
 | `BROWSER_USE_SESSION` | nome da sessão (default `default`) |
+| `BROWSER_USE_ENGINE` | `chrome` (ver, padrão) ou `shell` (leve) |
 | `BROWSER_USE_HOME` | diretório de dados |
 | `BROWSER_USE_CHROME` | executável do Chromium |
 | `BROWSER_USE_ATTACH` | `host:porta` de um Chromium já aberto |

@@ -24,6 +24,7 @@ type Options struct {
 	Session  string
 	Attach   string
 	Headless bool
+	Engine   string
 }
 
 // Run sobe o daemon e só retorna quando ele é encerrado.
@@ -51,7 +52,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	defer ln.Close()
 
-	ag := &agent.Agent{Session: opts.Session, Attach: opts.Attach, Headless: opts.Headless}
+	ag := &agent.Agent{Session: opts.Session, Attach: opts.Attach, Headless: opts.Headless, Engine: opts.Engine}
 	defer ag.Close()
 
 	writeInfo(opts.Session, socketPath)
