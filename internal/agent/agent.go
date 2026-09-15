@@ -748,7 +748,13 @@ func (a *Agent) net(sess *browser.Session, req protocol.Request) protocol.Respon
 func (a *Agent) shot(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	path := req.String("path")
 	if path == "" {
-		return protocol.Fail(fmt.Errorf("uso: bu shot <arquivo.png> [--full]"))
+		// Sem caminho, vai para o temporário do sistema — nunca para o projeto.
+		f, err := os.CreateTemp("", "browser-use-*.png")
+		if err != nil {
+			return protocol.Fail(err)
+		}
+		path = f.Name()
+		_ = f.Close()
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {

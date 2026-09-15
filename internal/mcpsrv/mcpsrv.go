@@ -190,10 +190,16 @@ func tools() []toolDef {
 			continue
 		}
 		props := map[string]any{}
+		optional := map[string]bool{}
+		for _, o := range spec.Optional {
+			optional[o] = true
+		}
 		var required []string
 		for _, p := range spec.Positional {
 			props[p] = map[string]any{"type": "string"}
-			required = append(required, p)
+			if !optional[p] {
+				required = append(required, p)
+			}
 		}
 		for _, f := range spec.Flags {
 			props[f] = map[string]any{"type": "boolean"}

@@ -19,8 +19,10 @@ import (
 type Spec struct {
 	Cmd        string
 	Positional []string
-	Flags      []string
-	Help       string
+	// Optional lista posicionais que podem ser omitidos (têm padrão).
+	Optional []string
+	Flags    []string
+	Help     string
 }
 
 // Specs é a tabela canônica. A ordem não importa.
@@ -45,18 +47,18 @@ var Specs = []Spec{
 	{Cmd: "scroll", Positional: []string{"dy"}, Help: "rola o viewport (dy negativo desce)"},
 	{Cmd: "wait", Positional: []string{"text"}, Help: "espera o texto aparecer"},
 	{Cmd: "waitgone", Positional: []string{"text"}, Help: "espera o texto sumir"},
-	{Cmd: "read", Positional: []string{"selector"}, Help: "lê o texto principal da página"},
+	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Help: "lê o texto principal da página"},
 	{Cmd: "eval", Positional: []string{"js"}, Help: "avalia JavaScript na página"},
 	{Cmd: "tabs", Help: "lista as abas"},
 	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "troca para a aba (índice ou targetId; --focus traz a janela à frente)"},
-	{Cmd: "newtab", Positional: []string{"url"}, Help: "abre aba nova"},
+	{Cmd: "newtab", Positional: []string{"url"}, Optional: []string{"url"}, Help: "abre aba nova"},
 	{Cmd: "closetab", Positional: []string{"ref"}, Help: "fecha a aba"},
 	{Cmd: "back", Help: "volta no histórico"},
 	{Cmd: "forward", Help: "avança no histórico"},
 	{Cmd: "reload", Help: "recarrega a página"},
 	{Cmd: "console", Flags: []string{"all"}, Help: "erros/avisos do console"},
-	{Cmd: "net", Positional: []string{"filter"}, Help: "requisições de rede"},
-	{Cmd: "shot", Positional: []string{"path"}, Flags: []string{"full"}, Help: "captura PNG"},
+	{Cmd: "net", Positional: []string{"filter"}, Optional: []string{"filter"}, Help: "requisições de rede"},
+	{Cmd: "shot", Positional: []string{"path"}, Optional: []string{"path"}, Flags: []string{"full"}, Help: "captura PNG (sem caminho vai para /tmp)"},
 	{Cmd: "dialog", Positional: []string{"action"}, Help: "accept|dismiss o próximo diálogo"},
 	{Cmd: "script", Positional: []string{"path"}, Help: "executa um roteiro (arquivo ou - para stdin)"},
 }

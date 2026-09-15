@@ -152,6 +152,13 @@ func idleTimeout() time.Duration {
 
 func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()) {
 	defer conn.Close()
+	// Um panic num comando não pode derrubar o daemon inteiro (e com ele o
+	// browser). Vira erro na resposta, com o texto do panic à mostra.
+	defer func() {
+		if r := recover(); r != nil {
+			writeResponse(conn, protocol.Fail(fmt.Errorf("panic no daemon: %v", r)))
+		}
+	}()
 	reader := bufio.NewReaderSize(conn, 1<<20)
 	line, err := reader.ReadBytes('\n')
 	if err != nil && !errors.Is(err, io.EOF) {

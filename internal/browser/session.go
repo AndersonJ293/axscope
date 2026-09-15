@@ -22,6 +22,15 @@ type Tab struct {
 	Title     string
 	ready     chan struct{}
 	initErr   error
+	// tried marca que já tentamos anexar (com sucesso ou não), para não tentar
+	// de novo e fechar o canal duas vezes.
+	tried bool
+	once  sync.Once
+}
+
+// finish fecha o canal de pronto exatamente uma vez.
+func (t *Tab) finish() {
+	t.once.Do(func() { close(t.ready) })
 }
 
 // TabInfo é o que o agente vê em `tabs`.
@@ -214,10 +223,11 @@ func (s *Session) attachTarget(targetID, url, title string) {
 			s.active = targetID
 		}
 	}
-	if tab.SessionID != "" || s.attaching[targetID] {
+	if tab.SessionID != "" || s.attaching[targetID] || tab.tried {
 		s.mu.Unlock()
 		return
 	}
+	tab.tried = true
 	s.attaching[targetID] = true
 	s.mu.Unlock()
 
@@ -236,12 +246,12 @@ func (s *Session) attachTarget(targetID, url, title string) {
 
 	if err != nil || res.SessionID == "" {
 		tab.initErr = fmt.Errorf("não consegui anexar à aba: %v", err)
-		close(tab.ready)
+		tab.finish()
 		return
 	}
 	go func() {
 		tab.initErr = s.initTab(tab)
-		close(tab.ready)
+		tab.finish()
 	}()
 }
 

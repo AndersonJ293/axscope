@@ -68,17 +68,15 @@
       100% { opacity: 0;   transform: scale(3.6); }
     }
 
-    /* ---- spotlight no alvo (borda em gradiente) ---- */
+    /* Contorno puro: realça o alvo sem cobrir o conteúdo. Nada de fundo — o
+       truque de borda em gradiente exige interior opaco e pintava o miolo. */
     .spotlight {
       z-index: 0; border-radius: 10px;
-      border: 1.5px solid transparent;
-      background:
-        linear-gradient(rgba(99,102,241,.10), rgba(139,92,246,.10)) padding-box,
-        linear-gradient(135deg, #818cf8, #a78bfa) border-box;
+      border: 2px solid rgba(129,140,248,.95);
+      background: transparent;
       box-shadow:
-        0 0 0 3px rgba(99,102,241,.12),
-        0 10px 34px rgba(99,102,241,.30),
-        inset 0 0 24px rgba(99,102,241,.10);
+        0 0 0 3px rgba(99,102,241,.16),
+        0 0 20px rgba(99,102,241,.35);
       opacity: 0; transform: scale(.985);
       transition: opacity 170ms ease, transform 170ms cubic-bezier(.22,1,.36,1);
     }
