@@ -146,14 +146,11 @@ func (a *Agent) net(_ context.Context, sess *browser.Session, req protocol.Reque
 	}
 	var b strings.Builder
 	for _, e := range entries {
-		switch {
-		case e.Failed != "":
+		if e.Failed != "" {
 			fmt.Fprintf(&b, "FAIL %s %s (%s)\n", e.Method, e.URL, e.Failed)
-		case e.Status >= 400:
-			fmt.Fprintf(&b, "%d %s %s\n", e.Status, e.Method, e.URL)
-		default:
-			fmt.Fprintf(&b, "%d %s %s\n", e.Status, e.Method, e.URL)
+			continue
 		}
+		fmt.Fprintf(&b, "%d %s %s\n", e.Status, e.Method, e.URL)
 	}
 	return ok(strings.TrimRight(b.String(), "\n"))
 }

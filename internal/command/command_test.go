@@ -102,3 +102,19 @@ func TestHelpListaTodosOsSpecs(t *testing.T) {
 		}
 	}
 }
+
+// Regressão: o handler do wait lê `timeout`, mas o comando não expunha a opção
+// — Parse recusava como sobra, e a opção era inalcançável.
+func TestParse_WaitComTimeout(t *testing.T) {
+	req, err := Parse([]string{"wait", "carregando", "5000"})
+	if err != nil {
+		t.Fatalf("Parse recusou o timeout: %v", err)
+	}
+	if req.Args["text"] != "carregando" || req.Args["timeout"] != "5000" {
+		t.Errorf("args = %v", req.Args)
+	}
+	// E sem o timeout continua valendo: ele é opcional.
+	if _, err := Parse([]string{"wait", "carregando"}); err != nil {
+		t.Errorf("wait sem timeout deveria valer: %v", err)
+	}
+}

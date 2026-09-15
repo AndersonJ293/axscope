@@ -2,7 +2,11 @@
 // num socket unix.
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+)
 
 // Request é o que o cliente manda.
 type Request struct {
@@ -77,6 +81,13 @@ func (r Request) Int(key string, def int) int {
 		n, err := v.Int64()
 		if err == nil {
 			return int(n)
+		}
+	case string:
+		// Valor vindo de `k=v` ou posicional chega como string (CLI e MCP
+		// mandam texto). Sem isto, opção numérica era inerte.
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err == nil {
+			return n
 		}
 	}
 	return def

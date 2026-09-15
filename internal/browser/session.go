@@ -1,5 +1,5 @@
-// Sessão do browser: descoberta e ciclo de vida das abas, navegação,
-// convergência (esperar em vez de dormir) e diálogos.
+// Sessão do browser: o modelo (abas, alvo ativo, observadores) e o ciclo de
+// vida da conexão.
 package browser
 
 import (
@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -30,11 +29,13 @@ type Tab struct {
 }
 
 // finish fecha o canal de pronto exatamente uma vez.
+
 func (t *Tab) finish() {
 	t.once.Do(func() { close(t.ready) })
 }
 
 // TabInfo é o que o agente vê em `tabs`.
+
 type TabInfo struct {
 	Index    int    `json:"index"`
 	TargetID string `json:"targetId"`
@@ -44,6 +45,7 @@ type TabInfo struct {
 }
 
 // Session mantém as abas vivas e o estado de convergência.
+
 type Session struct {
 	ctx     context.Context
 	client  *cdp.Client
@@ -79,6 +81,7 @@ type targetInfo struct {
 }
 
 // NewSession liga a descoberta de targets e as abas existentes.
+
 func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, presenter Presenter) (*Session, error) {
 	s := &Session{
 		ctx:           ctx,
@@ -194,39 +197,7 @@ func (s *Session) bootstrap(ctx context.Context) error {
 }
 
 // remember registra uma aba sem anexar a ela.
-func (s *Session) remember(targetID, url, title string) *Tab {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if tab, ok := s.tabs[targetID]; ok {
-		if url != "" {
-			tab.URL = url
-		}
-		if title != "" {
-			tab.Title = title
-		}
-		return tab
-	}
-	tab := &Tab{
-		TargetID: targetID,
-		URL:      url,
-		Title:    title,
-		ready:    make(chan struct{}),
-	}
-	s.tabs[targetID] = tab
-	s.order = append(s.order, targetID)
-	if s.podeAtivar(targetID) {
-		s.active = targetID
-	}
-	return tab
-}
 
-// podeAtivar decide se a aba pode virar ativa: só a que estava gravada, ou
-// qualquer uma quando não há preferência.
-func (s *Session) podeAtivar(targetID string) bool {
-	return s.active == "" && (s.prefActive == "" || targetID == s.prefActive)
-}
-
-// SetActiveFile aponta onde a aba ativa é lembrada e carrega o que há lá.
 func (s *Session) SetActiveFile(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -248,6 +219,7 @@ func (s *Session) SetActiveFile(path string) {
 }
 
 // saveActive grava a aba ativa (fora do lock: erro de disco não trava o resto).
+
 func (s *Session) saveActive() {
 	s.mu.Lock()
 	path, id := s.activeFile, s.active
@@ -260,418 +232,6 @@ func (s *Session) saveActive() {
 
 // attachTarget anexa a uma aba registrada, uma única vez. Bloqueia num Send:
 // nunca chame do laço de leitura sem goroutine.
-func (s *Session) attachTarget(targetID, url, title string) {
-	s.mu.Lock()
-	tab := s.tabs[targetID]
-	if tab == nil {
-		tab = &Tab{TargetID: targetID, URL: url, Title: title, ready: make(chan struct{})}
-		s.tabs[targetID] = tab
-		s.order = append(s.order, targetID)
-		if s.podeAtivar(targetID) {
-			s.active = targetID
-		}
-	}
-	if tab.SessionID != "" || s.attaching[targetID] || tab.tried {
-		s.mu.Unlock()
-		return
-	}
-	tab.tried = true
-	s.attaching[targetID] = true
-	s.mu.Unlock()
-
-	var res struct {
-		SessionID string `json:"sessionId"`
-	}
-	err := s.client.SendJSON(s.ctx, "Target.attachToTarget",
-		map[string]any{"targetId": targetID, "flatten": true}, "", &res)
-
-	s.mu.Lock()
-	delete(s.attaching, targetID)
-	if err == nil && res.SessionID != "" {
-		tab.SessionID = res.SessionID
-	}
-	s.mu.Unlock()
-
-	if err != nil || res.SessionID == "" {
-		tab.initErr = fmt.Errorf("não consegui anexar à aba: %v", err)
-		tab.finish()
-		return
-	}
-	go func() {
-		tab.initErr = s.initTab(tab)
-		tab.finish()
-	}()
-}
-
-func (s *Session) has(targetID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	_, ok := s.tabs[targetID]
-	return ok
-}
-
-func (s *Session) initTab(tab *Tab) error {
-	sid := tab.SessionID
-	for _, method := range []string{
-		"Page.enable", "Runtime.enable", "Network.enable",
-		"DOM.enable", "Accessibility.enable", "Log.enable",
-	} {
-		if _, err := s.client.Send(s.ctx, method, map[string]any{}, sid); err != nil {
-			return fmt.Errorf("%s: %w", method, err)
-		}
-	}
-	if err := s.Presenter.Install(s.ctx, s.client, sid); err != nil {
-		return fmt.Errorf("overlay: %w", err)
-	}
-
-	s.client.On("Network.requestWillBeSent", func(params json.RawMessage, s2 string) {
-		if s2 != sid {
-			return
-		}
-		var p struct {
-			RequestID string `json:"requestId"`
-		}
-		if json.Unmarshal(params, &p) == nil {
-			s.startReq(sid, p.RequestID)
-		}
-	})
-	done := func(params json.RawMessage, s2 string) {
-		if s2 != sid {
-			return
-		}
-		var p struct {
-			RequestID string `json:"requestId"`
-		}
-		if json.Unmarshal(params, &p) == nil {
-			s.doneReq(sid, p.RequestID)
-		}
-	}
-	s.client.On("Network.loadingFinished", done)
-	s.client.On("Network.loadingFailed", done)
-
-	s.client.On("Page.javascriptDialogOpening", func(params json.RawMessage, s2 string) {
-		if s2 != sid {
-			return
-		}
-		// Precisa ser assíncrono: o handler roda no laço de leitura e
-		// handleDialog faz um Send (que espera resposta do próprio laço).
-		go s.handleDialog(sid, params)
-	})
-	return nil
-}
-
-func (s *Session) startReq(sid, requestID string) {
-	if requestID == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	set := s.inflight[sid]
-	if set == nil {
-		set = make(map[string]struct{})
-		s.inflight[sid] = set
-	}
-	set[requestID] = struct{}{}
-	s.lastActivity[sid] = time.Now()
-}
-
-func (s *Session) doneReq(sid, requestID string) {
-	if requestID == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.inflight[sid], requestID)
-	s.lastActivity[sid] = time.Now()
-}
-
-func (s *Session) remove(targetID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.tabs, targetID)
-	for i, id := range s.order {
-		if id == targetID {
-			s.order = append(s.order[:i], s.order[i+1:]...)
-			break
-		}
-	}
-	if s.active == targetID {
-		s.active = ""
-		if len(s.order) > 0 {
-			s.active = s.order[0]
-		}
-	}
-}
-
-func (s *Session) removeBySession(sessionID string) {
-	s.mu.Lock()
-	targetID := ""
-	for id, tab := range s.tabs {
-		if tab.SessionID == sessionID {
-			targetID = id
-			break
-		}
-	}
-	s.mu.Unlock()
-	if targetID != "" {
-		s.remove(targetID)
-	}
-}
-
-// Tabs lista as abas na ordem em que apareceram.
-func (s *Session) Tabs() []TabInfo {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]TabInfo, 0, len(s.order))
-	for i, id := range s.order {
-		tab, ok := s.tabs[id]
-		if !ok {
-			continue
-		}
-		out = append(out, TabInfo{
-			Index:    i + 1,
-			TargetID: id,
-			Active:   id == s.active,
-			Title:    tab.Title,
-			URL:      tab.URL,
-		})
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Index < out[j].Index })
-	return out
-}
-
-// activeTab devolve a aba ativa sem esperar anexação.
-func (s *Session) activeTab() (*Tab, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	id := s.active
-	if id == "" {
-		if _, ok := s.tabs[s.prefActive]; ok {
-			id = s.prefActive
-		}
-	}
-	if id == "" && len(s.order) > 0 {
-		id = s.order[0]
-	}
-	s.active = id
-	tab := s.tabs[id]
-	if tab == nil {
-		return nil, fmt.Errorf("nenhuma aba aberta")
-	}
-	return tab, nil
-}
-
-// attachIfNeeded anexa a aba se ela ainda não estiver anexada.
-func (s *Session) attachIfNeeded(tab *Tab) {
-	s.mu.Lock()
-	need := tab.SessionID == ""
-	targetID, url, title := tab.TargetID, tab.URL, tab.Title
-	s.mu.Unlock()
-	if need {
-		s.attachTarget(targetID, url, title)
-	}
-}
-
-// Active devolve a aba ativa já pronta, anexando só ela se preciso.
-func (s *Session) Active() (*Tab, error) {
-	tab, err := s.activeTab()
-	if err != nil {
-		return nil, err
-	}
-	s.attachIfNeeded(tab)
-	<-tab.ready
-	if tab.initErr != nil {
-		return nil, tab.initErr
-	}
-	return tab, nil
-}
-
-// ActiveSID devolve o sessionId da aba ativa.
-func (s *Session) ActiveSID() (string, error) {
-	tab, err := s.Active()
-	if err != nil {
-		return "", err
-	}
-	return tab.SessionID, nil
-}
-
-// Find localiza uma aba por targetId ou por índice 1-based.
-func (s *Session) Find(ref string) (*Tab, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, id := range s.order {
-		if id == ref {
-			return s.tabs[id], nil
-		}
-	}
-	var index int
-	if _, err := fmt.Sscanf(ref, "%d", &index); err == nil && index >= 1 && index <= len(s.order) {
-		return s.tabs[s.order[index-1]], nil
-	}
-	return nil, fmt.Errorf("aba %q não existe (use `bu tabs`)", ref)
-}
-
-// Select troca a aba ativa. `activate` traz a janela para a frente — por padrão
-// NÃO fazemos isso: roubar foco a cada comando atrapalha quem está trabalhando
-// em outra janela. A aba ativa do driver independe do foco do sistema.
-func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, error) {
-	tab, err := s.Find(ref)
-	if err != nil {
-		return nil, err
-	}
-	if activate {
-		if _, err := s.client.Send(ctx, "Target.activateTarget",
-			map[string]any{"targetId": tab.TargetID}, ""); err != nil {
-			return nil, err
-		}
-	}
-	s.mu.Lock()
-	s.active = tab.TargetID
-	s.mu.Unlock()
-	s.saveActive()
-	s.attachIfNeeded(tab)
-	<-tab.ready
-	if tab.initErr != nil {
-		return nil, tab.initErr
-	}
-	return tab, nil
-}
-
-// NewTab abre uma aba e espera ela ficar pronta, sem trazer a janela para frente.
-func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
-	if url == "" {
-		url = "about:blank"
-	}
-	var res struct {
-		TargetID string `json:"targetId"`
-	}
-	// background=true: a aba nova não vira a aba em foco nem levanta a janela.
-	if err := s.client.SendJSON(ctx, "Target.createTarget",
-		map[string]any{"url": url, "background": true}, "", &res); err != nil {
-		return nil, err
-	}
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if s.has(res.TargetID) {
-			return s.Select(ctx, res.TargetID, false)
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	return nil, fmt.Errorf("aba nova não ficou pronta")
-}
-
-// CloseTab fecha uma aba.
-func (s *Session) CloseTab(ctx context.Context, ref string) error {
-	tab, err := s.Find(ref)
-	if err != nil {
-		return err
-	}
-	_, err = s.client.Send(ctx, "Target.closeTarget",
-		map[string]any{"targetId": tab.TargetID}, "")
-	return err
-}
-
-// Navigate vai para uma URL e espera convergir.
-func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Duration) error {
-	var res struct {
-		ErrorText string `json:"errorText"`
-	}
-	if err := s.client.SendJSON(ctx, "Page.navigate", map[string]any{"url": url}, sid, &res); err != nil {
-		return err
-	}
-	if res.ErrorText != "" {
-		return fmt.Errorf("navegação falhou: %s", res.ErrorText)
-	}
-	_ = s.WaitForLoad(ctx, sid, timeout)
-	s.Settle(ctx, sid, 300*time.Millisecond)
-	return nil
-}
-
-// HistoryMove anda no histórico (-1 volta, +1 avança).
-func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeout time.Duration) error {
-	var hist struct {
-		CurrentIndex int `json:"currentIndex"`
-		Entries      []struct {
-			ID int `json:"id"`
-		} `json:"entries"`
-	}
-	if err := s.client.SendJSON(ctx, "Page.getNavigationHistory", map[string]any{}, sid, &hist); err != nil {
-		return err
-	}
-	target := hist.CurrentIndex + delta
-	if target < 0 || target >= len(hist.Entries) {
-		return fmt.Errorf("sem histórico para %s", map[int]string{-1: "voltar", 1: "avançar"}[delta])
-	}
-	if _, err := s.client.Send(ctx, "Page.navigateToHistoryEntry",
-		map[string]any{"entryId": hist.Entries[target].ID}, sid); err != nil {
-		return err
-	}
-	_ = s.WaitForLoad(ctx, sid, timeout)
-	s.Settle(ctx, sid, 300*time.Millisecond)
-	return nil
-}
-
-// Reload recarrega a página.
-func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration) error {
-	if _, err := s.client.Send(ctx, "Page.reload", map[string]any{}, sid); err != nil {
-		return err
-	}
-	_ = s.WaitForLoad(ctx, sid, timeout)
-	s.Settle(ctx, sid, 300*time.Millisecond)
-	return nil
-}
-
-// WaitForLoad espera o documento ficar completo.
-func (s *Session) WaitForLoad(ctx context.Context, sid string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		raw, err := s.client.Send(ctx, "Runtime.evaluate", map[string]any{
-			"expression":    "document.readyState",
-			"returnByValue": true,
-		}, sid)
-		if err == nil {
-			var res struct {
-				Result struct {
-					Value string `json:"value"`
-				} `json:"result"`
-			}
-			if json.Unmarshal(raw, &res) == nil && res.Result.Value == "complete" {
-				return nil
-			}
-		}
-		time.Sleep(80 * time.Millisecond)
-	}
-	return fmt.Errorf("timeout esperando a página carregar")
-}
-
-// settleCap é o teto da espera por sossego (ver Settle).
-//
-// Navegação e ação têm bolsas diferentes (45s / 8s), mas nenhuma delas é uma
-// espera por sossego: é o tempo máximo para a página responder. Num app que
-// nunca fica quieto — polling, websocket, telemetria — "sossegar" nunca chega,
-// e usar a bolsa inteira aqui é só tempo perdido em toda ação.
-const settleCap = 1500 * time.Millisecond
-
-// Settle espera a rede sossegar: sem requisições em voo por `idle`, ou até
-// settleCap. Quem precisa de mais usa `wait` (por texto), que é o critério
-// confiável.
-func (s *Session) Settle(ctx context.Context, sid string, idle time.Duration) {
-	deadline := time.Now().Add(settleCap)
-	for time.Now().Before(deadline) {
-		s.mu.Lock()
-		inflight := len(s.inflight[sid])
-		last := s.lastActivity[sid]
-		s.mu.Unlock()
-		if inflight <= 0 && time.Since(last) >= idle {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-}
 
 func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	var p struct {
@@ -697,6 +257,7 @@ func (s *Session) handleDialog(sid string, params json.RawMessage) {
 }
 
 // UpdateHUD mostra abas + rótulo da última ação no overlay.
+
 func (s *Session) UpdateHUD(ctx context.Context, label string) {
 	tab, err := s.Active()
 	if err != nil {

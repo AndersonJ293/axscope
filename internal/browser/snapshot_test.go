@@ -69,7 +69,7 @@ func TestMontarTexto_CortaCromoERuido(t *testing.T) {
 - text: Hello
 - link "Buy" [ref=e2]
 - region "Grupo"
-  - link "Same" [ref=e3]
+  - link "Same" [ref=e3] (+1 iguais)
 - link "Docs" [ref=e4]
 - link "X" [ref=e5]`
 	if snap.Text != esperado {
@@ -100,7 +100,7 @@ func TestMontarTexto_TudoDesligaCorte(t *testing.T) {
 - text: Hello
 - link "Buy" [ref=e2]
 - region "Grupo"
-  - link "Same" [ref=e3]
+  - link "Same" [ref=e3] (+1 iguais)
 - link "Docs" [ref=e4]
 - link "X" [ref=e5]`
 	if snap.Text != esperado {
@@ -137,10 +137,12 @@ func TestMontarTexto_RefsOnly(t *testing.T) {
 }
 
 // Sem MaxNodes, o teto padrão é 1500; com teto baixo, a leitura trunca.
+// Nomes distintos de propósito: nomes iguais seriam resumidos numa linha só, e
+// aí não haveria o que truncar — o alvo deste teste é o teto, não o resumo.
 func TestMontarTexto_Trunca(t *testing.T) {
 	nodes := []axNode{ax("root", "", "RootWebArea", "", 0)}
 	for i := 0; i < 5; i++ {
-		nodes = append(nodes, ax("t"+string(rune('a'+i)), "root", "button", "b", i+1))
+		nodes = append(nodes, ax("t"+string(rune('a'+i)), "root", "button", "b"+string(rune('a'+i)), i+1))
 	}
 	snap := montarTexto(nodes, SnapshotOptions{MaxNodes: 2})
 	if !snap.Truncated {
@@ -148,5 +150,36 @@ func TestMontarTexto_Trunca(t *testing.T) {
 	}
 	if snap.Count != 2 {
 		t.Errorf("Count = %d, esperado 2", snap.Count)
+	}
+}
+
+// Regressão: marco nomeado cujo filho só repete o nome não pode sumir. O filho é
+// suprimido como eco, e sobrava zero linha — a poda então apagava o marco
+// inteiro, e a leitura perdia que existe um banner ali.
+func TestMontarTexto_MarcoNomeadoSobreviveAoSemFilhos(t *testing.T) {
+	nodes := []axNode{
+		ax("root", "", "RootWebArea", "", 0),
+		ax("topo", "root", "banner", "Topo", 0),
+		ax("topotxt", "topo", "StaticText", "Topo", 0),
+		ax("nav", "root", "navigation", "", 0),
+	}
+	snap := montarTexto(nodes, SnapshotOptions{})
+	if snap.Text != `- banner "Topo"` {
+		t.Errorf("texto = %q, esperado o banner nomeado e nada do navigation sem nome", snap.Text)
+	}
+}
+
+// Regressão: o corte de irmãos idênticos tem de valer também na raiz. O mapa de
+// vistos só nascia dentro do walk, então dois filhos idênticos da raiz
+// apareciam os dois.
+func TestMontarTexto_DedupeNaRaiz(t *testing.T) {
+	nodes := []axNode{
+		ax("root", "", "RootWebArea", "", 0),
+		ax("s1", "root", "link", "Same", 1),
+		ax("s2", "root", "link", "Same", 2),
+	}
+	snap := montarTexto(nodes, SnapshotOptions{})
+	if snap.Text != `- link "Same" [ref=e1] (+1 iguais)` {
+		t.Errorf("texto = %q", snap.Text)
 	}
 }
