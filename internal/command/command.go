@@ -35,7 +35,7 @@ var Specs = []Spec{
 	{Cmd: "stop", Help: "encerra o daemon (e o browser, se fomos nós que subimos)"},
 
 	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new"}, Help: "abre/navega (--new abre em aba nova)"},
-	{Cmd: "snap", Flags: []string{"refs"}, Help: "lê a tela em texto (--refs só alvos acionáveis)"},
+	{Cmd: "snap", Flags: []string{"refs", "tudo"}, Help: "lê a tela em texto (--refs só alvos; --tudo inclui rodapé e atalhos)"},
 	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double"}, Help: "clica no alvo (ref/css=/text=)"},
 	{Cmd: "hover", Positional: []string{"target"}, Help: "passa o mouse no alvo"},
 	{Cmd: "fill", Positional: []string{"target", "text"}, Help: "substitui o conteúdo do campo"},

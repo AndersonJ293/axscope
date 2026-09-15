@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/ajunior/browser-use/internal/cdp"
 )
@@ -27,6 +29,28 @@ type SnapshotOptions struct {
 	MaxNodes int
 	// RefsOnly lista só os alvos acionáveis, sem texto solto.
 	RefsOnly bool
+	// Tudo desliga o corte de cromo de página (rodapé e links de atalho).
+	Tudo bool
+}
+
+// noiseNameRe reconhece o "cromo de página": blocos de pular navegação, padrão
+// WAI-ARIA presente em praticamente todo site e inútil para quem age por ref.
+// Não é nome de site cravado — é o padrão de acessibilidade.
+var noiseNameRe = regexp.MustCompile(`(?i)^(skip (to|navigation)|close jump menu)`)
+
+// containerRoles são papéis que só agrupam: sem ref, sem texto próprio e sem
+// filho visível, a linha não diz nada e sai.
+var containerRoles = map[string]bool{
+	"generic": true, "group": true, "figure": true, "list": true,
+	"listitem": true, "region": true, "form": true, "toolbar": true,
+	"navigation": true, "banner": true, "complementary": true, "main": true,
+	"tablist": true, "menu": true, "menubar": true, "radiogroup": true,
+}
+
+// anonRoles são invólucros anônimos: sem nome, sem texto próprio e sem alvo,
+// não valem linha — somem e os filhos sobem no lugar.
+var anonRoles = map[string]bool{
+	"": true, "none": true, "generic": true, "paragraph": true,
 }
 
 // interactiveRoles são os papéis que rendem `ref` (o agente pode agir neles).
@@ -108,6 +132,7 @@ type snapBuilder struct {
 	nextRef   int
 	max       int
 	refsOnly  bool
+	tudo      bool
 	truncated bool
 }
 
@@ -133,6 +158,7 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 		consumed: make(map[string]bool),
 		max:      opts.MaxNodes,
 		refsOnly: opts.RefsOnly,
+		tudo:     opts.Tudo,
 	}
 	var root *axNode
 	for i := range tree.Nodes {
@@ -152,7 +178,7 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	}
 
 	for _, child := range b.children[root.NodeID] {
-		b.walk(child, 0, false)
+		b.walk(child, 0, "")
 	}
 
 	snap := &Snapshot{
@@ -166,31 +192,39 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	return snap, nil
 }
 
-func (b *snapBuilder) walk(nodeID string, depth int, parentNamed bool) {
+func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	n := b.nodes[nodeID]
 	if n == nil || b.consumed[nodeID] {
 		return
 	}
 	if n.Ignored {
 		for _, c := range b.children[nodeID] {
-			b.walk(c, depth, parentNamed)
+			b.walk(c, depth, parentName)
 		}
 		return
 	}
 
 	role := n.Role.str()
+	name := norm(n.Name.str())
 
 	if skipRoles[role] {
 		return
 	}
 
+	// Cromo de página: rodapé e blocos de pular navegação. Ninguém age neles.
+	if !b.tudo {
+		if role == "contentinfo" || noiseNameRe.MatchString(name) {
+			return
+		}
+	}
+
 	if role == "StaticText" || role == "InlineTextBox" {
-		if !parentNamed && !b.refsOnly {
+		if parentName == "" && !b.refsOnly {
 			text := norm(n.Name.str())
 			if text == "" {
 				text = norm(n.Value.str())
 			}
-			if text != "" {
+			if text != "" && !separatorOnly(text) {
 				b.emit(depth, "- text: "+truncate(text, 220))
 			}
 		}
@@ -200,22 +234,21 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentNamed bool) {
 	// Containers de layout somem; os filhos herdam a profundidade.
 	if layoutRoles[role] {
 		for _, c := range b.children[nodeID] {
-			b.walk(c, depth, parentNamed)
+			b.walk(c, depth, parentName)
 		}
 		return
 	}
 
 	// Imagem dentro de um alvo já nomeado (link com imagem) é redundante.
-	if (role == "img" || role == "image") && parentNamed {
+	if (role == "img" || role == "image") && parentName != "" {
 		return
 	}
 
-	name := norm(n.Name.str())
 	interesting := interactiveRoles[role] || structuralRoles[role] || name != ""
 
 	if !interesting {
 		for _, c := range b.children[nodeID] {
-			b.walk(c, depth, parentNamed)
+			b.walk(c, depth, parentName)
 		}
 		return
 	}
@@ -223,7 +256,7 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentNamed bool) {
 	ref := b.refFor(n)
 	if b.refsOnly && ref == "" {
 		for _, c := range b.children[nodeID] {
-			b.walk(c, depth, parentNamed)
+			b.walk(c, depth, parentName)
 		}
 		return
 	}
@@ -234,22 +267,97 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentNamed bool) {
 	} else {
 		line += role
 	}
+	hadText := false
 	if name != "" {
 		line += " " + strconv.Quote(name)
 	} else if !b.refsOnly {
-		if text := b.collectText(nodeID); text != "" {
+		if text := b.collectText(nodeID); text != "" && !repeatOf(text, parentName) {
 			line += ": " + text
+			hadText = true
 		}
 	}
+
+	// Invólucro anônimo (sem nome, sem texto próprio, sem alvo): não vira linha
+	// — some, e os filhos sobem no lugar.
+	if name == "" && !hadText && ref == "" && anonRoles[role] {
+		for _, c := range b.children[nodeID] {
+			b.walk(c, depth, parentName)
+		}
+		return
+	}
+
 	if ref != "" {
 		line += " [ref=" + ref + "]"
 	}
 	line += b.props(n)
 	b.emit(depth, line)
+	before := len(b.out)
 
-	for _, c := range b.children[nodeID] {
-		b.walk(c, depth+1, name != "")
+	// O nome do nó desce como contexto: filho que só o repete não é dito de novo.
+	childParent := parentName
+	if name != "" {
+		childParent = name
 	}
+
+	seen := map[string]bool{}
+	for _, cid := range b.childIDs(nodeID, name) {
+		c := b.nodes[cid]
+		// Irmãos idênticos (mesmo papel e nome) são o mesmo alvo oferecido duas
+		// vezes; fica o primeiro.
+		if c != nil && !c.Ignored {
+			if cn := norm(c.Name.str()); cn != "" && b.eligibleRef(c) {
+				key := c.Role.str() + "\x00" + cn
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+			}
+		}
+		b.walk(cid, depth+1, childParent)
+	}
+
+	// Container que não rendeu nada (sem alvo, sem texto, sem filho) sai.
+	if ref == "" && !hadText && containerRoles[role] && len(b.out) == before {
+		b.out = b.out[:len(b.out)-1]
+	}
+}
+
+// childIDs devolve os filhos a percorrer, pulando invólucros que só repetem o
+// nome do pai — o clássico `link "X" > generic "X" > paragraph: X`. O alvo já
+// está dito; os netos sobem para o lugar do invólucro.
+func (b *snapBuilder) childIDs(nodeID, name string) []string {
+	var out []string
+	for _, cid := range b.children[nodeID] {
+		c := b.nodes[cid]
+		if c == nil {
+			continue
+		}
+		if name != "" && !c.Ignored && norm(c.Name.str()) == name && !b.eligibleRef(c) {
+			out = append(out, b.childIDs(cid, name)...)
+			continue
+		}
+		out = append(out, cid)
+	}
+	return out
+}
+
+// repeatOf diz se um texto é só eco do nome do ancestral (já dito acima).
+func repeatOf(text, parent string) bool {
+	if text == "" || parent == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(parent), strings.ToLower(text))
+}
+
+// separatorOnly diz se o texto é só pontuação de layout ("|", "·", "•") — não
+// é conteúdo, é separador desenhado com texto.
+func separatorOnly(s string) bool {
+	for _, r := range s {
+		if !strings.ContainsRune("|·•/–—»«›<>:;,.()[]{}\u00a0", r) && !unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func (b *snapBuilder) emit(depth int, line string) {
@@ -260,12 +368,17 @@ func (b *snapBuilder) emit(depth int, line string) {
 	b.out = append(b.out, strings.Repeat("  ", depth)+line)
 }
 
-func (b *snapBuilder) refFor(n *axNode) string {
+// eligibleRef diz se o nó pode receber ref, sem consumir numeração.
+func (b *snapBuilder) eligibleRef(n *axNode) bool {
 	if n.BackendDOMNodeID == 0 {
-		return ""
+		return false
 	}
 	role := n.Role.str()
-	if !interactiveRoles[role] && !b.focusable(n) {
+	return interactiveRoles[role] || b.focusable(n)
+}
+
+func (b *snapBuilder) refFor(n *axNode) string {
+	if !b.eligibleRef(n) {
 		return ""
 	}
 	b.nextRef++

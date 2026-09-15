@@ -326,6 +326,7 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, browser.SnapshotOptions{
 		RefsOnly: req.Bool("refs", false),
+		Tudo:     req.Bool("tudo", false),
 	})
 	if err != nil {
 		return protocol.Fail(err)

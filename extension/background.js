@@ -105,6 +105,11 @@ function connectPort(port) {
   };
   ws.onclose = () => {
     st.ws = null;
+    // Daemon morreu: solta o depurador das abas desta sessão. Sem isso a aba
+    // fica presa e o próximo daemon não consegue anexar.
+    for (const tabId of st.tabBySession.values()) {
+      chrome.debugger.detach({ tabId }).catch(() => {});
+    }
     // A sessão caiu: solta as abas dela para o mapa de donos.
     for (const [tabId, owner] of ownerByTab) {
       if (owner === st) ownerByTab.delete(tabId);
@@ -341,7 +346,18 @@ async function attach(st, targetId) {
   const sessionId = `t${tabId}`;
   if (st.tabBySession.has(sessionId)) return { sessionId };
 
-  await chrome.debugger.attach({ tabId }, PROTOCOL);
+  // Anexo preso (daemon anterior morreu sem soltar): desanexa e tenta de novo.
+  try {
+    await chrome.debugger.attach({ tabId }, PROTOCOL);
+  } catch (err) {
+    if (!String(err).includes('Another debugger is already attached')) throw err;
+    try {
+      await chrome.debugger.detach({ tabId });
+    } catch {
+      /* não era nosso (DevTools aberto, por exemplo) */
+    }
+    await chrome.debugger.attach({ tabId }, PROTOCOL);
+  }
   st.tabBySession.set(sessionId, tabId);
   ownerByTab.set(tabId, st);
   return { sessionId };
