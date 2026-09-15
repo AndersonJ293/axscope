@@ -90,7 +90,7 @@ func (a *Agent) extension(ctx context.Context) (*cdp.Client, error) {
 	if a.extClient != nil && a.extClient.Err() == nil {
 		return a.extClient, nil
 	}
-	client, err := a.bridge.Wait(ctx, 60*time.Second)
+	client, err := a.bridge.Wait(ctx, 20*time.Second)
 	if err != nil {
 		return nil, err
 	}

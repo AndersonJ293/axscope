@@ -80,7 +80,7 @@ func run() error {
 		return daemon.Run(ctx, daemon.Options{
 			Session:  paths.Session(),
 			Attach:   os.Getenv("BROWSER_USE_ATTACH"),
-			Engine:   envOr("BROWSER_USE_ENGINE", browser.EngineShell),
+			Engine:   envOr("BROWSER_USE_ENGINE", browser.EngineExt),
 			Headless: envBool("BROWSER_USE_HEADLESS", false),
 		})
 
@@ -171,6 +171,9 @@ func applyMode(mode string) {
 		}
 	case "leve":
 		_ = os.Setenv("BROWSER_USE_ENGINE", browser.EngineShell)
+		if os.Getenv("BROWSER_USE_SESSION") == "" {
+			_ = os.Setenv("BROWSER_USE_SESSION", "leve")
+		}
 	}
 }
 

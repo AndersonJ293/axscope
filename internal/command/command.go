@@ -152,7 +152,7 @@ func Help() string {
 	var b strings.Builder
 	b.WriteString("bu — browser dirigido por agente\n\n")
 	b.WriteString("uso: bu <comando> [args] [chave=valor] [--flag]\n")
-	b.WriteString("flags globais: --leve (sem janela, PADRÃO) | --ver (janela + cursor)\n\n")
+	b.WriteString("flags globais: (padrão) extensão no Brave | --ver (Chrome dedicado) | --leve (sem janela)\n\n")
 	for _, s := range Specs {
 		line := "  " + s.Cmd
 		for _, p := range s.Positional {

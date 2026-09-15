@@ -85,7 +85,8 @@ func (s *Server) Wait(ctx context.Context, timeout time.Duration) (*cdp.Client, 
 	case <-timer.C:
 		return nil, fmt.Errorf(
 			"a extensão browser-use não conectou na porta %d em %s.\n"+
-				"Abra o Brave e confira se a extensão está carregada e conectada",
+				"Confira: (1) o Brave está aberto; (2) a extensão está carregada em brave://extensions;\n"+
+				"(3) o ícone da extensão mostra 'conectado'. Se o Brave não está aberto, use --ver ou --leve",
 			s.Port(), timeout)
 	case <-ctx.Done():
 		return nil, ctx.Err()

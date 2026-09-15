@@ -181,27 +181,30 @@ Mesmo motor, mesmo CDP, mesmo conjunto de ações. A diferença é a janela.
 
 | Modo | Motor | RAM (1 aba) | Processos | Vê a tela? |
 |---|---|---|---|---|
-| **leve** (padrão) | chrome-headless-shell | ~505 MB | 7 | ❌ |
-| **ver** (`--ver`) | Chrome for Testing | ~1850 MB | 16 | ✅ abas + cursor |
-| anexar | um Chromium seu | — | — | depende |
+| Modo | Motor | RAM | Vê a tela? |
+|---|---|---|---|
+| **(padrão) extensão** | o seu Brave, já logado | — (já está aberto) | ✅ abas + cursor |
+| **`--ver`** | Chrome for Testing | ~1850 MB | ✅ abas + cursor |
+| **`--leve`** | chrome-headless-shell | ~505 MB | ❌ |
+| anexar | um Chromium seu com porta de debug | — | depende |
 
 ```bash
-# leve (padrão): sem janela nenhuma, não atrapalha seu uso
+# padrão: o seu Brave, pela extensão (é o modo do dia a dia)
 browser-use open https://exemplo.com
 
-# ver: janela de verdade com cursor, quando você quiser olhar
+# Chrome dedicado, quando quiser um navegador separado
 browser-use --ver open https://exemplo.com
 
-# roteiro em lote, sem janela
-browser-use script roteiro.txt
+# sem janela nenhuma, para lote
+browser-use --leve script roteiro.txt
 
 # encerra tudo (todos os modos e seus browsers)
 browser-use stop --all
 ```
 
-Os dois modos são **sessões separadas** (`default` no leve, `ver` no ver), então
-**coexistem**: dá para deixar um roteiro rodando sem janela enquanto você olha
-outra coisa no modo ver.
+Cada modo é uma **sessão separada** (`default` = extensão, `ver`, `leve`), então
+coexistem: dá para deixar um roteiro rodando sem janela enquanto você olha outra
+coisa no Brave.
 
 O motor é propriedade da **sessão**: o daemon sobe o browser com o motor escolhido
 na primeira chamada. Trocar de motor numa sessão já viva exige `stop` (ou use
