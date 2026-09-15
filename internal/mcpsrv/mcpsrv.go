@@ -158,6 +158,12 @@ type toolDef struct {
 // curatedMCP é o conjunto enxuto exposto por padrão: alta frequência, e o resto
 // via `script`. Schema de ferramenta custa contexto em toda requisição, então
 // menos ferramentas é melhor — `BROWSER_USE_MCP_TOOLS=all` abre tudo.
+//
+// `select`, `check`, `uncheck`, `type` e `upload` estão aqui porque as próprias
+// mensagens de recusa apontam para eles: quando o `fill` encontra um `<select>` a
+// resposta diz "use `bu select`". Dizer isso e não expor o comando é mandar o
+// agente usar o que ele não pode chamar — medido no laboratório v3, e o agente
+// teve de recorrer ao `eval`. O custo de contexto é menor que a contradição.
 var curatedMCP = map[string]bool{
 	"open":     true,
 	"snap":     true,
@@ -165,6 +171,11 @@ var curatedMCP = map[string]bool{
 	"hover":    true,
 	"drag":     true,
 	"fill":     true,
+	"type":     true,
+	"select":   true,
+	"check":    true,
+	"uncheck":  true,
+	"upload":   true,
 	"press":    true,
 	"wait":     true,
 	"waitgone": true,
