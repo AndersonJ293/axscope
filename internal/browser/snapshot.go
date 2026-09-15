@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/ajunior/browser-use/internal/dom"
 )
 
 // Snapshot é a tela lida, com o mapa de refs para o próximo passo.
@@ -153,8 +154,8 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	}
 
 	snap := montarTexto(tree.Nodes, opts)
-	snap.Title, _ = evalString(ctx, client, session, "document.title")
-	snap.URL, _ = evalString(ctx, client, session, "location.href")
+	snap.Title, _ = dom.EvalString(ctx, client, session, "document.title")
+	snap.URL, _ = dom.EvalString(ctx, client, session, "location.href")
 	return snap, nil
 }
 
@@ -535,23 +536,4 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
-}
-
-func evalString(ctx context.Context, client *cdp.Client, session, expr string) (string, error) {
-	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    expr,
-		"returnByValue": true,
-	}, session)
-	if err != nil {
-		return "", err
-	}
-	var res struct {
-		Result struct {
-			Value string `json:"value"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return "", err
-	}
-	return res.Result.Value, nil
 }

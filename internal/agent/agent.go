@@ -16,6 +16,7 @@ import (
 	"github.com/ajunior/browser-use/internal/browser"
 	"github.com/ajunior/browser-use/internal/cdp"
 	"github.com/ajunior/browser-use/internal/command"
+	"github.com/ajunior/browser-use/internal/dom"
 	"github.com/ajunior/browser-use/internal/paths"
 	"github.com/ajunior/browser-use/internal/protocol"
 	"github.com/ajunior/browser-use/internal/render"
@@ -308,8 +309,8 @@ func (a *Agent) status(ctx context.Context) protocol.Response {
 	sess := a.mustSess()
 	tabs := sess.Tabs()
 	sid, _ := sess.ActiveSID()
-	url, _ := evalString(ctx, a.client(), sid, "location.href")
-	title, _ := evalString(ctx, a.client(), sid, "document.title")
+	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
+	title, _ := dom.EvalString(ctx, a.client(), sid, "document.title")
 	var b strings.Builder
 	fmt.Fprintf(&b, "sessão: %s\n", a.Session)
 	fmt.Fprintf(&b, "url: %s\n", url)
@@ -344,7 +345,7 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 		return protocol.Fail(err)
 	}
 	sess.UpdateHUD(ctx, "open "+url)
-	title, _ := evalString(ctx, a.client(), sid, "document.title")
+	title, _ := dom.EvalString(ctx, a.client(), sid, "document.title")
 	return ok(fmt.Sprintf("ok: %s\n%s", url, title))
 }
 
@@ -413,7 +414,7 @@ func (a *Agent) finish(ctx context.Context, sess *browser.Session, sid, label st
 			fmt.Fprintf(&b, "\n!! console: %s", e.Text)
 		}
 	}
-	url, _ := evalString(ctx, a.client(), sid, "location.href")
+	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	fmt.Fprintf(&b, "\nurl: %s", url)
 	return b.String()
 }
@@ -639,7 +640,7 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 		const el = document.querySelector(%s) || document.body;
 		return el ? el.innerText : '';
 	})()`, strconv.Quote(sel))
-	text, err := evalString(ctx, a.client(), sid, expr)
+	text, err := dom.EvalString(ctx, a.client(), sid, expr)
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -647,7 +648,7 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	if len(text) > 8000 {
 		text = text[:8000] + "\n(... truncado)"
 	}
-	url, _ := evalString(ctx, a.client(), sid, "location.href")
+	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	return ok(fmt.Sprintf("url: %s\n\n%s", url, text))
 }
 
@@ -660,29 +661,11 @@ func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	raw, err := a.client().Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    js,
-		"returnByValue": true,
-		"awaitPromise":  true,
-	}, sid)
+	raw, err := dom.EvalAwait(ctx, a.client(), sid, js)
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	var res struct {
-		Result struct {
-			Value json.RawMessage `json:"value"`
-		} `json:"result"`
-		ExceptionDetails *struct {
-			Text string `json:"text"`
-		} `json:"exceptionDetails"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return protocol.Fail(err)
-	}
-	if res.ExceptionDetails != nil {
-		return protocol.Fail(fmt.Errorf("%s", res.ExceptionDetails.Text))
-	}
-	out := string(res.Result.Value)
+	out := string(raw)
 	if out == "" {
 		out = "undefined"
 	}
@@ -758,7 +741,7 @@ func (a *Agent) history(ctx context.Context, sess *browser.Session, req protocol
 	if err := sess.HistoryMove(ctx, sid, delta, navTimeout); err != nil {
 		return protocol.Fail(err)
 	}
-	url, _ := evalString(ctx, a.client(), sid, "location.href")
+	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	return ok(fmt.Sprintf("ok: %s\nurl: %s", req.Cmd, url))
 }
 
@@ -905,50 +888,24 @@ func ok(text string) protocol.Response {
 	return protocol.Response{OK: true, Text: text}
 }
 
-func evalString(ctx context.Context, client *cdp.Client, session, expr string) (string, error) {
-	if client == nil {
-		return "", fmt.Errorf("sem conexão")
-	}
-	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    expr,
-		"returnByValue": true,
-	}, session)
-	if err != nil {
-		return "", err
-	}
-	var res struct {
-		Result struct {
-			Value string `json:"value"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return "", err
-	}
-	return res.Result.Value, nil
-}
-
 func pageHasText(ctx context.Context, client *cdp.Client, session, want string) (bool, error) {
 	expr := fmt.Sprintf(`(() => {
 		const body = document.body;
 		if (!body) return false;
 		return (body.innerText || '').includes(%s);
 	})()`, strconv.Quote(want))
-	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    expr,
-		"returnByValue": true,
-	}, session)
+	raw, err := dom.Eval(ctx, client, session, expr)
 	if err != nil {
 		return false, err
 	}
-	var res struct {
-		Result struct {
-			Value bool `json:"value"`
-		} `json:"result"`
+	if len(raw) == 0 {
+		return false, nil
 	}
-	if err := json.Unmarshal(raw, &res); err != nil {
+	var has bool
+	if err := json.Unmarshal(raw, &has); err != nil {
 		return false, err
 	}
-	return res.Result.Value, nil
+	return has, nil
 }
 
 // squeeze reduz linhas em branco repetidas.

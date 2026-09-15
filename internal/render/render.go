@@ -13,7 +13,7 @@ import (
 
 	"github.com/ajunior/browser-use/internal/browser"
 	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/page"
+	"github.com/ajunior/browser-use/internal/dom"
 )
 
 // source é o script de apresentação, embutido no binário.
@@ -32,7 +32,7 @@ func (Presenter) Install(ctx context.Context, c *cdp.Client, session string) err
 		map[string]any{"source": source}, session); err != nil {
 		return err
 	}
-	_, err := page.Eval(ctx, c, session, source)
+	_, err := dom.Eval(ctx, c, session, source)
 	return err
 }
 
@@ -51,7 +51,7 @@ func args(values ...any) string {
 // call chama um método de window.__bu com guarda de existência.
 func call(ctx context.Context, c *cdp.Client, session, method string, values ...any) error {
 	expr := fmt.Sprintf("(window.__bu ? window.__bu.%s(%s) : null)", method, args(values...))
-	_, err := page.Eval(ctx, c, session, expr)
+	_, err := dom.Eval(ctx, c, session, expr)
 	return err
 }
 
@@ -73,7 +73,7 @@ func (Presenter) Press(ctx context.Context, c *cdp.Client, session string, x, y 
 // Desligado por padrão. O contorno no alvo poluía mais do que ajudava: ficava
 // aceso depois da ação e, quando a página rolava, apontava para o nada. Quem
 // quiser de volta liga com BROWSER_USE_DESTAQUE=1.
-func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, rect *browser.Rect) error {
+func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, rect *dom.Rect) error {
 	ligado, _ := strconv.Atoi(os.Getenv("BROWSER_USE_DESTAQUE"))
 	if ligado <= 0 {
 		return nil

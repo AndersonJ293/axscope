@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/ajunior/browser-use/internal/dom"
 )
 
 // Target é um alvo resolvido pronto para receber a ação.
 type Target struct {
 	ObjectID      string
 	BackendNodeID int
-	Rect          Rect
+	Rect          dom.Rect
 	Description   string
 }
 
@@ -56,7 +57,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	case strings.HasPrefix(spec, "css="):
 		sel := strings.TrimPrefix(spec, "css=")
 		expr := fmt.Sprintf("document.querySelector(%s)", strconv.Quote(sel))
-		id, err := evalObject(ctx, client, session, expr)
+		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, fmt.Errorf("seletor inválido %q: %w", sel, err)
 		}
@@ -100,7 +101,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			}
 			return escolhido;
 		})()`, strconv.Quote(want))
-		id, err := evalObject(ctx, client, session, expr)
+		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +124,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			return nil, fmt.Errorf("posição mal formada %q — use pos=x,y", spec)
 		}
 		expr := fmt.Sprintf("document.elementFromPoint(%v, %v)", x, y)
-		id, err := evalObject(ctx, client, session, expr)
+		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, err
 		}
@@ -158,11 +159,10 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	// Traz para a tela em passos visíveis; se não bastar, garante com o scroll
 	// direto — o que não pode é a ação não alcançar o alvo.
 	if !scrollAoAlcance(ctx, client, session, objectID) {
-		_, _ = client.Send(ctx, "DOM.scrollIntoViewIfNeeded",
-			map[string]any{"objectId": objectID}, session)
+		_ = dom.ScrollTo(ctx, client, session, objectID)
 	}
 
-	rect, err := boxOf(ctx, client, session, objectID)
+	rect, err := dom.BoxOf(ctx, client, session, objectID)
 	if err != nil {
 		return nil, fmt.Errorf("alvo %q sem área visível: %w", spec, err)
 	}
@@ -245,94 +245,6 @@ const scrollScript = `function (intervalo) {
 
 func (t *Target) center() (float64, float64) {
 	return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height/2
-}
-
-// evalObject avalia `expr` e devolve o objectId do elemento (vazio se null).
-func evalObject(ctx context.Context, client *cdp.Client, session, expr string) (string, error) {
-	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    expr,
-		"returnByValue": false,
-	}, session)
-	if err != nil {
-		return "", err
-	}
-	var res struct {
-		Result struct {
-			Subtype  string `json:"subtype"`
-			ObjectID string `json:"objectId"`
-		} `json:"result"`
-		ExceptionDetails *struct {
-			Text string `json:"text"`
-		} `json:"exceptionDetails"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return "", err
-	}
-	if res.ExceptionDetails != nil {
-		return "", fmt.Errorf("%s", res.ExceptionDetails.Text)
-	}
-	return res.Result.ObjectID, nil
-}
-
-// boxOf devolve o retângulo do elemento em px de viewport.
-func boxOf(ctx context.Context, client *cdp.Client, session, objectID string) (Rect, error) {
-	raw, err := client.Send(ctx, "DOM.getBoxModel", map[string]any{"objectId": objectID}, session)
-	if err == nil {
-		var model struct {
-			Model struct {
-				Content []float64 `json:"content"`
-			} `json:"model"`
-		}
-		if json.Unmarshal(raw, &model) == nil && len(model.Model.Content) == 8 {
-			q := model.Model.Content
-			xs := []float64{q[0], q[2], q[4], q[6]}
-			ys := []float64{q[1], q[3], q[5], q[7]}
-			minX, maxX := xs[0], xs[0]
-			minY, maxY := ys[0], ys[0]
-			for _, v := range xs {
-				if v < minX {
-					minX = v
-				}
-				if v > maxX {
-					maxX = v
-				}
-			}
-			for _, v := range ys {
-				if v < minY {
-					minY = v
-				}
-				if v > maxY {
-					maxY = v
-				}
-			}
-			return Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}, nil
-		}
-	}
-
-	// Fallback: getBoundingClientRect no contexto do elemento.
-	raw, err = client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
-		"objectId": objectID,
-		"functionDeclaration": `function () {
-			const r = this.getBoundingClientRect();
-			return { x: r.x, y: r.y, width: r.width, height: r.height };
-		}`,
-		"returnByValue": true,
-	}, session)
-	if err != nil {
-		return Rect{}, err
-	}
-	var res struct {
-		Result struct {
-			Value Rect `json:"value"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return Rect{}, err
-	}
-	if res.Result.Value.Width == 0 && res.Result.Value.Height == 0 {
-		return Rect{}, fmt.Errorf("elemento sem tamanho")
-	}
-	return res.Result.Value, nil
 }
 
 // Click clica no alvo com mouse real (e cursor visível).
@@ -433,7 +345,7 @@ func paraLinha(ctx context.Context, client *cdp.Client, session string, t *Targe
 	if json.Unmarshal(raw, &res) != nil || res.Result.ObjectID == "" || res.Result.ObjectID == t.ObjectID {
 		return
 	}
-	rect, err := boxOf(ctx, client, session, res.Result.ObjectID)
+	rect, err := dom.BoxOf(ctx, client, session, res.Result.ObjectID)
 	if err != nil {
 		return
 	}
