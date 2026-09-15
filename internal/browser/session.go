@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/overlay"
 )
 
 // Tab é uma aba (target de página) com sua sessão CDP.
@@ -49,6 +48,9 @@ type Session struct {
 	ctx     context.Context
 	client  *cdp.Client
 	Observe *Observe
+	// Presenter desenha a ação no navegador. O domínio não conhece a
+	// implementação — ela é injetada por quem constrói a sessão.
+	Presenter Presenter
 
 	mu     sync.Mutex
 	tabs   map[string]*Tab
@@ -77,11 +79,12 @@ type targetInfo struct {
 }
 
 // NewSession liga a descoberta de targets e as abas existentes.
-func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool) (*Session, error) {
+func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, presenter Presenter) (*Session, error) {
 	s := &Session{
 		ctx:           ctx,
 		client:        client,
 		Observe:       NewObserve(500),
+		Presenter:     presenter,
 		tabs:          make(map[string]*Tab),
 		attaching:     make(map[string]bool),
 		inflight:      make(map[string]map[string]struct{}),
@@ -317,7 +320,7 @@ func (s *Session) initTab(tab *Tab) error {
 			return fmt.Errorf("%s: %w", method, err)
 		}
 	}
-	if err := overlay.Install(s.ctx, s.client, sid); err != nil {
+	if err := s.Presenter.Install(s.ctx, s.client, sid); err != nil {
 		return fmt.Errorf("overlay: %w", err)
 	}
 
@@ -706,6 +709,6 @@ func (s *Session) UpdateHUD(ctx context.Context, label string) {
 			idx = t.Index
 		}
 	}
-	_ = overlay.SetHUD(ctx, s.client, tab.SessionID,
+	_ = s.Presenter.SetHUD(ctx, s.client, tab.SessionID,
 		fmt.Sprintf("%d/%d", idx, len(infos)), label)
 }

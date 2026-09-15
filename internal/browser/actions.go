@@ -11,14 +11,13 @@ import (
 	"time"
 
 	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/overlay"
 )
 
 // Target é um alvo resolvido pronto para receber a ação.
 type Target struct {
 	ObjectID      string
 	BackendNodeID int
-	Rect          overlay.Rect
+	Rect          Rect
 	Description   string
 }
 
@@ -276,7 +275,7 @@ func evalObject(ctx context.Context, client *cdp.Client, session, expr string) (
 }
 
 // boxOf devolve o retângulo do elemento em px de viewport.
-func boxOf(ctx context.Context, client *cdp.Client, session, objectID string) (overlay.Rect, error) {
+func boxOf(ctx context.Context, client *cdp.Client, session, objectID string) (Rect, error) {
 	raw, err := client.Send(ctx, "DOM.getBoxModel", map[string]any{"objectId": objectID}, session)
 	if err == nil {
 		var model struct {
@@ -306,7 +305,7 @@ func boxOf(ctx context.Context, client *cdp.Client, session, objectID string) (o
 					maxY = v
 				}
 			}
-			return overlay.Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}, nil
+			return Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}, nil
 		}
 	}
 
@@ -320,24 +319,24 @@ func boxOf(ctx context.Context, client *cdp.Client, session, objectID string) (o
 		"returnByValue": true,
 	}, session)
 	if err != nil {
-		return overlay.Rect{}, err
+		return Rect{}, err
 	}
 	var res struct {
 		Result struct {
-			Value overlay.Rect `json:"value"`
+			Value Rect `json:"value"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return overlay.Rect{}, err
+		return Rect{}, err
 	}
 	if res.Result.Value.Width == 0 && res.Result.Value.Height == 0 {
-		return overlay.Rect{}, fmt.Errorf("elemento sem tamanho")
+		return Rect{}, fmt.Errorf("elemento sem tamanho")
 	}
 	return res.Result.Value, nil
 }
 
 // Click clica no alvo com mouse real (e cursor visível).
-func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int) error {
+func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) error {
 	if button == "" {
 		button = "left"
 	}
@@ -346,8 +345,8 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	}
 	cx, cy := t.center()
 
-	_ = overlay.Spotlight(ctx, client, session, &t.Rect)
-	_ = overlay.Press(ctx, client, session, cx, cy, button)
+	_ = p.Spotlight(ctx, client, session, &t.Rect)
+	_ = p.Press(ctx, client, session, cx, cy, button)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
@@ -381,10 +380,10 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 }
 
 // Hover passa o mouse por cima do alvo.
-func Hover(ctx context.Context, client *cdp.Client, session string, t *Target) error {
+func Hover(ctx context.Context, client *cdp.Client, session string, t *Target, p Presenter) error {
 	cx, cy := t.center()
-	_ = overlay.Spotlight(ctx, client, session, &t.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, cx, cy)
+	_ = p.Spotlight(ctx, client, session, &t.Rect)
+	_ = p.MoveCursor(ctx, client, session, cx, cy)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
@@ -481,7 +480,7 @@ func assinaturaDe(ctx context.Context, client *cdp.Client, session, objectID str
 //
 // A origem com `draggable="true"` (nela ou num ancestral) diz de qual família se
 // trata. `tipo=ponteiro|html5` força, se a detecção errar.
-func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) (string, bool, error) {
+func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) (string, bool, error) {
 	// A linha, não o texto: é ela que define o ponto de soltura.
 	paraLinha(ctx, client, session, from)
 	paraLinha(ctx, client, session, to)
@@ -496,10 +495,10 @@ func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Tar
 	}
 	var err error
 	if tipo == "ponteiro" {
-		err = dragPointer(ctx, client, session, from, to, opts)
+		err = dragPointer(ctx, client, session, from, to, opts, p)
 	} else {
 		tipo = "html5"
-		err = dragHTML5(ctx, client, session, from, to, opts)
+		err = dragHTML5(ctx, client, session, from, to, opts, p)
 	}
 	if err != nil {
 		return tipo, false, err
@@ -545,18 +544,18 @@ func dragKind(ctx context.Context, client *cdp.Client, session, objectID string)
 // mouse injetado: emitimos dragstart/dragenter/dragover/drop/dragend com um
 // DataTransfer real, sobre o elemento que está sob o ponto de soltura (o evento
 // sobe, então quem escuta no container também recebe).
-func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) error {
+func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
 	fx, fy := from.center()
 	tx, ty := dropPoint(to, opts.DropAt)
 
 	// O cursor passeia até o destino: quem olha precisa ver o arraste acontecer.
-	_ = overlay.Spotlight(ctx, client, session, &from.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, fx, fy)
+	_ = p.Spotlight(ctx, client, session, &from.Rect)
+	_ = p.MoveCursor(ctx, client, session, fx, fy)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
-	_ = overlay.Spotlight(ctx, client, session, &to.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, tx, ty)
+	_ = p.Spotlight(ctx, client, session, &to.Rect)
+	_ = p.MoveCursor(ctx, client, session, tx, ty)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
@@ -601,15 +600,15 @@ func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to
 // dragPointer arrasta com mouse de verdade: é o que a família por ponteiro
 // entende (pointerdown/move/up). Se a página ignorar o gesto, sobra um clique —
 // por isso este caminho só é usado quando a origem NÃO é `draggable`.
-func dragPointer(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) error {
+func dragPointer(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
 	if opts.Steps <= 0 {
 		opts.Steps = 16
 	}
 	fx, fy := from.center()
 	tx, ty := dropPoint(to, opts.DropAt)
 
-	_ = overlay.Spotlight(ctx, client, session, &from.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, fx, fy)
+	_ = p.Spotlight(ctx, client, session, &from.Rect)
+	_ = p.MoveCursor(ctx, client, session, fx, fy)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
@@ -638,8 +637,8 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 		time.Sleep(14 * time.Millisecond)
 	}
 
-	_ = overlay.Spotlight(ctx, client, session, &to.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, tx, ty)
+	_ = p.Spotlight(ctx, client, session, &to.Rect)
+	_ = p.MoveCursor(ctx, client, session, tx, ty)
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseReleased", "x": tx, "y": ty,
 		"button": "left", "buttons": 0, "clickCount": 1,
@@ -690,10 +689,10 @@ func dropPoint(t *Target, at string) (float64, float64) {
 }
 
 // Fill substitui o conteúdo do campo (foco + seleção + insertText).
-func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string) error {
+func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) error {
 	cx, cy := t.center()
-	_ = overlay.Spotlight(ctx, client, session, &t.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, cx, cy)
+	_ = p.Spotlight(ctx, client, session, &t.Rect)
+	_ = p.MoveCursor(ctx, client, session, cx, cy)
 
 	if _, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": t.ObjectID,
@@ -721,10 +720,10 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 }
 
 // Type digita caractere a caractere (dispara handlers de teclado).
-func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string) error {
+func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) error {
 	cx, cy := t.center()
-	_ = overlay.Spotlight(ctx, client, session, &t.Rect)
-	_ = overlay.MoveCursor(ctx, client, session, cx, cy)
+	_ = p.Spotlight(ctx, client, session, &t.Rect)
+	_ = p.MoveCursor(ctx, client, session, cx, cy)
 
 	if _, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
@@ -923,7 +922,7 @@ func Select(ctx context.Context, client *cdp.Client, session string, t *Target, 
 }
 
 // SetChecked garante o estado de um checkbox/radio (clica se precisar).
-func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool) (bool, error) {
+func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { return !!this.checked; }`,
@@ -943,7 +942,7 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 	if res.Result.Value == want {
 		return false, nil
 	}
-	return true, Click(ctx, client, session, t, "left", 1)
+	return true, Click(ctx, client, session, t, "left", 1, p)
 }
 
 // Screenshot captura a página e devolve os bytes PNG.

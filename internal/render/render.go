@@ -1,5 +1,6 @@
-// Ponte com o overlay injetado (overlay.inject.js, embutido no binário).
-package overlay
+// Apresentação no navegador: cursor, ripple, HUD e destaque, injetados na
+// página pelo script embutido. Implementa browser.Presenter.
+package render
 
 import (
 	"context"
@@ -10,30 +11,28 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ajunior/browser-use/internal/browser"
 	"github.com/ajunior/browser-use/internal/cdp"
 	"github.com/ajunior/browser-use/internal/page"
 )
 
-// Source é o script do overlay, embutido no binário.
+// source é o script de apresentação, embutido no binário.
 //
-//go:embed overlay.inject.js
-var Source string
+//go:embed render.inject.js
+var source string
 
-// Rect é um retângulo em coordenadas de viewport (CSS px).
-type Rect struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
-}
+// Presenter desenha no viewport da página.
+type Presenter struct{}
 
-// Install registra o overlay para toda navegação futura e o instala agora.
-func Install(ctx context.Context, c *cdp.Client, session string) error {
+var _ browser.Presenter = Presenter{}
+
+// Install registra o script para toda navegação futura e o instala agora.
+func (Presenter) Install(ctx context.Context, c *cdp.Client, session string) error {
 	if _, err := c.Send(ctx, "Page.addScriptToEvaluateOnNewDocument",
-		map[string]any{"source": Source}, session); err != nil {
+		map[string]any{"source": source}, session); err != nil {
 		return err
 	}
-	_, err := page.Eval(ctx, c, session, Source)
+	_, err := page.Eval(ctx, c, session, source)
 	return err
 }
 
@@ -57,12 +56,12 @@ func call(ctx context.Context, c *cdp.Client, session, method string, values ...
 }
 
 // MoveCursor move o cursor renderizado até (x, y) no viewport.
-func MoveCursor(ctx context.Context, c *cdp.Client, session string, x, y float64) error {
+func (Presenter) MoveCursor(ctx context.Context, c *cdp.Client, session string, x, y float64) error {
 	return call(ctx, c, session, "cursor", x, y)
 }
 
 // Press anima cursor + ripple no ponto (o que a pessoa vê).
-func Press(ctx context.Context, c *cdp.Client, session string, x, y float64, kind string) error {
+func (Presenter) Press(ctx context.Context, c *cdp.Client, session string, x, y float64, kind string) error {
 	if kind == "" {
 		kind = "left"
 	}
@@ -74,7 +73,7 @@ func Press(ctx context.Context, c *cdp.Client, session string, x, y float64, kin
 // Desligado por padrão. O contorno no alvo poluía mais do que ajudava: ficava
 // aceso depois da ação e, quando a página rolava, apontava para o nada. Quem
 // quiser de volta liga com BROWSER_USE_DESTAQUE=1.
-func Spotlight(ctx context.Context, c *cdp.Client, session string, rect *Rect) error {
+func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, rect *browser.Rect) error {
 	ligado, _ := strconv.Atoi(os.Getenv("BROWSER_USE_DESTAQUE"))
 	if ligado <= 0 {
 		return nil
@@ -86,11 +85,6 @@ func Spotlight(ctx context.Context, c *cdp.Client, session string, rect *Rect) e
 }
 
 // SetHUD atualiza o HUD (abas + última ação).
-func SetHUD(ctx context.Context, c *cdp.Client, session, tabs, label string) error {
+func (Presenter) SetHUD(ctx context.Context, c *cdp.Client, session, tabs, label string) error {
 	return call(ctx, c, session, "hud", map[string]string{"tabs": tabs, "label": label})
-}
-
-// SetVisible liga/desliga o overlay inteiro.
-func SetVisible(ctx context.Context, c *cdp.Client, session string, visible bool) error {
-	return call(ctx, c, session, "show", visible)
 }

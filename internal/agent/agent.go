@@ -18,6 +18,7 @@ import (
 	"github.com/ajunior/browser-use/internal/command"
 	"github.com/ajunior/browser-use/internal/paths"
 	"github.com/ajunior/browser-use/internal/protocol"
+	"github.com/ajunior/browser-use/internal/render"
 )
 
 const (
@@ -142,7 +143,7 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	sess, err := browser.NewSession(ctx, handle.Client, false)
+	sess, err := browser.NewSession(ctx, handle.Client, false, render.Presenter{})
 	if err != nil {
 		handle.Client.Close()
 		return nil, err
@@ -432,7 +433,7 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	}
 	before := a.errCount(sess, sid)
 	if req.Cmd == "hover" {
-		if err := browser.Hover(ctx, a.client(), sid, t); err != nil {
+		if err := browser.Hover(ctx, a.client(), sid, t, sess.Presenter); err != nil {
 			return protocol.Fail(err)
 		}
 		return ok(a.finish(ctx, sess, sid, "hover "+target, before))
@@ -447,7 +448,7 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	if req.Bool("double", false) {
 		count = 2
 	}
-	if err := browser.Click(ctx, a.client(), sid, t, button, count); err != nil {
+	if err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter); err != nil {
 		return protocol.Fail(err)
 	}
 	action := "click"
@@ -481,7 +482,7 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 	tipo, mudou, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
 		DropAt: at,
 		Tipo:   req.String("tipo"),
-	})
+	}, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -505,9 +506,9 @@ func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protoco
 	}
 	before := a.errCount(sess, sid)
 	if req.Cmd == "fill" {
-		err = browser.Fill(ctx, a.client(), sid, t, text)
+		err = browser.Fill(ctx, a.client(), sid, t, text, sess.Presenter)
 	} else {
-		err = browser.Type(ctx, a.client(), sid, t, text)
+		err = browser.Type(ctx, a.client(), sid, t, text, sess.Presenter)
 	}
 	if err != nil {
 		return protocol.Fail(err)
@@ -560,7 +561,7 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	}
 	before := a.errCount(sess, sid)
 	want := req.Cmd == "check"
-	clicked, err := browser.SetChecked(ctx, a.client(), sid, t, want)
+	clicked, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(err)
 	}
