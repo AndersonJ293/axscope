@@ -77,19 +77,24 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			// aria-label, é ele que a árvore mostra — e é por ele que o agente lê
 			// a tela. Olhar só o texto deixaria esse alvo inalcançável.
 			const texto = el => (el.getAttribute('aria-label') || el.innerText || el.value || '').trim();
-			let exatoAcionavel = null, exato = null, parcialAcionavel = null, parcial = null;
+			// Ordem de preferência: nome exato antes de parcial; depois o mais
+			// justo (menos sobra de texto); acionável só desempata. Sem o "mais
+			// justo", o primeiro que contém o texto é sempre o container da
+			// página inteira — e o alvo vira a tela toda.
+			const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+			let escolhido = null, chave = null;
 			for (const el of nodes) {
 				const t = texto(el);
 				if (!t) continue;
-				if (t === want) {
-					if (!exatoAcionavel && acionavel(el)) exatoAcionavel = el;
-					if (!exato) exato = el;
-				} else if (t.includes(want)) {
-					if (!parcialAcionavel && acionavel(el)) parcialAcionavel = el;
-					if (!parcial) parcial = el;
+				const exato = t === want;
+				if (!exato && !t.includes(want)) continue;
+				const atual = [exato ? 0 : 1, t.length - want.length, acionavel(el) ? 0 : 1];
+				if (chave === null || melhorQue(atual, chave) < 0) {
+					escolhido = el;
+					chave = atual;
 				}
 			}
-			return exatoAcionavel || parcialAcionavel || exato || parcial || null;
+			return escolhido;
 		})()`, strconv.Quote(want))
 		id, err := evalObject(ctx, client, session, expr)
 		if err != nil {
