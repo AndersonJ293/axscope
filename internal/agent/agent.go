@@ -11,6 +11,9 @@ import (
 
 	"github.com/ajunior/browser-use/internal/bridge"
 	"github.com/ajunior/browser-use/internal/browser"
+	// cdp entra só para carregar o tipo *cdp.Client: quem fala o protocolo é o
+	// browser/dom. A exceção consciente é a ponte da extensão, que devolve um
+	// cliente CDP pronto.
 	"github.com/ajunior/browser-use/internal/cdp"
 	"github.com/ajunior/browser-use/internal/paths"
 	"github.com/ajunior/browser-use/internal/protocol"
