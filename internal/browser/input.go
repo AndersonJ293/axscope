@@ -32,7 +32,7 @@ func cursorDelayMs() int {
 
 // Click clica no alvo com mouse real (e cursor visível).
 //
-// Antes de clicar, confere se o clique vai chegar. Dois casos recusam:
+// Antes de clicar, confere se o clique vai chegar — e recusa quando não vai:
 //
 //   - o alvo não aceita ação (desabilitado, `aria-disabled`, `pointer-events:
 //     none`) — o `ok` de antes era mentira, medido na missão 15 do laboratório;
@@ -44,7 +44,12 @@ func cursorDelayMs() int {
 //
 // Recusar é melhor do que agir às cegas: a ação não acontece, mas o motivo
 // chega a quem pediu — e a saída para forçar existe (`pos=x,y`).
-func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) error {
+//
+// Depois de clicar, confere se o evento passou pelo alvo. A conferência de antes
+// enxerga camadas, mas não sabe para onde o navegador reentrega o evento; a
+// escuta sabe. Se não passou, o aviso volta junto com o ok — o clique foi
+// enviado, e quem lê precisa saber que ele não chegou.
+func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) (string, error) {
 	if button == "" {
 		button = "left"
 	}
@@ -54,8 +59,9 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	cx, cy := t.ondeAgir()
 
 	if motivo := recusaDeClique(ctx, client, session, t.ObjectID, cx, cy); motivo != "" {
-		return fmt.Errorf("%s", motivo)
+		return "", fmt.Errorf("%s", motivo)
 	}
+	preparaClique(ctx, client, session, t.ObjectID)
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.Press(ctx, client, session, cx, cy, button)
@@ -66,7 +72,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseMoved", "x": cx, "y": cy,
 	}, session); err != nil {
-		return err
+		return "", err
 	}
 	buttons := 1
 	if button == "right" {
@@ -78,18 +84,100 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 		"type": "mousePressed", "x": cx, "y": cy,
 		"button": button, "buttons": buttons, "clickCount": count,
 	}, session); err != nil {
-		return err
+		return "", err
 	}
 	time.Sleep(15 * time.Millisecond)
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseReleased", "x": cx, "y": cy,
 		"button": button, "buttons": 0, "clickCount": count,
 	}, session); err != nil {
-		return err
+		return "", err
 	}
 	time.Sleep(30 * time.Millisecond)
-	return nil
+
+	if !cliqueChegou(ctx, client, session, t.ObjectID) {
+		return "o clique não chegou ao alvo — alguma camada na frente deve ter interceptado", nil
+	}
+	return "", nil
 }
+
+// preparaClique arma uma escuta no alvo para saber se o evento passa por ele.
+//
+// É a conferência que não depende de heurística: `elementFromPoint` enxerga
+// camadas, mas não sabe para onde o navegador reentrega o evento (shadow host,
+// iframe). A escuta sabe — ela dispara se o alvo estiver no caminho do evento,
+// seja como alvo, seja como ancestral dele (aí o evento sobe até ele).
+func preparaClique(ctx context.Context, client *cdp.Client, session, objectID string) {
+	_, _ = client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			if (!this.addEventListener) return false;
+			if (this.__buCliqueFn) this.removeEventListener('click', this.__buCliqueFn, true);
+			this.__buClique = 0;
+			this.__buCliqueFn = () => { this.__buClique++; };
+			this.addEventListener('click', this.__buCliqueFn, { capture: true });
+			return true;
+		}`,
+		"returnByValue": true,
+	}, session)
+}
+
+// cliqueChegou devolve quantos cliques o alvo viu desde preparaClique, e desarma
+// a escuta. Zero depois de clicar é o que interessa: o evento não passou por ele.
+func cliqueChegou(ctx context.Context, client *cdp.Client, session, objectID string) bool {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			const vistos = this.__buClique || 0;
+			delete this.__buClique;
+			if (this.__buCliqueFn) {
+				this.removeEventListener('click', this.__buCliqueFn, true);
+				delete this.__buCliqueFn;
+			}
+			return vistos;
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return true
+	}
+	var res struct {
+		Result struct {
+			Value int `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return true
+	}
+	return res.Result.Value > 0
+}
+
+// jsEstaNoPonto define `estaNoPonto(el, x, y)`: é o elemento que está no ponto?
+//
+// A mesma pergunta serve ao clique (antes de clicar) e à rolagem (para saber se
+// alcançou), e fica num lugar só: as duas respostas discordarem é pior do que
+// não perguntar. Foi assim que a rolagem passou a dizer "já está visível" para um
+// alvo recortado pela lista virtualizada — e o clique, logo depois, o recusou.
+//
+// Ancestral no DOM claro não conta: o evento borbulha para cima e não desce, e o
+// que aparece recortado fica fora do ponto. O shadow host acima conta, porque aí
+// o navegador reentrega o evento ao conteúdo da sombra.
+const jsEstaNoPonto = `
+	const estaNoPonto = (el, x, y) => {
+		const sob = el.ownerDocument.elementFromPoint(x, y);
+		if (!sob) return false;
+		if (sob === el) return true;
+		if (el.contains && el.contains(sob)) return true;
+		let n = el, cruzouSombra = false;
+		while (n) {
+			if (n === sob) return cruzouSombra;
+			if (n.parentNode) { n = n.parentNode; continue; }
+			const raiz = n.getRootNode ? n.getRootNode() : null;
+			if (raiz && raiz.host) { n = raiz.host; cruzouSombra = true; continue; }
+			return false;
+		}
+		return false;
+	};`
 
 // recusaDeClique devolve por que o clique não deve ser enviado — ou "" se o
 // caminho está livre. A frase já vem com a saída, porque quem lê é o agente.
@@ -100,7 +188,13 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 func recusaDeClique(ctx context.Context, client *cdp.Client, session, objectID string, x, y float64) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
-		"functionDeclaration": `function (px, py) {
+		"functionDeclaration": `function (px, py) {` + jsEstaNoPonto + `
+			const descreve = (el) => {
+				const dono = (el.closest && el.closest('[id], [class]')) || el;
+				const cls = typeof dono.className === 'string' && dono.className.trim()
+					? '.' + dono.className.trim().split(/\s+/).join('.') : '';
+				return (dono.tagName || '?').toLowerCase() + (dono.id ? '#' + dono.id : '') + cls;
+			};
 			if (this.matches && this.matches(':disabled')) {
 				return 'o alvo está desabilitado — espere ele habilitar antes de clicar';
 			}
@@ -118,24 +212,11 @@ func recusaDeClique(ctx context.Context, client *cdp.Client, session, objectID s
 				cx = r.left + r.width / 2;
 				cy = r.top + r.height / 2;
 			}
+			if (estaNoPonto(this, cx, cy)) return '';
 			const sob = this.ownerDocument.elementFromPoint(cx, cy);
 			if (!sob) return 'o ponto do clique está fora da tela';
-			// Alcança quando é o próprio alvo, um filho ou um ancestral — e a
-			// subida atravessa shadow root, que o elementFromPoint não enxerga.
-			let n = this;
-			while (n) {
-				if (n === sob) return '';
-				n = n.parentNode || (n.getRootNode && n.getRootNode().host) || null;
-			}
-			if (sob.contains && sob.contains(this)) return '';
-			if (sob.tagName === 'IFRAME' && sob.contentDocument && sob.contentDocument.contains(this)) return '';
-			// Nomeia a camada com identidade mais próxima: dizer "h2" não ajuda,
-			// dizer "div.modal-backdrop" diz o que está na frente.
-			const dono = (sob.closest && sob.closest('[id], [class]')) || sob;
-			const cls = typeof dono.className === 'string' && dono.className.trim()
-				? '.' + dono.className.trim().split(/\s+/).join('.') : '';
-			const nome = (dono.tagName || '?').toLowerCase() + (dono.id ? '#' + dono.id : '') + cls;
-			return 'o alvo está coberto por ' + nome + ' — para clicar no ponto assim mesmo, use pos=x,y';
+			return 'o alvo está coberto por ' + descreve(sob) +
+				' — para clicar no ponto assim mesmo, use pos=x,y';
 		}`,
 		"arguments": []any{
 			map[string]any{"value": x},
@@ -411,15 +492,15 @@ func Select(ctx context.Context, client *cdp.Client, session string, t *Target, 
 }
 
 // SetChecked garante o estado de um checkbox/radio (clica se precisar). Devolve
-// `true` quando clicou.
-func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, error) {
+// `true` quando clicou e o aviso quando o clique não chegou ao alvo.
+func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { return !!this.checked; }`,
 		"returnByValue":       true,
 	}, session)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	var res struct {
 		Result struct {
@@ -427,10 +508,11 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return false, err
+		return false, "", err
 	}
 	if res.Result.Value == want {
-		return false, nil
+		return false, "", nil
 	}
-	return true, Click(ctx, client, session, t, "left", 1, p)
+	aviso, err := Click(ctx, client, session, t, "left", 1, p)
+	return true, aviso, err
 }

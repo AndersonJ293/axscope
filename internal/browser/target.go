@@ -124,7 +124,9 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	// Traz para a tela em passos visíveis; se não bastar, garante com o scroll
 	// direto — o que não pode é a ação não alcançar o alvo.
-	if !scrollAoAlcance(ctx, client, session, objectID) {
+	rolagem := scrollAoAlcance(ctx, client, session, objectID)
+	rolou := rolagem != "ja" && rolagem != "sem alvo"
+	if rolagem != "ja" && rolagem != "ok" {
 		_ = dom.ScrollTo(ctx, client, session, objectID)
 	}
 
@@ -139,6 +141,13 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		}
 	}
 	if err != nil {
+		// Ref não tem expressão para re-resolver: a identidade dela era o nó, e o
+		// nó foi recriado. O caminho é a leitura nova — e dizer isso é o que
+		// separa um beco sem saída de um passo a mais.
+		if expr == "" && backendID != 0 && rolou {
+			return nil, fmt.Errorf(
+				"a rolagem trouxe o alvo para a vista e a página recriou o elemento (lista que recicla linhas?) — rode `snap` de novo e use a ref nova")
+		}
 		if want := textoPedido(spec); want != "" {
 			if msg := textoEscondido(ctx, client, session, want); msg != "" {
 				return nil, fmt.Errorf("%s", msg)
@@ -267,13 +276,15 @@ func expressaoCSS(sel string) string {
 }
 
 // scrollAoAlcance rola em passos até o elemento ficar visível, para quem olha
-// acompanhar o movimento em vez de ver a página pular. Devolve true se alcançou.
+// acompanhar o movimento em vez de ver a página pular. Devolve o que aconteceu:
+// "ja" (já estava visível), "ok" (rolou e chegou), "nao" (rolou e não chegou) ou
+// "sem alvo".
 //
 // Rola pelo `scrollTop` do ancestral que de fato rola, e não por roda de mouse
 // num ponto fixo: a roda vai para quem estiver sob o ponteiro, e numa página com
 // container rolável no meio do caminho (caixa de rolagem interna, lista virtual)
 // ela rola o container errado — e a página não anda.
-func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID string) bool {
+func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            objectID,
 		"functionDeclaration": scrollScript,
@@ -282,7 +293,7 @@ func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID 
 		"awaitPromise":        true,
 	}, session)
 	if err != nil {
-		return false
+		return "sem alvo"
 	}
 	var res struct {
 		Result struct {
@@ -290,21 +301,25 @@ func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID 
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil {
-		return false
+		return "sem alvo"
 	}
-	// "ja" já estava visível, "ok" rolou e chegou. O resto é "não deu" — aí o
-	// chamador cai no scroll direto, em vez de fingir que está tudo bem.
-	return res.Result.Value == "ja" || res.Result.Value == "ok"
+	return res.Result.Value
 }
 
 // scrollScript rola o ancestral rolável do elemento, em passos, e confirma.
-const scrollScript = `function (intervalo) {
+const scrollScript = `function (intervalo) {` + jsEstaNoPonto + `
 	const el = this;
 	if (!el || !el.getBoundingClientRect) return Promise.resolve('sem alvo');
 	const margem = 60;
+	// Visível é estar no ponto — a mesma pergunta que o clique faz. A caixa pode
+	// estar na tela e mesmo assim fora da janela do container que a recorta
+	// (lista virtualizada recorta por overflow), e aí o clique acontece fora do
+	// alvo.
 	const visivel = () => {
 		const r = el.getBoundingClientRect();
-		return r.top >= margem && r.bottom <= innerHeight - margem;
+		if (r.width === 0 || r.height === 0) return false;
+		if (r.top < margem || r.bottom > innerHeight - margem) return false;
+		return estaNoPonto(el, r.left + r.width / 2, r.top + r.height / 2);
 	};
 	if (visivel()) return Promise.resolve('ja');
 
@@ -320,7 +335,12 @@ const scrollScript = `function (intervalo) {
 
 	const de = rolavel.scrollTop;
 	const r = el.getBoundingClientRect();
-	const delta = (r.top - innerHeight / 2 + r.height / 2);
+	// O centro é o do próprio scroller, não o da janela: um container de 420px
+	// com a altura da janela no cálculo manda o alvo para muito além do meio.
+	const janela = rolavel === (document.scrollingElement || document.documentElement)
+		? { topo: 0, altura: innerHeight }
+		: { topo: rolavel.getBoundingClientRect().top, altura: rolavel.clientHeight };
+	const delta = r.top - (janela.topo + janela.altura / 2) + r.height / 2;
 	// Aba em segundo plano estrangula setTimeout; escondida, vai de uma vez.
 	const passos = document.hidden ? 1 : 6;
 	let i = 0;

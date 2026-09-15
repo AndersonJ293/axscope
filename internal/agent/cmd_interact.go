@@ -41,10 +41,11 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	if count == 2 {
 		action = "dblclick"
 	}
-	if err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter); err != nil {
+	aviso, err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter)
+	if err != nil {
 		return protocol.Fail(falhaDeAcao(action, target, err))
 	}
-	return ok(a.finish(ctx, sess, sid, action+" "+target, before))
+	return ok(a.finish(ctx, sess, sid, comAviso(action+" "+target, aviso), before))
 }
 
 func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
@@ -158,7 +159,7 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	}
 	before := a.errCount(sess, sid)
 	want := req.Cmd == "check"
-	clicked, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
+	clicked, aviso, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(falhaDeAcao(req.Cmd, target, err))
 	}
@@ -166,7 +167,16 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	if !clicked {
 		label += " (já estava)"
 	}
-	return ok(a.finish(ctx, sess, sid, label, before))
+	return ok(a.finish(ctx, sess, sid, comAviso(label, aviso), before))
+}
+
+// comAviso acrescenta ao rótulo o que a ação não conseguiu — o clique que foi
+// enviado e não chegou ao alvo.
+func comAviso(label, aviso string) string {
+	if aviso == "" {
+		return label
+	}
+	return label + " (" + aviso + ")"
 }
 
 // falhaDeAcao embrulha o motivo pelo qual a ação não foi enviada.
