@@ -148,16 +148,21 @@ component não muda de alvo.
 - **Destaque do alvo (o contorno roxo).** Removido por preferência: ficava aceso
   depois da ação e, com a página rolando, apontava para o nada. Volta com
   `BROWSER_USE_DESTAQUE=1`.
+- **Adivinhar alvo dentro de canvas.** Não há o que procurar: o desenho não é
+  DOM — não está na árvore de acessibilidade nem para o `text=`, e não existe
+  elemento sob o ponto (o `elementFromPoint` devolve o próprio canvas). O
+  caminho é `pos=x,y`, com o ponto vindo de quem sabe onde desenhou. Medido na
+  missão 14: o círculo está em (470,95) nas coordenadas do canvas, e o ponto só
+  chega à página depois de mapeado pela escala do elemento.
 
 ---
 
 ## Laboratório: missões pendentes
 
-Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13** (placar em 6/16 porque
-o botão *Resetar estado* apaga as concluídas — é o desenho dele).
+Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14** (placar em 9/16
+porque o botão *Resetar estado* apaga as concluídas — é o desenho dele).
 
 | Missão | Assunto | Observação |
 |---|---|---|
-| 14 | alvo desenhado em canvas | não existe elemento no DOM: só por `pos=` |
 | 15 | job assíncrono + polling | depende de `wait`/leitura; deve passar |
 | 16 | elemento mutante (clicar quando disser AGORA) | depende de `wait` + clique; deve passar |
