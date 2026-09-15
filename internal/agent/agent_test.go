@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ajunior/browser-use/internal/browser"
 )
 
 func TestRefGen(t *testing.T) {
@@ -77,6 +79,36 @@ func TestAvisoDeAlvoInativo(t *testing.T) {
 	}
 	if !strings.Contains(got, "não deve ter feito nada") {
 		t.Errorf("o rótulo não avisa que a ação provavelmente não teve efeito: %q", got)
+	}
+}
+
+// Regressão: a leitura não dizia onde se está numa área que rola — a árvore de
+// acessibilidade não carrega rolagem, e "rolar até o item 777 de 1000" virava
+// chute ou conta de guardanapo. O cabeçalho da leitura agora diz.
+func TestLinhaDeRolagem(t *testing.T) {
+	if got := linhaDeRolagem(&browser.Snapshot{}); got != "" {
+		t.Errorf("sem nada rolando o cabeçalho não devia mudar: %q", got)
+	}
+
+	snap := &browser.Snapshot{
+		Pagina:        &browser.Rolagem{Alvo: "página", Pos: 2275, Max: 2830},
+		Rolagens:      []browser.Rolagem{{Alvo: "#virtual", Pos: 32680, Max: 41672}},
+		RolagensTotal: 2,
+	}
+	got := linhaDeRolagem(snap)
+	for _, querido := range []string{"página 2275/2830", "#virtual 32680/41672"} {
+		if !strings.Contains(got, querido) {
+			t.Errorf("linha %q não diz %q", got, querido)
+		}
+	}
+
+	// Muitas áreas: resume em vez de inventariar.
+	muitas := &browser.Snapshot{RolagensTotal: 9}
+	for i := 0; i < 8; i++ {
+		muitas.Rolagens = append(muitas.Rolagens, browser.Rolagem{Alvo: "div", Pos: i, Max: 100})
+	}
+	if got := linhaDeRolagem(muitas); !strings.Contains(got, "(+4)") {
+		t.Errorf("esperava o resumo das áreas que sobraram: %q", got)
 	}
 }
 

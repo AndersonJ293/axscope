@@ -100,6 +100,16 @@ Quando o alvo recusa a ação (`disabled`, `aria-disabled`, `pointer-events:
 none`), a resposta diz o motivo. Clicar num botão desabilitado não faz nada, e um
 `ok` sem aviso passaria por sucesso — o agente seguiria como se tivesse agido.
 
+O cabeçalho da leitura diz onde se está, inclusive dentro de uma área que rola:
+
+```
+-- 261 linhas, 57 refs · rolagem: página 2075/2844 · #virtual 5000/41672
+```
+
+A árvore de acessibilidade não carrega rolagem, então isso vem do DOM. As maiores
+áreas vêm primeiro, e o seletor curto (`#id`, `tag.classe`) serve direto para
+`css=`.
+
 ### Roteiro
 
 Uma linha por passo, `#` comenta, aspas para espaços:

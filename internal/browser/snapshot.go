@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/ajunior/browser-use/internal/cdp"
-	"github.com/ajunior/browser-use/internal/dom"
 )
 
 // Snapshot é a tela lida, com o mapa de refs para o próximo passo.
@@ -20,6 +19,12 @@ type Snapshot struct {
 	Title     string
 	URL       string
 	Truncated bool
+	// Pagina é o estado de rolagem do documento, e Rolagens são as áreas que
+	// rolam dentro dele. Vêm do DOM: a árvore de acessibilidade não carrega
+	// rolagem.
+	Pagina        *Rolagem
+	Rolagens      []Rolagem
+	RolagensTotal int
 }
 
 // SnapshotOptions controla o tamanho da leitura.
@@ -67,8 +72,9 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	}
 
 	snap := montarTexto(tree.Nodes, opts)
-	snap.Title, _ = dom.EvalString(ctx, client, session, "document.title")
-	snap.URL, _ = dom.EvalString(ctx, client, session, "location.href")
+	meta := lerMetaDaPagina(ctx, client, session)
+	snap.Title, snap.URL = meta.Title, meta.URL
+	snap.Pagina, snap.Rolagens, snap.RolagensTotal = meta.Pagina, meta.Rolagens, meta.Total
 	return snap, nil
 }
 
@@ -389,72 +395,4 @@ func (b *snapBuilder) collectText(nodeID string) string {
 		}
 	}
 	return truncate(strings.Join(parts, " "), 220)
-}
-
-// separadorCelula separa as células de uma linha de tabela achatada.
-const separadorCelula = " · "
-
-// linhaDeRow tenta resumir uma linha de tabela numa linha só, devolvendo `false`
-// quando não dá — e aí a leitura sai como sempre saiu, uma linha por célula.
-//
-// A conferência vem antes da coleta de propósito: juntar o texto marca os nós
-// como consumidos, e isso não tem volta.
-func (b *snapBuilder) linhaDeRow(nodeID string) (string, bool) {
-	var celulas []string
-	for _, cid := range b.children[nodeID] {
-		c := b.nodes[cid]
-		if c == nil || c.Ignored {
-			continue
-		}
-		if !celulasPapel[c.Role.str()] {
-			return "", false
-		}
-		if !b.podeAchatar(cid) {
-			return "", false
-		}
-		celulas = append(celulas, cid)
-	}
-	if len(celulas) == 0 {
-		return "", false
-	}
-
-	var vals []string
-	for _, cid := range celulas {
-		c := b.nodes[cid]
-		t := norm(c.Name.str())
-		if t == "" {
-			t = b.collectText(cid)
-		}
-		// O separador não pode vir de dentro: viraria uma célula a mais na
-		// leitura de quem lê.
-		if strings.Contains(t, separadorCelula) {
-			return "", false
-		}
-		vals = append(vals, t)
-	}
-	return strings.Join(vals, separadorCelula), true
-}
-
-// podeAchatar diz se o nó pode virar texto dentro de outra linha sem perder
-// nada: sem alvo (senão a ref some), sem propriedade que a leitura mostra
-// (`[checked]`, `[level=2]`…), e sem papel que carregue estrutura própria —
-// imagem, lista, tabela aninhada continuam valendo linha.
-func (b *snapBuilder) podeAchatar(nodeID string) bool {
-	n := b.nodes[nodeID]
-	if n == nil || n.Ignored || skipRoles[n.Role.str()] {
-		return true
-	}
-	role := n.Role.str()
-	if b.eligibleRef(n) || b.props(n) != "" {
-		return false
-	}
-	if role != "StaticText" && role != "InlineTextBox" && !textuais[role] {
-		return false
-	}
-	for _, c := range b.children[nodeID] {
-		if !b.podeAchatar(c) {
-			return false
-		}
-	}
-	return true
 }

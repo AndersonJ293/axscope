@@ -7,33 +7,36 @@ Ordem: as três primeiras são de ferramenta.
 
 ---
 
-## 1. A leitura não carrega estado de rolagem
+## 1. A leitura não carregava estado de rolagem — resolvido
 
-**O que falta:** saber, sem agir, se um container rola e onde ele está
-(`32380/41672`). Hoje a leitura mostra as linhas e nunca a posição — então
-"rolar até o item 777 de 1000" vira chute ou conta de guardanapo.
+**O que faltava:** saber, sem agir, se uma área rola e onde ela está
+(`32380/41672`). A leitura mostrava as linhas e nunca a posição — então "rolar
+até o item 777 de 1000" era chute ou conta de guardanapo. Na missão 10 eu
+precisei de `eval` duas vezes: uma para a geometria, outra para a posição.
 
-**Medido:** na missão 10 do laboratório eu precisei de `eval` duas vezes — uma
-para a geometria (42.000 de conteúdo, 328 de janela) e outra para a posição.
+**A hipótese que caiu:** o Chromium **não** serializa `scrollY`/`scrollYMax` no
+`Accessibility.getFullAXTree`. A implementação que lia essas propriedades não
+imprimiu nada e foi removida em vez de ficar como código morto.
 
-**Por que não é barato:** testei a hipótese óbvia e **ela caiu**. O Chromium
-**não** serializa `scrollY`/`scrollYMax` no `Accessibility.getFullAXTree` — os
-nomes de propriedade que o CDP expõe não incluem estado de rolagem. A primeira
-implementação que fiz (ler essas propriedades e imprimir `[rolagem N/M]`) não
-imprimiu nada; virou código morto e foi removida.
+**Feito:** o estado vem do DOM, numa avaliação só — a mesma que já buscava
+título e URL, então não custou ida e volta a mais. O cabeçalho da leitura diz:
 
-**O que daria:** uma passada paralela no DOM. O desenho possível é marcar os
-scrollers numa avaliação só (`document.querySelectorAll('*')` → quem tem
-`overflow` e `scrollHeight > clientHeight` ganha um atributo), depois
-`DOM.querySelectorAll` no atributo e `DOM.describeNode` em cada um para casar
-`backendNodeId` com os nós da árvore. Custa ~N+2 chamadas por leitura (N =
-quantidade de caixas roláveis), o que é aceitável, mas é peso no caminho quente
-do `snap` e mexe no artefato central — por isso não foi feito de improviso.
+    -- 261 linhas, 57 refs · rolagem: página 2075/2844 · #virtual 5000/41672 ·
+       div.table-wrap 0/1899 · #lazyBox 0/262 · #infinite 0/182 (+1)
 
-**O que já temos no lugar:** a resposta do `scroll` diz **quem** rolou e **onde
-parou** (`ok: scroll 300 em css=#virtual — agora em #virtual 32680/41672`), e
-caixa sem nome é alcançável por `pos=`/`css=`. Isso cobre "onde estou" no
-momento em que importa (depois de rolar), sem custo por leitura.
+Cada área sai com um seletor curto (`#id`, `tag.classe`), para o agente poder
+mirá-la por `css=` sem tradução. As **maiores vêm primeiro**: a área que rola
+mais é a que costuma importar, e o cabeçalho é curto por definição (cinco áreas,
+depois `(+N)`). O teste barato (`scrollHeight > clientHeight`) vem antes do
+`getComputedStyle`, que é caro.
+
+**O que ficou de fora:** o eixo horizontal. Existe (barra de código, painel
+largo) e não foi reportado porque inventaria um formato para um caso que ainda
+não mordeu — quando morder, o lugar é `rolagem.go`.
+
+**Medido:** `scroll 5000 alvo=css=#virtual` e o `snap` seguinte já diz
+`#virtual 5000/41672` com o item visível ao lado (`Virtual item 117`), sem
+`eval` nenhum.
 
 ---
 

@@ -52,13 +52,44 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	var b strings.Builder
 	fmt.Fprintf(&b, "título: %s\n", snap.Title)
 	fmt.Fprintf(&b, "url: %s\n", snap.URL)
-	fmt.Fprintf(&b, "-- %d linhas, %d refs\n", snap.Count, len(snap.Refs))
+	fmt.Fprintf(&b, "-- %d linhas, %d refs%s\n", snap.Count, len(snap.Refs), linhaDeRolagem(snap))
 	b.WriteString(snap.Text)
 	if snap.Truncated {
 		b.WriteString("\n(... truncado; use `--refs` para reduzir)")
 	}
 	return ok(b.String())
 }
+
+// linhaDeRolagem resume, para o cabeçalho da leitura, onde estão as áreas que
+// rolam — quanto já rolou e quanto ainda cabe.
+//
+// Fica vazia quando não há o que dizer: página que não rola e nenhuma caixa com
+// rolagem. Existe porque a árvore de acessibilidade não carrega rolagem: sem
+// isso o agente vê as linhas e não sabe onde está nelas.
+func linhaDeRolagem(snap *browser.Snapshot) string {
+	var partes []string
+	if p := snap.Pagina; p != nil && p.Max > 1 {
+		partes = append(partes, fmt.Sprintf("%s %d/%d", p.Alvo, p.Pos, p.Max))
+	}
+	for _, r := range snap.Rolagens {
+		if len(partes) >= maxAreasRolagem {
+			break
+		}
+		partes = append(partes, fmt.Sprintf("%s %d/%d", r.Alvo, r.Pos, r.Max))
+	}
+	if len(partes) == 0 {
+		return ""
+	}
+	linha := " · rolagem: " + strings.Join(partes, " · ")
+	if resto := snap.RolagensTotal - len(partes); resto > 0 {
+		linha += fmt.Sprintf(" (+%d)", resto)
+	}
+	return linha
+}
+
+// maxAreasRolagem é quantas áreas entram no cabeçalho antes do resumo "+N": o
+// cabeçalho é aviso, não inventário.
+const maxAreasRolagem = 5
 
 func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	sid, err := a.activeSID(sess)
