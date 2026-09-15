@@ -90,9 +90,11 @@ bu script cenario.txt              # roteiro em lote
 
 Aliases em português existem (`tela`, `clicar`, `digitar`, `esperar`, `abas`…).
 
-Alvo aceita três formas: `e12` (ref), `css=.botao`, `text=Entrar`. Shadow root
-aberto é atravessado: a árvore de acessibilidade a achata — a leitura mostra o
-que está lá dentro, com ref — e a mira por `text=`/`css=` também alcança.
+Alvo aceita quatro formas: `e12` (ref), `css=.botao`, `text=Entrar` e `pos=x,y`
+(o elemento sob o ponto — e **a ação acontece no ponto**, não no centro dele, que
+é o que permite clicar dentro de um iframe). Shadow root aberto é atravessado: a
+árvore de acessibilidade a achata — a leitura mostra o que está lá dentro, com
+ref — e a mira por `text=`/`css=` também alcança.
 
 ### Roteiro
 
@@ -376,8 +378,14 @@ internal/installer/ download do Chrome for Testing
 
 ## Limitações conhecidas
 
-- Iframes cross-origin (OOPIF) ainda não viram sessões próprias: o `snap`/ação
-  enxerga só o frame principal.
+- Iframe **não aparece na leitura**: o `snap` mostra o frame como uma linha só
+  (`- Iframe`, sem ref), porque a árvore de acessibilidade do frame principal
+  não inclui o documento de dentro. A ação alcança o que está lá — evento de
+  mouse é entregue por hit-test no viewport e atravessa a fronteira —, mas hoje
+  o ponto tem de vir de fora: um `eval` que leia o `contentDocument` e some o
+  deslocamento do frame. O desenho para fechar isso está em
+  [`PENDENCIAS.md`](PENDENCIAS.md), item 3 (mesma origem desce pelo DOM;
+  origem diferente precisa de sessão CDP por frame).
 - Diálogos nativos são sempre descartados (`dismiss`), configurável depois.
 - O `bootstrap` assume o modelo de targets do Chromium; engines alternativos
   precisam de um caminho próprio.

@@ -38,7 +38,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	if count <= 0 {
 		count = 1
 	}
-	cx, cy := t.center()
+	cx, cy := t.ondeAgir()
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.Press(ctx, client, session, cx, cy, button)
@@ -83,7 +83,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 // sem a página ver nada. Medido no botão fujão do laboratório: quatro hovers
 // seguidos produziram três fugas, e a quarta só veio depois de tirar o mouse.
 func Hover(ctx context.Context, client *cdp.Client, session string, t *Target, p Presenter) error {
-	cx, cy := t.center()
+	cx, cy := t.ondeAgir()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 
 	fx, fy := pontoFora(ctx, client, session, t.Rect)
@@ -149,7 +149,7 @@ func pontoFora(ctx context.Context, client *cdp.Client, session string, r dom.Re
 
 // Fill substitui o conteúdo do campo (foco + seleção + insertText).
 func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) error {
-	cx, cy := t.center()
+	cx, cy := t.ondeAgir()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
 
@@ -180,7 +180,7 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 
 // Type digita caractere a caractere (dispara handlers de teclado).
 func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) error {
-	cx, cy := t.center()
+	cx, cy := t.ondeAgir()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
 

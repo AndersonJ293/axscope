@@ -55,16 +55,38 @@ snapshot (criada hoje) é a rede para mexer nisso.
 
 ---
 
-## 3. Iframe (OOPIF) não é alcançado
+## 3. Iframe: a leitura não entra, a ação entra
 
-**O que falta:** o `snap` e as ações enxergam só o frame principal. Missão 13 do
-laboratório (ler `FRAME-991` dentro de um iframe) não é possível hoje.
+**Estado hoje:** a missão 13 do laboratório **passa**, por coordenada — mas o
+caminho tem fricção e vale registrar por quê.
 
-**O desenho:** cada frame vira uma sessão própria (`Target.setAutoAttach` nos
-targets do tipo `iframe`), e a leitura compõe os pedaços. Não é difícil, mas é
-uma mudança de modelo (hoje `Session` assume "uma aba = uma sessão CDP").
+**O que funciona:** `click pos=x,y` com o ponto do botão de dentro. Evento de
+mouse é do navegador, não da página: ele é entregue por hit-test no viewport e
+atravessa a fronteira do iframe sem que ninguém precise saber que ela existe.
 
-Já está anotado em `README.md` → *Limitações conhecidas*.
+**O que falta:** a leitura. O `snap` mostra o iframe como uma linha só (`-
+Iframe`, sem ref e sem conteúdo), porque a árvore de acessibilidade do frame
+principal não inclui o documento de dentro. Então, para saber **onde** fica o
+botão de dentro, hoje é preciso um `eval` que leia `contentDocument` e some o
+deslocamento do iframe — foi o que eu fiz para fechar a missão. Não é gambiarra,
+mas é conta que a ferramenta deveria poupar.
+
+**O desenho, em dois degraus:**
+
+- **Mesma origem** (o caso do `srcdoc` do laboratório): `iframe.contentDocument`
+  é alcançável, então a mira por `text=`/`css=` pode descer nele como já desce em
+  shadow root — e aí a geometria precisa do deslocamento do frame, porque
+  `getBoundingClientRect` de dentro responde no sistema de coordenadas do iframe.
+  É o mesmo cuidado que o shadow root não exigiu (lá não há viewport própria).
+- **Origem diferente (OOPIF)**: aí não há `contentDocument`; cada frame vira
+  sessão CDP própria (`Target.setAutoAttach`) e a leitura compõe os pedaços.
+  É mudança de modelo — hoje `Session` assume "uma aba = uma sessão".
+
+**O que já foi corrigido nesta rodada:** `pos=x,y` agia no centro do elemento
+sob o ponto, e não no ponto. Sobre um iframe isso é o centro do iframe — a
+dezenas de pixels do lugar pedido — e o clique acertava o vazio. Agora o ponto
+pedido é onde a ação acontece, e o `Rect` do elemento continua servindo ao
+destaque e ao "entrar de fora" do hover.
 
 ---
 
@@ -131,12 +153,11 @@ component não muda de alvo.
 
 ## Laboratório: missões pendentes
 
-Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12** (placar em 6/16 porque o
-botão *Resetar estado* apaga as concluídas — é o desenho dele).
+Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13** (placar em 6/16 porque
+o botão *Resetar estado* apaga as concluídas — é o desenho dele).
 
 | Missão | Assunto | Observação |
 |---|---|---|
-| 13 | iframe `srcdoc` | ver item 3 acima |
 | 14 | alvo desenhado em canvas | não existe elemento no DOM: só por `pos=` |
 | 15 | job assíncrono + polling | depende de `wait`/leitura; deve passar |
 | 16 | elemento mutante (clicar quando disser AGORA) | depende de `wait` + clique; deve passar |

@@ -97,7 +97,7 @@ func SoltaArquivo(ctx context.Context, client *cdp.Client, session string, t *Ta
 		tipo = "application/octet-stream"
 	}
 
-	x, y := t.center()
+	x, y := t.ondeAgir()
 	if t.ObjectID != "" {
 		_ = p.Spotlight(ctx, client, session, &t.Rect)
 		_ = p.MoveCursor(ctx, client, session, x, y)

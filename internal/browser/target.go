@@ -20,7 +20,16 @@ type Target struct {
 	BackendNodeID int
 	Rect          dom.Rect
 	Description   string
+	// Ponto, quando não é nil, é onde a ação deve acontecer — o alvo veio de
+	// `pos=x,y`. O Rect continua sendo o do elemento sob o ponto, para o
+	// destaque e para o hover saber de onde entrar; sem separar os dois, a ação
+	// cairia no centro do elemento, que num iframe fica a dezenas de pixels do
+	// lugar pedido.
+	Ponto *Ponto
 }
+
+// Ponto é uma coordenada de tela.
+type Ponto struct{ X, Y float64 }
 
 // ResolveTarget resolve uma referência em um alvo com geometria.
 //
@@ -36,6 +45,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	var objectID string
 	var backendID int
+	var ponto *Ponto
 	// Expressão que produziu o nó, para poder resolver de novo se a rolagem
 	// invalidar o que foi resolvido (lista virtualizada recria as linhas).
 	var expr string
@@ -87,6 +97,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			return nil, fmt.Errorf("nada em %s (fora da tela?)", spec)
 		}
 		objectID = id
+		ponto = &Ponto{X: x, Y: y}
 
 	default:
 		backend, ok := refs[spec]
@@ -109,7 +120,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		objectID = res.Object.ObjectID
 	}
 
-	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec}
+	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Ponto: ponto}
 
 	// Traz para a tela em passos visíveis; se não bastar, garante com o scroll
 	// direto — o que não pode é a ação não alcançar o alvo.
@@ -293,6 +304,11 @@ const scrollScript = `function (intervalo) {
 	});
 }`
 
-func (t *Target) center() (float64, float64) {
+// ondeAgir devolve o ponto exato onde a ação acontece: o ponto pedido, quando o
+// alvo veio de `pos=x,y`; senão o centro do elemento.
+func (t *Target) ondeAgir() (float64, float64) {
+	if t.Ponto != nil {
+		return t.Ponto.X, t.Ponto.Y
+	}
 	return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height/2
 }

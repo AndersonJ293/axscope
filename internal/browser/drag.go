@@ -164,7 +164,7 @@ func dragKind(ctx context.Context, client *cdp.Client, session, objectID string)
 // DataTransfer real, sobre o elemento que está sob o ponto de soltura (o evento
 // sobe, então quem escuta no container também recebe).
 func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
-	fx, fy := from.center()
+	fx, fy := from.ondeAgir()
 	tx, ty := dropPoint(to, opts.DropAt)
 
 	// O cursor passeia até o destino: quem olha precisa ver o arraste acontecer.
@@ -223,7 +223,7 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 	if opts.Steps <= 0 {
 		opts.Steps = 16
 	}
-	fx, fy := from.center()
+	fx, fy := from.ondeAgir()
 	tx, ty := dropPoint(to, opts.DropAt)
 
 	_ = p.Spotlight(ctx, client, session, &from.Rect)
@@ -303,6 +303,6 @@ func dropPoint(t *Target, at string) (float64, float64) {
 	case "bottom", "base":
 		return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height*0.75
 	default:
-		return t.center()
+		return t.ondeAgir()
 	}
 }
