@@ -43,7 +43,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	switch {
 	case strings.HasPrefix(spec, "css="):
 		sel := strings.TrimPrefix(spec, "css=")
-		expr = fmt.Sprintf("document.querySelector(%s)", strconv.Quote(sel))
+		expr = expressaoCSS(sel)
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, fmt.Errorf("seletor inválido %q: %w", sel, err)
@@ -55,52 +55,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	case strings.HasPrefix(spec, "text="):
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
-		expr = fmt.Sprintf(`(() => {
-			const want = %s;
-			const nodes = document.querySelectorAll('a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div');
-			// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
-			// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
-			const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
-			// O nome acessível manda: é o que a árvore mostra e por onde o agente
-			// lê a tela. Sem o placeholder e o rótulo associado aqui, mirar por
-			// texto discordava do snap: o campo aparecia como "CAPTCHA" na
-			// leitura e era inalcançável por esse nome.
-			const texto = el => {
-				const aria = (el.getAttribute('aria-label') || '').trim();
-				if (aria) return aria;
-				if (el.labels && el.labels.length) {
-					const rotulo = (el.labels[0].innerText || '').trim();
-					if (rotulo) return rotulo;
-				}
-				const visivel = (el.innerText || '').trim();
-				if (visivel) return visivel;
-				const dica = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
-				if (dica) return dica;
-				return (el.value || '').trim();
-			};
-			// Ordem de preferência: nome exato antes de parcial; depois o mais
-			// justo (menos sobra de texto); acionável só desempata. Sem o "mais
-			// justo", o primeiro que contém o texto é sempre o container da
-			// página inteira — e o alvo vira a tela toda.
-			const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3];
-			// Nome que colide com o cromo da página é armadilha: o menu "⋯" do
-			// LinkedIn se chama "Resources", igual ao "Resources" do topo. Fora
-			// do cromo ganha o desempate.
-			const cromo = el => el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]') ? 1 : 0;
-			let escolhido = null, chave = null;
-			for (const el of nodes) {
-				const t = texto(el);
-				if (!t) continue;
-				const exato = t === want;
-				if (!exato && !t.includes(want)) continue;
-				const atual = [exato ? 0 : 1, t.length - want.length, cromo(el), acionavel(el) ? 0 : 1];
-				if (chave === null || melhorQue(atual, chave) < 0) {
-					escolhido = el;
-					chave = atual;
-				}
-			}
-			return escolhido;
-		})()`, strconv.Quote(want))
+		expr = expressaoTexto(want)
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, err
@@ -178,6 +133,90 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	t.ObjectID = objectID
 	t.Rect = rect
 	return t, nil
+}
+
+// sobASombra anda também dentro de shadow roots abertos.
+//
+// A árvore de acessibilidade **achata** shadow DOM: a leitura mostra o botão que
+// está lá dentro, com nome e ref, e o ref alcança (resolve por backendNodeId).
+// A mira por DOM, não — ela andava só no documento claro, de modo que a leitura
+// mostrava e o `text=` não alcançava. Medido na missão 12 do laboratório.
+const sobASombra = `
+	const sobASombra = (raiz, sel, acc) => {
+		for (const el of raiz.querySelectorAll(sel)) acc.push(el);
+		for (const el of raiz.querySelectorAll('*')) {
+			if (el.shadowRoot) sobASombra(el.shadowRoot, sel, acc);
+		}
+		return acc;
+	};`
+
+// expressaoTexto monta a busca por texto visível/nome acessível.
+//
+// Separada de ResolveTarget porque é testável — e o teste existe para fixar que
+// ela atravessa shadow root.
+func expressaoTexto(want string) string {
+	return fmt.Sprintf(`(() => {
+		const want = %s;
+		const sel = 'a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div';
+		%s
+		const nodes = sobASombra(document, sel, []);
+		// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
+		// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
+		const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
+		// O nome acessível manda: é o que a árvore mostra e por onde o agente
+		// lê a tela. Sem o placeholder e o rótulo associado aqui, mirar por
+		// texto discordava do snap: o campo aparecia como "CAPTCHA" na
+		// leitura e era inalcançável por esse nome.
+		const texto = el => {
+			const aria = (el.getAttribute('aria-label') || '').trim();
+			if (aria) return aria;
+			if (el.labels && el.labels.length) {
+				const rotulo = (el.labels[0].innerText || '').trim();
+				if (rotulo) return rotulo;
+			}
+			const visivel = (el.innerText || '').trim();
+			if (visivel) return visivel;
+			const dica = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
+			if (dica) return dica;
+			return (el.value || '').trim();
+		};
+		// Ordem de preferência: nome exato antes de parcial; depois o mais
+		// justo (menos sobra de texto); acionável só desempata. Sem o "mais
+		// justo", o primeiro que contém o texto é sempre o container da
+		// página inteira — e o alvo vira a tela toda.
+		const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3];
+		// Nome que colide com o cromo da página é armadilha: o menu "⋯" do
+		// LinkedIn se chama "Resources", igual ao "Resources" do topo. Fora
+		// do cromo ganha o desempate.
+		const cromo = el => el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]') ? 1 : 0;
+		let escolhido = null, chave = null;
+		for (const el of nodes) {
+			const t = texto(el);
+			if (!t) continue;
+			const exato = t === want;
+			if (!exato && !t.includes(want)) continue;
+			const atual = [exato ? 0 : 1, t.length - want.length, cromo(el), acionavel(el) ? 0 : 1];
+			if (chave === null || melhorQue(atual, chave) < 0) {
+				escolhido = el;
+				chave = atual;
+			}
+		}
+		return escolhido;
+	})()`, strconv.Quote(want), sobASombra)
+}
+
+// expressaoCSS monta a busca por seletor CSS.
+//
+// O seletor CSS tem semântica própria no documento claro, então ele é tentado
+// primeiro. Só quando não acha nada é que vale procurar dentro de shadow roots:
+// assim uma página que sempre funcionou não muda de alvo, e a que tem web
+// component deixa de ser um beco sem saída.
+func expressaoCSS(sel string) string {
+	alvo := strconv.Quote(sel)
+	return fmt.Sprintf(`(() => {
+		%s
+		return document.querySelector(%s) || sobASombra(document, %s, [])[0] || null;
+	})()`, sobASombra, alvo, alvo)
 }
 
 // scrollAoAlcance rola em passos até o elemento ficar visível, para quem olha

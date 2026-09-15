@@ -91,6 +91,31 @@ Ambos medidos no laboratório: `[input]` e `[dropzone]`, cada um marcando o
 
 ---
 
+## 5. Shadow DOM (missão 12 do laboratório) — resolvido
+
+Duas suposições minhas caíram de uma vez, e a correção ficou registrada aqui
+porque o desenho da ferramenta se apoia no que se aprendeu:
+
+- **"a leitura não atravessa shadow root"** — atravessa. A árvore de
+  acessibilidade **achata** shadow DOM: o botão de dentro aparecia na leitura,
+  com nome e com `ref`.
+- **"o ref não alcança o que está dentro"** — alcança. Ele resolve por
+  `backendNodeId` no CDP, que atravessa a fronteira do shadow root sem precisar
+  saber que ela existe.
+
+O que **não** atravessava era a mira por DOM: o `text=` montava a lista de
+candidatos com `document.querySelectorAll` e o `css=` usava
+`document.querySelector` — os dois no documento claro. A leitura mostrava e a
+mira não alcançava: exatamente a assimetria que o README descreve como armadilha.
+
+Corrigido: o `text=` coleta candidatos também dentro de shadow roots **abertos**
+(recursão em `el.shadowRoot`), e o `css=` mantém o documento claro primeiro — é
+a semântica do seletor — caindo na sombra só quando o claro não acha nada. A
+ordem dos candidatos do documento claro ficou idêntica, então página sem web
+component não muda de alvo.
+
+---
+
 ## Decidido **não** fazer (com o porquê)
 
 - **Aceitar ref de leitura antiga quando ela aponta para o mesmo nó.** O guarda
@@ -106,12 +131,11 @@ Ambos medidos no laboratório: `[input]` e `[dropzone]`, cada um marcando o
 
 ## Laboratório: missões pendentes
 
-Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11** (placar em 5/16 porque o botão
-*Resetar estado* apaga as concluídas — é o desenho dele).
+Feitas: **1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12** (placar em 6/16 porque o
+botão *Resetar estado* apaga as concluídas — é o desenho dele).
 
 | Missão | Assunto | Observação |
 |---|---|---|
-| 12 | botão dentro de Shadow DOM | a leitura e o `text=` não atravessam shadow root |
 | 13 | iframe `srcdoc` | ver item 3 acima |
 | 14 | alvo desenhado em canvas | não existe elemento no DOM: só por `pos=` |
 | 15 | job assíncrono + polling | depende de `wait`/leitura; deve passar |

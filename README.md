@@ -90,7 +90,9 @@ bu script cenario.txt              # roteiro em lote
 
 Aliases em português existem (`tela`, `clicar`, `digitar`, `esperar`, `abas`…).
 
-Alvo aceita três formas: `e12` (ref), `css=.botao`, `text=Entrar`.
+Alvo aceita três formas: `e12` (ref), `css=.botao`, `text=Entrar`. Shadow root
+aberto é atravessado: a árvore de acessibilidade a achata — a leitura mostra o
+que está lá dentro, com ref — e a mira por `text=`/`css=` também alcança.
 
 ### Roteiro
 
