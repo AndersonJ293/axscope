@@ -81,7 +81,7 @@ func (a *Agent) extension(ctx context.Context) (*cdp.Client, error) {
 				port = n
 			}
 		}
-		srv, err := bridge.Start(port)
+		srv, err := bridge.Start(a.Session, port)
 		if err != nil {
 			return nil, err
 		}

@@ -19,6 +19,14 @@
     .pill.off { background: #fee2e2; color: #991b1b; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
     .detail { margin: 10px 0 0; color: #64748b; font-size: 12px; word-break: break-all; }
+    .list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .row {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 8px; background: #fff;
+      border: 1px solid #e2e8f0; font-size: 12px;
+    }
+    .row .name { font-weight: 600; color: #1e293b; }
+    .row .port { color: #94a3b8; font-family: ui-monospace, Menlo, monospace; }
     button {
       margin-top: 12px; width: 100%; font: inherit; font-weight: 600;
       padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 9px;
@@ -31,6 +39,7 @@
   <h1>browser-use</h1>
   <p class="sub">Ponte com o daemon local</p>
   <div id="pill" class="pill"><span class="dot"></span><span id="label">verificando…</span></div>
+  <div id="list" class="list"></div>
   <p class="detail" id="detail"></p>
   <button id="reconnect">Reconectar</button>
   <script src="popup.js"></script>

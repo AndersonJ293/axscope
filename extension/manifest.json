@@ -3,7 +3,7 @@
   "name": "browser-use",
   "version": "0.1.0",
   "description": "Deixa o browser-use dirigir este navegador pelo chrome.debugger — com cursor renderizado.",
-  "permissions": ["debugger", "tabs", "storage"],
+  "permissions": ["debugger", "tabs", "tabGroups", "storage"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

@@ -1,59 +1,98 @@
-// Ponte entre o daemon (browser-use) e o navegador.
+// Ponte entre os daemons (browser-use) e o navegador.
 //
-// O daemon fala CDP; aqui traduzimos só o domínio `Target` para a API de abas
-// (chrome.tabs) e repassamos todo o resto para o chrome.debugger, que entrega
-// CDP de verdade na aba. Resultado: o driver inteiro — snapshot da árvore de
-// acessibilidade, clique por coordenada, digitação — funciona sem mudar nada,
-// no navegador já logado do usuário.
+// Cada sessão do browser-use ocupa uma porta da faixa 8787..8802 e recebe o seu
+// próprio grupo de abas. A extensão mantém uma conexão por porta e traduz só o
+// domínio `Target` para a API de abas; todo o resto vai para o chrome.debugger.
+//
+// Consequência: vários agentes rodam ao mesmo tempo, cada um enxergando apenas
+// as abas do seu grupo — as abas pessoais do usuário ficam intocadas.
 
-const BRIDGE_URL = 'ws://127.0.0.1:8787/cdp';
+const BASE_PORT = 8787;
+const PORT_SPAN = 16;
 const PROTOCOL = '1.3';
 const HEARTBEAT_MS = 20000;
+const RETRY_MS = 2500;
 
-let ws = null;
-let reconnectTimer = null;
+const GROUP_COLORS = ['blue', 'purple', 'green', 'orange', 'red', 'cyan', 'pink', 'yellow'];
+
+/** port -> estado da conexão daquela sessão. */
+const conns = new Map();
+/** tabId -> estado da conexão dona daquela aba. */
+const ownerByTab = new Map();
+
 let heartbeatTimer = null;
 
-/** sessionId (o que o daemon fala) -> tabId (o que a API usa). */
-const tabBySession = new Map();
-/** targetId -> sessionId, para responder createTarget/attach. */
-const sessionByTarget = new Map();
+// ------------------------------------------------------------------ contexto
 
-function sessionOf(tabId) {
-  return `t${tabId}`;
+function groupTitle(session) {
+  return `browser-use · ${session}`;
+}
+
+function groupColor(session) {
+  let hash = 0;
+  for (let i = 0; i < session.length; i++) hash = (hash * 31 + session.charCodeAt(i)) | 0;
+  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
+}
+
+function connectedCount() {
+  let n = 0;
+  for (const st of conns.values()) {
+    if (st.ws && st.ws.readyState === WebSocket.OPEN) n++;
+  }
+  return n;
+}
+
+function refreshStatus() {
+  const sessions = [];
+  for (const st of conns.values()) {
+    if (st.ws && st.ws.readyState === WebSocket.OPEN) {
+      sessions.push({ session: st.session || '(aguardando)', port: st.port });
+    }
+  }
+  chrome.storage.local.set({ connected: sessions.length > 0, sessions, at: Date.now() });
 }
 
 // ---------------------------------------------------------------- transporte
 
-function setStatus(status, detail) {
-  chrome.storage.local.set({ status, detail: detail || '', at: Date.now() });
+function connectAll() {
+  for (let i = 0; i < PORT_SPAN; i++) {
+    connectPort(BASE_PORT + i);
+  }
 }
 
-function connect() {
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-    return;
+function connectPort(port) {
+  const existing = conns.get(port);
+  if (existing) {
+    const rs = existing.ws && existing.ws.readyState;
+    if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return;
   }
-  clearTimeout(reconnectTimer);
+  if (!existing) {
+    conns.set(port, { port, ws: null, session: null, groupId: null, tabBySession: new Map() });
+  }
+  const st = conns.get(port);
+
+  let ws;
   try {
-    ws = new WebSocket(BRIDGE_URL);
-  } catch (err) {
-    setStatus('erro', String(err));
-    scheduleReconnect();
-    return;
+    ws = new WebSocket(`ws://127.0.0.1:${port}/cdp`);
+  } catch {
+    return; // porta sem daemon: tenta de novo no próximo ciclo
   }
+  st.ws = ws;
 
   ws.onopen = () => {
-    setStatus('conectado', BRIDGE_URL);
-    startHeartbeat();
+    refreshStatus();
   };
   ws.onclose = () => {
-    stopHeartbeat();
-    ws = null;
-    setStatus('desconectado', `sem daemon em ${BRIDGE_URL}`);
-    scheduleReconnect();
+    st.ws = null;
+    // A sessão caiu: solta as abas dela para o mapa de donos.
+    for (const [tabId, owner] of ownerByTab) {
+      if (owner === st) ownerByTab.delete(tabId);
+    }
+    st.tabBySession.clear();
+    refreshStatus();
   };
   ws.onerror = () => {
-    // onclose cuida da reconexão; aqui só evitamos poluir o console.
+    /* onclose cuida da reconexão */
   };
   ws.onmessage = (event) => {
     let msg;
@@ -62,121 +101,150 @@ function connect() {
     } catch {
       return;
     }
-    handleRpc(msg).catch((err) => respondError(msg.id, String(err)));
+    handleMessage(st, msg).catch((err) => respondError(st, msg.id, String(err)));
   };
 }
 
-function scheduleReconnect() {
-  clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(connect, 2000);
+function sendOn(st, obj) {
+  if (st.ws && st.ws.readyState === WebSocket.OPEN) {
+    st.ws.send(JSON.stringify(obj));
+  }
+}
+
+function respond(st, id, result) {
+  if (id === undefined || id === null) return;
+  sendOn(st, { id, result: result === undefined ? {} : result });
+}
+
+function respondError(st, id, message) {
+  if (id === undefined || id === null) return;
+  sendOn(st, { id, error: { code: -32000, message } });
 }
 
 function startHeartbeat() {
-  stopHeartbeat();
-  // Mantém o service worker vivo e detecta queda rápido.
+  if (heartbeatTimer) return;
   heartbeatTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ method: '__ping' }));
+    for (const st of conns.values()) {
+      if (st.ws && st.ws.readyState === WebSocket.OPEN) sendOn(st, { method: '__ping' });
     }
   }, HEARTBEAT_MS);
 }
 
-function stopHeartbeat() {
-  if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
-    heartbeatTimer = null;
-  }
-}
-
-function sendRaw(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-  }
-}
-
-function respond(id, result) {
-  if (id === undefined || id === null) return;
-  sendRaw({ id, result: result === undefined ? {} : result });
-}
-
-function respondError(id, message) {
-  if (id === undefined || id === null) return;
-  sendRaw({ id, error: { code: -32000, message } });
-}
-
 // ------------------------------------------------------------------- roteador
 
-async function handleRpc(msg) {
+async function handleMessage(st, msg) {
   const { id, method, params, sessionId } = msg;
 
+  if (method === '__session') {
+    st.session = (params && params.session) || 'default';
+    await adoptExistingGroup(st);
+    refreshStatus();
+    return;
+  }
   if (!method) return;
 
   if (method.startsWith('Target.')) {
-    const result = await handleTarget(method, params || {}, sessionId);
-    respond(id, result);
+    respond(st, id, await handleTarget(st, method, params || {}));
     return;
   }
 
-  if (!sessionId) {
-    throw new Error(`comando ${method} sem sessão (aba)`);
-  }
-  const tabId = tabBySession.get(sessionId);
-  if (tabId === undefined) {
-    throw new Error(`sessão ${sessionId} não está mais ativa`);
-  }
-  const result = await chrome.debugger.sendCommand({ tabId }, method, params || {});
-  respond(id, result);
+  if (!sessionId) throw new Error(`comando ${method} sem sessão (aba)`);
+  const tabId = st.tabBySession.get(sessionId);
+  if (tabId === undefined) throw new Error(`sessão ${sessionId} não está mais ativa`);
+  respond(st, id, await chrome.debugger.sendCommand({ tabId }, method, params || {}));
 }
 
-async function handleTarget(method, params) {
+// ---------------------------------------------------------------------- grupo
+
+async function adoptExistingGroup(st) {
+  if (!st.session) return;
+  try {
+    const groups = await chrome.tabGroups.query({ title: groupTitle(st.session) });
+    if (groups.length > 0) {
+      st.groupId = groups[0].id;
+      await syncGroupTabs(st);
+    }
+  } catch {
+    /* tabGroups indisponível: segue sem grupo */
+  }
+}
+
+/** Reassocia as abas do grupo que já existia na sessão recém-conectada. */
+async function syncGroupTabs(st) {
+  if (st.groupId === null || st.groupId === undefined) return;
+  const tabs = await chrome.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.groupId === st.groupId) ownerByTab.set(tab.id, st);
+  }
+}
+
+async function addTabToGroup(st, tabId) {
+  if (!st.session) return;
+  try {
+    if (st.groupId === null || st.groupId === undefined) {
+      const gid = await chrome.tabs.group({ tabIds: [tabId] });
+      st.groupId = gid;
+      await chrome.tabGroups.update(gid, {
+        title: groupTitle(st.session),
+        color: groupColor(st.session),
+        collapsed: false,
+      });
+    } else {
+      await chrome.tabs.group({ tabIds: [tabId], groupId: st.groupId });
+    }
+    ownerByTab.set(tabId, st);
+  } catch {
+    /* sem permissão de grupo: a aba continua utilizável */
+  }
+}
+
+/** Só as abas deste grupo — é o isolamento entre sessões. */
+async function listGroupTabs(st) {
+  if (st.groupId === null || st.groupId === undefined) return [];
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter((t) => t.groupId === st.groupId);
+}
+
+// -------------------------------------------------------------------- Target
+
+async function handleTarget(st, method, params) {
   switch (method) {
     case 'Target.setDiscoverTargets':
     case 'Target.setAutoAttach':
-    case 'Target.setDiscoverTargets':
-      return {};
-
     case 'Target.getBrowserContexts':
-      return { browserContextIds: [] };
+      return method === 'Target.getBrowserContexts' ? { browserContextIds: [] } : {};
 
-    case 'Target.getTargets':
-      return { targetInfos: await listTargets() };
+    case 'Target.getTargets': {
+      const tabs = await listGroupTabs(st);
+      return { targetInfos: tabs.map((t) => toTargetInfo(st, t)) };
+    }
 
     case 'Target.createTarget': {
-      const tab = await chrome.tabs.create({
-        url: params.url || 'about:blank',
-        // background: não roubar a aba em foco do usuário.
-        active: params.background === true ? false : false,
-      });
-      ensureSessionFor(tab.id);
-      sendRaw({
-        method: 'Target.targetCreated',
-        params: { targetInfo: toTargetInfo(tab) },
-      });
+      const tab = await chrome.tabs.create({ url: params.url || 'about:blank', active: false });
+      await addTabToGroup(st, tab.id);
+      sendOn(st, { method: 'Target.targetCreated', params: { targetInfo: toTargetInfo(st, tab) } });
       return { targetId: String(tab.id) };
     }
 
     case 'Target.closeTarget': {
-      const tabId = Number(params.targetId);
-      await chrome.tabs.remove(tabId);
+      await chrome.tabs.remove(Number(params.targetId));
       return { success: true };
     }
 
     case 'Target.activateTarget': {
-      // Ativa a aba dentro da janela, mas NÃO levantamos a janela: quem decide
-      // isso é o usuário (--focus), não cada comando.
-      const tabId = Number(params.targetId);
-      await chrome.tabs.update(tabId, { active: true });
+      // Ativa a aba no grupo sem levantar a janela: foco só se o usuário pedir.
+      await chrome.tabs.update(Number(params.targetId), { active: true });
       return {};
     }
 
     case 'Target.attachToTarget':
-      return attach(params.targetId);
+      return attach(st, params.targetId);
 
     case 'Target.detachFromTarget': {
-      const tabId = tabBySession.get(params.sessionId);
+      const tabId = st.tabBySession.get(params.sessionId);
       if (tabId !== undefined) {
-        tabBySession.delete(params.sessionId);
-        sessionByTarget.delete(String(tabId));
+        st.tabBySession.delete(params.sessionId);
+        ownerByTab.delete(tabId);
         try {
           await chrome.debugger.detach({ tabId });
         } catch {
@@ -191,112 +259,110 @@ async function handleTarget(method, params) {
   }
 }
 
-function toTargetInfo(tab) {
+function toTargetInfo(st, tab) {
   return {
     targetId: String(tab.id),
     type: 'page',
     title: tab.title || '',
     url: tab.url || '',
-    attached: tabBySession.has(sessionOf(tab.id)),
-    browserContextId: '',
+    attached: st.tabBySession.has(`t${tab.id}`),
   };
 }
 
-/** Lista as abas com a aba em foco primeiro (o agente começa onde você está). */
-async function listTargets() {
-  const tabs = await chrome.tabs.query({});
-  const active = tabs.find((t) => t.active);
-  const ordered = active ? [active, ...tabs.filter((t) => t.id !== active.id)] : tabs;
-  return ordered.map(toTargetInfo);
-}
-
-async function attach(targetId) {
+async function attach(st, targetId) {
   const tabId = Number(targetId);
-  if (Number.isNaN(tabId)) {
-    throw new Error(`targetId inválido: ${targetId}`);
-  }
-  const existing = tabBySession.get(sessionOf(tabId));
-  if (existing) {
-    return { sessionId: existing };
-  }
-  await chrome.debugger.attach({ tabId }, PROTOCOL);
-  const sessionId = sessionOf(tabId);
-  tabBySession.set(sessionId, tabId);
-  sessionByTarget.set(String(tabId), sessionId);
-  return { sessionId };
-}
+  if (Number.isNaN(tabId)) throw new Error(`targetId inválido: ${targetId}`);
 
-function ensureSessionFor(tabId) {
-  return sessionOf(tabId);
+  const sessionId = `t${tabId}`;
+  if (st.tabBySession.has(sessionId)) return { sessionId };
+
+  await chrome.debugger.attach({ tabId }, PROTOCOL);
+  st.tabBySession.set(sessionId, tabId);
+  ownerByTab.set(tabId, st);
+  return { sessionId };
 }
 
 // -------------------------------------------------------------------- eventos
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
-  const sessionId = tabBySession.get(sessionOf(source.tabId));
-  if (!sessionId) return;
-  sendRaw({ method, params, sessionId });
+  const st = ownerByTab.get(source.tabId);
+  if (!st) return;
+  sendOn(st, { method, params, sessionId: `t${source.tabId}` });
 });
 
 chrome.debugger.onDetach.addListener((source, reason) => {
-  const sessionId = sessionOf(source.tabId);
-  if (tabBySession.delete(sessionId)) {
-    sessionByTarget.delete(String(source.tabId));
-    sendRaw({
-      method: 'Target.detachedFromTarget',
-      params: { sessionId, reason },
-      sessionId,
-    });
-  }
+  const st = ownerByTab.get(source.tabId);
+  if (!st) return;
+  const sessionId = `t${source.tabId}`;
+  st.tabBySession.delete(sessionId);
+  ownerByTab.delete(source.tabId);
+  sendOn(st, { method: 'Target.detachedFromTarget', params: { sessionId, reason }, sessionId });
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  sendRaw({
-    method: 'Target.targetCreated',
-    params: { targetInfo: toTargetInfo(tab) },
-  });
+  // Aba nova só interessa à sessão cujo grupo ela entrar (definido adiante).
+  const st = ownerByTab.get(tab.id);
+  if (!st) return;
+  sendOn(st, { method: 'Target.targetCreated', params: { targetInfo: toTargetInfo(st, tab) } });
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  const sessionId = sessionOf(tabId);
-  tabBySession.delete(sessionId);
-  sessionByTarget.delete(String(tabId));
-  sendRaw({
-    method: 'Target.targetDestroyed',
-    params: { targetId: String(tabId) },
-  });
+  const st = ownerByTab.get(tabId);
+  if (!st) return;
+  st.tabBySession.delete(`t${tabId}`);
+  ownerByTab.delete(tabId);
+  sendOn(st, { method: 'Target.targetDestroyed', params: { targetId: String(tabId) } });
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const st = ownerByTab.get(tabId);
+  if (!st) return;
   if (!changeInfo.url && !changeInfo.title && changeInfo.status !== 'complete') return;
-  sendRaw({
-    method: 'Target.targetInfoChanged',
-    params: { targetInfo: toTargetInfo(tab) },
-  });
+  sendOn(st, { method: 'Target.targetInfoChanged', params: { targetInfo: toTargetInfo(st, tab) } });
 });
+
+// -------------------------------------------------------------------- runtime
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === 'status') {
-    sendResponse({ connected: !!ws && ws.readyState === WebSocket.OPEN, url: BRIDGE_URL });
+    const sessions = [];
+    for (const st of conns.values()) {
+      if (st.ws && st.ws.readyState === WebSocket.OPEN) {
+        sessions.push({ session: st.session || '(aguardando)', port: st.port });
+      }
+    }
+    sendResponse({ connected: sessions.length > 0, sessions });
     return true;
   }
   if (msg && msg.type === 'reconnect') {
-    if (ws) {
-      try {
-        ws.close();
-      } catch {
-        /* ignora */
+    for (const st of conns.values()) {
+      if (st.ws) {
+        try {
+          st.ws.close();
+        } catch {
+          /* ignora */
+        }
       }
     }
-    connect();
+    conns.clear();
+    ownerByTab.clear();
+    connectAll();
     sendResponse({ ok: true });
     return true;
   }
   return false;
 });
 
-chrome.runtime.onStartup.addListener(connect);
-chrome.runtime.onInstalled.addListener(connect);
+chrome.runtime.onStartup.addListener(() => {
+  connectAll();
+  startHeartbeat();
+});
+chrome.runtime.onInstalled.addListener(() => {
+  connectAll();
+  startHeartbeat();
+});
 
 // O service worker acorda e reconecta sozinho.
-connect();
+connectAll();
+startHeartbeat();
+setInterval(connectAll, RETRY_MS);

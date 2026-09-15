@@ -161,10 +161,22 @@ Ou seja: não existe caminho por porta de debug no seu perfil real. A extensão 
 ### Como funciona
 
 ```
-extensão (Brave)  ⇄  WebSocket local  ⇄  daemon (Go)  ⇄  CLI / MCP
+extensão (Brave)  ⇄  uma conexão por sessão  ⇄  daemon (Go)  ⇄  CLI / MCP
   chrome.debugger → CDP real na aba
   chrome.tabs     → domínio Target (abas)
+  chrome.tabGroups→ um grupo por sessão (o isolamento)
 ```
+
+Cada sessão ocupa **uma porta da faixa 8787–8802** e recebe o seu **próprio grupo
+de abas** no Brave, com nome `browser-use · <sessão>`. A extensão só enxerga e só
+toca nas abas do grupo daquela sessão.
+
+Isso resolve três coisas de uma vez:
+
+- **vários agentes ao mesmo tempo**, cada um com o seu grupo, sem disputar porta;
+- **cada agente com quantas abas quiser** dentro do próprio grupo;
+- **suas abas pessoais intocadas** — e como é o mesmo perfil, as abas do agente
+  já nascem logadas nos seus sites.
 
 A extensão sintetiza **apenas** o domínio `Target` (abas ↔ `chrome.tabs`) e
 repassa todo o resto — `Accessibility`, `DOM`, `Input`, `Runtime`, `Page` — para
@@ -172,8 +184,8 @@ o `chrome.debugger`. Por isso o driver inteiro funciona sem mudança: a árvore 
 acessibilidade é a **real**, o clique é por coordenada e o cursor é renderizado
 igual aos outros modos.
 
-A aba em foco do usuário vem **primeiro** na lista, então o agente começa onde
-você está. E `activateTarget` **não** levanta a janela: foco só com `tab N --focus`.
+Cada aba é anexada **sob demanda** — só a que está sendo usada. Abrir o agente
+não varre nem instrumenta as suas abas.
 
 
 

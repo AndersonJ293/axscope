@@ -91,8 +91,9 @@ func (s *Session) wireTargets() {
 		if json.Unmarshal(params, &p) != nil || p.TargetInfo.Type != "page" {
 			return
 		}
-		// Handler roda no laço de leitura: não pode bloquear num Send.
-		go s.attachTarget(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title)
+		// Handler roda no laço de leitura: não pode bloquear num Send, e aqui
+		// só registramos — a anexação acontece sob demanda.
+		s.remember(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title)
 	})
 
 	s.client.On("Target.detachedFromTarget", func(params json.RawMessage, _ string) {
@@ -143,46 +144,77 @@ func (s *Session) bootstrap(ctx context.Context) error {
 	if err := s.client.SendJSON(ctx, "Target.getTargets", map[string]any{}, "", &got); err != nil {
 		return err
 	}
-	attached := 0
+	// Conhecemos todas as abas, mas só anexamos a que for realmente usada.
+	// No navegador do usuário isso pode ser dezenas de abas; anexar em todas
+	// seria invasivo (faixa de depuração em cada uma, overhead, conflito com
+	// o DevTools aberto).
 	for _, ti := range got.TargetInfos {
 		if ti.Type != "page" {
 			continue
 		}
-		s.attachTarget(ti.TargetID, ti.URL, ti.Title)
-		if s.has(ti.TargetID) {
-			attached++
-		}
+		s.remember(ti.TargetID, ti.URL, ti.Title)
 	}
 
 	// Engines como chrome-headless-shell não nascem com uma página: é preciso
 	// criá-la. Sem isso o daemon fica vivo e sem aba nenhuma.
-	if attached == 0 {
+	if len(s.Tabs()) == 0 {
 		var created struct {
 			TargetID string `json:"targetId"`
 		}
 		if err := s.client.SendJSON(ctx, "Target.createTarget",
 			map[string]any{"url": "about:blank", "background": true}, "", &created); err == nil && created.TargetID != "" {
-			s.attachTarget(created.TargetID, "about:blank", "")
+			s.remember(created.TargetID, "about:blank", "")
 		}
 	}
 
-	// Dá um instante para a primeira aba ficar pronta.
-	deadline := time.Now().Add(8 * time.Second)
-	for time.Now().Before(deadline) {
-		if len(s.Tabs()) > 0 {
-			return nil
-		}
-		time.Sleep(25 * time.Millisecond)
+	// Anexa a aba ativa (a primeira da lista: a que o usuário está vendo).
+	if _, err := s.Active(); err != nil {
+		return nil // sem aba ainda; o comando seguinte reporta
 	}
 	return nil
 }
 
-// attachTarget anexa a um target uma única vez, seguro para chamadas
-// concorrentes (targetCreated e bootstrap). Bloqueia num Send: nunca chame do
-// laço de leitura sem goroutine.
+// remember registra uma aba sem anexar a ela.
+func (s *Session) remember(targetID, url, title string) *Tab {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if tab, ok := s.tabs[targetID]; ok {
+		if url != "" {
+			tab.URL = url
+		}
+		if title != "" {
+			tab.Title = title
+		}
+		return tab
+	}
+	tab := &Tab{
+		TargetID: targetID,
+		URL:      url,
+		Title:    title,
+		ready:    make(chan struct{}),
+	}
+	s.tabs[targetID] = tab
+	s.order = append(s.order, targetID)
+	if s.active == "" {
+		s.active = targetID
+	}
+	return tab
+}
+
+// attachTarget anexa a uma aba registrada, uma única vez. Bloqueia num Send:
+// nunca chame do laço de leitura sem goroutine.
 func (s *Session) attachTarget(targetID, url, title string) {
 	s.mu.Lock()
-	if _, ok := s.tabs[targetID]; ok || s.attaching[targetID] {
+	tab := s.tabs[targetID]
+	if tab == nil {
+		tab = &Tab{TargetID: targetID, URL: url, Title: title, ready: make(chan struct{})}
+		s.tabs[targetID] = tab
+		s.order = append(s.order, targetID)
+		if s.active == "" {
+			s.active = targetID
+		}
+	}
+	if tab.SessionID != "" || s.attaching[targetID] {
 		s.mu.Unlock()
 		return
 	}
@@ -197,12 +229,20 @@ func (s *Session) attachTarget(targetID, url, title string) {
 
 	s.mu.Lock()
 	delete(s.attaching, targetID)
+	if err == nil && res.SessionID != "" {
+		tab.SessionID = res.SessionID
+	}
 	s.mu.Unlock()
 
 	if err != nil || res.SessionID == "" {
+		tab.initErr = fmt.Errorf("não consegui anexar à aba: %v", err)
+		close(tab.ready)
 		return
 	}
-	s.register(targetID, res.SessionID, url, title)
+	go func() {
+		tab.initErr = s.initTab(tab)
+		close(tab.ready)
+	}()
 }
 
 func (s *Session) has(targetID string) bool {
@@ -210,32 +250,6 @@ func (s *Session) has(targetID string) bool {
 	defer s.mu.Unlock()
 	_, ok := s.tabs[targetID]
 	return ok
-}
-
-func (s *Session) register(targetID, sessionID, url, title string) {
-	s.mu.Lock()
-	if _, ok := s.tabs[targetID]; ok {
-		s.mu.Unlock()
-		return
-	}
-	tab := &Tab{
-		TargetID:  targetID,
-		SessionID: sessionID,
-		URL:       url,
-		Title:     title,
-		ready:     make(chan struct{}),
-	}
-	s.tabs[targetID] = tab
-	s.order = append(s.order, targetID)
-	if s.active == "" {
-		s.active = targetID
-	}
-	s.mu.Unlock()
-
-	go func() {
-		tab.initErr = s.initTab(tab)
-		close(tab.ready)
-	}()
 }
 
 func (s *Session) initTab(tab *Tab) error {
@@ -368,19 +382,40 @@ func (s *Session) Tabs() []TabInfo {
 	return out
 }
 
-// Active devolve a aba ativa já pronta.
-func (s *Session) Active() (*Tab, error) {
+// activeTab devolve a aba ativa sem esperar anexação.
+func (s *Session) activeTab() (*Tab, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	id := s.active
 	if id == "" && len(s.order) > 0 {
 		id = s.order[0]
 		s.active = id
 	}
 	tab := s.tabs[id]
-	s.mu.Unlock()
 	if tab == nil {
 		return nil, fmt.Errorf("nenhuma aba aberta")
 	}
+	return tab, nil
+}
+
+// attachIfNeeded anexa a aba se ela ainda não estiver anexada.
+func (s *Session) attachIfNeeded(tab *Tab) {
+	s.mu.Lock()
+	need := tab.SessionID == ""
+	targetID, url, title := tab.TargetID, tab.URL, tab.Title
+	s.mu.Unlock()
+	if need {
+		s.attachTarget(targetID, url, title)
+	}
+}
+
+// Active devolve a aba ativa já pronta, anexando só ela se preciso.
+func (s *Session) Active() (*Tab, error) {
+	tab, err := s.activeTab()
+	if err != nil {
+		return nil, err
+	}
+	s.attachIfNeeded(tab)
 	<-tab.ready
 	if tab.initErr != nil {
 		return nil, tab.initErr
@@ -430,6 +465,7 @@ func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, 
 	s.mu.Lock()
 	s.active = tab.TargetID
 	s.mu.Unlock()
+	s.attachIfNeeded(tab)
 	<-tab.ready
 	if tab.initErr != nil {
 		return nil, tab.initErr

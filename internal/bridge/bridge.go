@@ -6,6 +6,7 @@ package bridge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,8 +18,11 @@ import (
 	"github.com/ajunior/browser-use/internal/cdp"
 )
 
-// DefaultPort é onde o daemon espera a extensão.
+// DefaultPort é a primeira porta da faixa onde o daemon espera a extensão.
 const DefaultPort = 8787
+
+// portSpan é quantas sessões simultâneas cabem, uma porta por sessão.
+const portSpan = 16
 
 // Server aceita conexões da extensão e as entrega como clientes CDP.
 type Server struct {
@@ -26,21 +30,38 @@ type Server struct {
 	listener net.Listener
 	http     *http.Server
 	port     int
+	session  string
 	conns    chan *cdp.Client
 }
 
-// Start sobe o servidor em 127.0.0.1 (nunca exposto para fora da máquina).
-func Start(port int) (*Server, error) {
-	if port <= 0 {
-		port = DefaultPort
+// Start sobe o servidor em 127.0.0.1 (nunca exposto para fora da máquina) e
+// anuncia à extensão a qual sessão ela pertence — é o que define o grupo de abas.
+//
+// Cada sessão ocupa uma porta da faixa: assim vários agentes rodam ao mesmo
+// tempo, cada um com seu grupo de abas, sem disputar porta.
+func Start(session string, basePort int) (*Server, error) {
+	if basePort <= 0 {
+		basePort = DefaultPort
 	}
-	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return nil, fmt.Errorf("abrindo a porta %d para a extensão: %w", port, err)
+	var ln net.Listener
+	var lastErr error
+	for offset := 0; offset < portSpan; offset++ {
+		candidate, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", basePort+offset))
+		if err == nil {
+			ln = candidate
+			break
+		}
+		lastErr = err
+	}
+	if ln == nil {
+		return nil, fmt.Errorf(
+			"nenhuma porta livre entre %d e %d para a extensão: %w",
+			basePort, basePort+portSpan-1, lastErr)
 	}
 	s := &Server{
 		listener: ln,
 		port:     ln.Addr().(*net.TCPAddr).Port,
+		session:  session,
 		conns:    make(chan *cdp.Client, 4),
 	}
 
@@ -52,6 +73,15 @@ func Start(port int) (*Server, error) {
 		if err != nil {
 			return
 		}
+		// Handshake: diz à extensão qual sessão/grupo de abas é dela.
+		hello, _ := json.Marshal(map[string]any{
+			"method": "__session",
+			"params": map[string]any{"session": s.session},
+		})
+		wctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		_ = conn.Write(wctx, websocket.MessageText, hello)
+		cancel()
+
 		client := cdp.FromConn(conn)
 		select {
 		case s.conns <- client:

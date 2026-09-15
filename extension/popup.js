@@ -1,25 +1,46 @@
-// Popup: mostra se a ponte está conectada e permite reconectar na mão.
+// Popup: mostra as sessões conectadas (uma por agente) e permite reconectar.
 
 function render(state) {
   const pill = document.getElementById('pill');
   const label = document.getElementById('label');
   const detail = document.getElementById('detail');
+  const list = document.getElementById('list');
+
+  const sessions = (state && state.sessions) || [];
 
   pill.classList.remove('on', 'off');
-  if (state && state.connected) {
+  if (sessions.length > 0) {
     pill.classList.add('on');
-    label.textContent = 'conectado';
+    label.textContent = sessions.length === 1 ? 'conectado' : `${sessions.length} sessões`;
   } else {
     pill.classList.add('off');
     label.textContent = 'desconectado';
   }
-  detail.textContent = state && state.url ? state.url : '';
+
+  list.replaceChildren(
+    ...sessions.map((s) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = s.session;
+      const port = document.createElement('span');
+      port.className = 'port';
+      port.textContent = `:${s.port}`;
+      row.append(name, port);
+      return row;
+    }),
+  );
+
+  detail.textContent = sessions.length
+    ? 'Cada sessão tem o seu grupo de abas.'
+    : 'Nenhum daemon ativo. Rode um comando browser-use.';
 }
 
 function refresh() {
   chrome.runtime.sendMessage({ type: 'status' }, (state) => {
     if (chrome.runtime.lastError) {
-      render({ connected: false, url: '' });
+      render({ sessions: [] });
       return;
     }
     render(state);
@@ -28,7 +49,7 @@ function refresh() {
 
 document.getElementById('reconnect').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'reconnect' }, () => {
-    setTimeout(refresh, 400);
+    setTimeout(refresh, 600);
   });
 });
 
