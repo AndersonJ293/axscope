@@ -1,5 +1,6 @@
-// Porta de apresentação do domínio: o browser pede o que desenhar sem saber
-// como. A implementação concreta (cursor, HUD, destaque) é injetada pelo agent.
+// Domain presentation port: the browser asks for what to draw without knowing
+// how. The concrete implementation (cursor, HUD, highlight) is injected by the
+// agent.
 package browser
 
 import (
@@ -9,8 +10,9 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// Presenter desenha a ação para quem olha o navegador. Sem isto o domínio
-// dependeria da apresentação — e a apresentação é detalhe de uma superfície.
+// Presenter draws the action for whoever watches the browser. Without it the
+// domain would depend on the presentation — and the presentation is a detail of
+// one surface.
 type Presenter interface {
 	Install(ctx context.Context, client *cdp.Client, session string) error
 	MoveCursor(ctx context.Context, client *cdp.Client, session string, x, y float64) error

@@ -16,14 +16,14 @@ func (a *Agent) setRefs(refs map[string]int, gen int) {
 	a.mu.Unlock()
 }
 
-// nextGen é a geração da próxima leitura (a atual + 1).
+// nextGen is the generation of the next read (the current one + 1).
 func (a *Agent) nextGen() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.snapGen + 1
 }
 
-// refGen separa a ref da geração: "e12#7" -> ("e12", 7, true).
+// refGen separates the ref from the generation: "e12#7" -> ("e12", 7, true).
 func refGen(spec string) (string, int, bool) {
 	i := strings.LastIndex(spec, "#")
 	if i <= 0 || i == len(spec)-1 {
@@ -42,9 +42,9 @@ func (a *Agent) currentRefs() map[string]int {
 	return a.refs
 }
 
-// resolve transforma um alvo (ref/css/text/pos) em Target, recusando ref de
-// leitura antiga: usar uma geração antiga não erra com aviso — aponta para o
-// que hoje ocupa aquela posição.
+// resolve turns a target (ref/css/text/pos) into a Target, refusing a ref from
+// an old read: using an old generation does not err with a warning — it points to
+// what today occupies that position.
 func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target string) (*browser.Target, string, error) {
 	sid, err := a.activeSID(sess)
 	if err != nil {
@@ -53,11 +53,11 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 	if !strings.HasPrefix(target, "css=") && !strings.HasPrefix(target, "text=") {
 		if _, gen, ok := refGen(target); ok {
 			a.mu.Lock()
-			atual := a.snapGen
+			current := a.snapGen
 			a.mu.Unlock()
-			if gen != atual {
+			if gen != current {
 				return nil, sid, fmt.Errorf(
-					"ref %q é de uma leitura antiga (a atual é #%d) — rode `snap` de novo", target, atual)
+					"ref %q is from an old read (the current one is #%d) — run `snap` again", target, current)
 			}
 		}
 	}

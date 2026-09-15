@@ -1,9 +1,10 @@
-// Atribuição de ref: quem pode receber uma, e com que número.
+// Ref assignment: who can receive one, and with what number.
 package browser
 
 import "strconv"
 
-// eligibleRef diz se o nó pode receber ref, sem consumir numeração.
+// eligibleRef says whether the node can receive a ref, without consuming
+// numbering.
 func (b *snapBuilder) eligibleRef(n *axNode) bool {
 	if n.BackendDOMNodeID == 0 {
 		return false
@@ -12,9 +13,9 @@ func (b *snapBuilder) eligibleRef(n *axNode) bool {
 	return interactiveRoles[role] || b.focusable(n)
 }
 
-// refFor dá a próxima ref ao nó, com a geração da leitura no nome. A geração é o
-// que faz uma ref de leitura antiga ser recusada em vez de apontar em silêncio
-// para outro elemento.
+// refFor gives the node the next ref, with the reading's generation in the name.
+// The generation is what makes an old reading's ref be refused instead of
+// silently pointing at another element.
 func (b *snapBuilder) refFor(n *axNode) string {
 	if !b.eligibleRef(n) {
 		return ""
@@ -28,8 +29,9 @@ func (b *snapBuilder) refFor(n *axNode) string {
 	return ref
 }
 
-// focusable pergunta à árvore se o nó recebe foco — é o que faz um elemento
-// focável sem papel interativo (tabindex, contenteditable) virar alvo.
+// focusable asks the tree whether the node receives focus — it is what makes a
+// focusable element without an interactive role (tabindex, contenteditable)
+// become a target.
 func (b *snapBuilder) focusable(n *axNode) bool {
 	for _, p := range n.Properties {
 		if p.Name == "focusable" {

@@ -12,7 +12,7 @@ import (
 func (a *Agent) tabs(_ context.Context, sess *browser.Session, _ protocol.Request) protocol.Response {
 	tabs := sess.Tabs()
 	if len(tabs) == 0 {
-		return ok("(nenhuma aba)")
+		return ok("(no tabs)")
 	}
 	var b strings.Builder
 	for _, t := range tabs {
@@ -22,7 +22,7 @@ func (a *Agent) tabs(_ context.Context, sess *browser.Session, _ protocol.Reques
 		}
 		title := t.Title
 		if title == "" {
-			title = "(sem título)"
+			title = "(untitled)"
 		}
 		fmt.Fprintf(&b, "%s[%d] %s — %s\n", marker, t.Index, title, t.URL)
 	}
@@ -32,14 +32,14 @@ func (a *Agent) tabs(_ context.Context, sess *browser.Session, _ protocol.Reques
 func (a *Agent) switchTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	ref := req.String("ref")
 	if ref == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope tab <índice|targetId>"))
+		return protocol.Fail(fmt.Errorf("usage: axscope tab <index|targetId>"))
 	}
 	tab, err := sess.Select(ctx, ref, req.Bool("focus", false))
 	if err != nil {
 		return protocol.Fail(err)
 	}
 	sess.UpdateHUD(ctx, "tab "+ref)
-	return ok(fmt.Sprintf("ok: aba %s — %s", tab.TargetID, tab.URL))
+	return ok(fmt.Sprintf("ok: tab %s — %s", tab.TargetID, tab.URL))
 }
 
 func (a *Agent) newTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
@@ -52,16 +52,16 @@ func (a *Agent) newTab(ctx context.Context, sess *browser.Session, req protocol.
 		return protocol.Fail(err)
 	}
 	sess.UpdateHUD(ctx, "newtab")
-	return ok(fmt.Sprintf("ok: nova aba %s — %s", tab.TargetID, url))
+	return ok(fmt.Sprintf("ok: new tab %s — %s", tab.TargetID, url))
 }
 
 func (a *Agent) closeTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	ref := req.String("ref")
 	if ref == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope closetab <índice|targetId>"))
+		return protocol.Fail(fmt.Errorf("usage: axscope closetab <index|targetId>"))
 	}
 	if err := sess.CloseTab(ctx, ref); err != nil {
 		return protocol.Fail(err)
 	}
-	return ok("ok: aba fechada")
+	return ok("ok: tab closed")
 }

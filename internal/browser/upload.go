@@ -1,15 +1,15 @@
-// Upload de arquivo: os dois caminhos que a web usa para receber um.
+// File upload: the two paths the web uses to receive one.
 //
-// Um `<input type=file>` o navegador preenche em nome do usuário
-// (`DOM.setFileInputFiles` dispara input/change como se o arquivo tivesse sido
-// escolhido). É o caminho de formulário, e o input costuma estar escondido
-// atrás de um botão — invisível na leitura, e ainda assim o alvo certo.
+// A `<input type=file>` the browser fills on the user's behalf
+// (`DOM.setFileInputFiles` fires input/change as if the file had been chosen).
+// It is the form path, and the input is usually hidden behind a button —
+// invisible in the reading, and still the right target.
 //
-// Uma dropzone só entende o arquivo vindo de um arraste: aí o conteúdo vira um
-// `File` dentro da página, dentro de um `DataTransfer` de verdade, e o drop é
-// emitido sobre o alvo. `DataTransfer.files` é só-leitura por atribuição, mas
-// `items.add(File)` popula — foi o que derrubou a suposição de que arquivo não
-// se forja em JavaScript.
+// A dropzone only understands a file coming from a drag: there the content
+// becomes a `File` inside the page, inside a real `DataTransfer`, and the drop is
+// emitted over the target. `DataTransfer.files` is read-only by assignment, but
+// `items.add(File)` populates it — that is what brought down the assumption that
+// a file cannot be forged in JavaScript.
 package browser
 
 import (
@@ -24,10 +24,10 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// FirstFileInput devolve o primeiro `<input type=file>` da página.
+// FirstFileInput returns the first `<input type=file>` on the page.
 //
-// Existe porque, sem alvo, é ele que se quer: costuma estar escondido, e é o
-// caminho que o navegador aceita sem diálogo nenhum.
+// It exists because, without a target, it is the one wanted: it is usually
+// hidden, and it is the path the browser accepts without any dialog.
 func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
 		"expression":    "document.querySelector('input[type=file]')",
@@ -42,13 +42,13 @@ func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (st
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil || res.Result.ObjectID == "" {
-		return "", fmt.Errorf("não achei <input type=file> na página — passe alvo=<ref|css=|texto=>")
+		return "", fmt.Errorf("could not find <input type=file> on the page — pass target=<ref|css=|text=>")
 	}
 	return res.Result.ObjectID, nil
 }
 
-// IsFileInput diz se o elemento é um `<input type=file>` (aceita o arquivo
-// direto) ou qualquer outra coisa (só aceita por arraste).
+// IsFileInput says whether the element is an `<input type=file>` (it accepts the
+// file directly) or anything else (it only accepts by drag).
 func IsFileInput(ctx context.Context, client *cdp.Client, session, objectID string) (bool, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
@@ -66,50 +66,50 @@ func IsFileInput(ctx context.Context, client *cdp.Client, session, objectID stri
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil {
-		return false, fmt.Errorf("não consegui ler o alvo")
+		return false, fmt.Errorf("could not read the target")
 	}
 	return res.Result.Value, nil
 }
 
-// SetFileInput entrega `caminho` ao `<input type=file>`.
+// SetFileInput delivers `path` to the `<input type=file>`.
 //
-// O caminho é lido pelo navegador, não por nós: vale para quando os dois estão
-// na mesma máquina (o caso da extensão). Fora disso, o caminho não existe do
-// outro lado — aí o caminho é a dropzone, que viaja em bytes.
-func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, caminho string) error {
+// The path is read by the browser, not by us: it holds when the two are on the
+// same machine (the extension case). Outside that, the path does not exist on the
+// other side — there the path is the dropzone, which travels in bytes.
+func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, path string) error {
 	_, err := client.Send(ctx, "DOM.setFileInputFiles", map[string]any{
-		"files":    []string{caminho},
+		"files":    []string{path},
 		"objectId": objectID,
 	}, session)
 	return err
 }
 
-// DropFile emite um arraste de arquivo sobre o alvo, com o conteúdo de
-// verdade dentro do DataTransfer.
-func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target, caminho string, p Presenter) error {
-	dados, err := os.ReadFile(caminho)
+// DropFile emits a file drag over the target, with the real content inside the
+// DataTransfer.
+func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target, path string, p Presenter) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	nome := filepath.Base(caminho)
-	tipo := mime.TypeByExtension(filepath.Ext(nome))
-	if tipo == "" {
-		tipo = "application/octet-stream"
+	name := filepath.Base(path)
+	kind := mime.TypeByExtension(filepath.Ext(name))
+	if kind == "" {
+		kind = "application/octet-stream"
 	}
 
-	x, y := t.ondeAgir()
+	x, y := t.actionPoint()
 	if t.ObjectID != "" {
 		_ = p.Spotlight(ctx, client, session, &t.Rect)
 		_ = p.MoveCursor(ctx, client, session, x, y)
 	}
 
-	b64 := base64.StdEncoding.EncodeToString(dados)
+	b64 := base64.StdEncoding.EncodeToString(data)
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
-		"functionDeclaration": soltaArquivoScript,
+		"functionDeclaration": dropFileScript,
 		"arguments": []any{
-			map[string]any{"value": nome},
-			map[string]any{"value": tipo},
+			map[string]any{"value": name},
+			map[string]any{"value": kind},
 			map[string]any{"value": b64},
 			map[string]any{"value": x},
 			map[string]any{"value": y},
@@ -134,31 +134,31 @@ func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target
 		return fmt.Errorf("%s", res.ExceptionDetails.Text)
 	}
 	if res.Result.Value != "ok" {
-		return fmt.Errorf("não consegui soltar o arquivo: %s", res.Result.Value)
+		return fmt.Errorf("could not drop the file: %s", res.Result.Value)
 	}
 	return nil
 }
 
-// soltaArquivoScript monta o arquivo dentro da página e emite o arraste.
+// dropFileScript builds the file inside the page and emits the drag.
 //
-// A ordem importa para quem escuta: dragenter avisa que algo chegou, dragover
-// costuma ser onde a dropzone se marca como alvo (e onde ela dá preventDefault
-// para permitir o drop), e só então o drop entrega.
-const soltaArquivoScript = `function (nome, tipo, b64, x, y) {
+// The order matters to whoever listens: dragenter warns that something arrived,
+// dragover is usually where the dropzone marks itself as a target (and where it
+// calls preventDefault to allow the drop), and only then the drop delivers.
+const dropFileScript = `function (name, kind, b64, x, y) {
 	const bin = atob(b64);
 	const bytes = new Uint8Array(bin.length);
 	for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
 	const dt = new DataTransfer();
-	dt.items.add(new File([bytes], nome, { type: tipo }));
-	const sob = document.elementFromPoint(x, y) || this;
-	if (!sob) return 'sem alvo sob o ponto';
-	const dispara = (evento) => sob.dispatchEvent(new DragEvent(evento, {
+	dt.items.add(new File([bytes], name, { type: kind }));
+	const over = document.elementFromPoint(x, y) || this;
+	if (!over) return 'no target under the point';
+	const fire = (event) => over.dispatchEvent(new DragEvent(event, {
 		bubbles: true, cancelable: true, composed: true, dataTransfer: dt,
 		clientX: x, clientY: y, screenX: x, screenY: y,
 	}));
-	dispara('dragenter');
-	dispara('dragover');
-	dispara('drop');
-	dispara('dragend');
+	fire('dragenter');
+	fire('dragover');
+	fire('drop');
+	fire('dragend');
 	return 'ok';
 }`

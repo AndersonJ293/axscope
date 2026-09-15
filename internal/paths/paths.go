@@ -1,4 +1,4 @@
-// Onde ficam perfil, socket e info do daemon. All fora do repositório.
+// Where the profile, socket and daemon info live. All outside the repository.
 package paths
 
 import (
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// StateDir guarda o que é persistente (perfis, logs, binário baixado).
+// StateDir stores what is persistent (profiles, logs, downloaded binary).
 func StateDir() string {
 	if v := os.Getenv("AXSCOPE_HOME"); v != "" {
 		return v
@@ -22,7 +22,7 @@ func StateDir() string {
 	return filepath.Join(base, "axscope")
 }
 
-// RuntimeDir guarda o que é efêmero (o socket), no runtime do usuário.
+// RuntimeDir stores what is ephemeral (the socket), in the user's runtime.
 func RuntimeDir() string {
 	if v := os.Getenv("XDG_RUNTIME_DIR"); v != "" {
 		return filepath.Join(v, "axscope")
@@ -30,7 +30,7 @@ func RuntimeDir() string {
 	return filepath.Join(os.TempDir(), "axscope")
 }
 
-// Session é o nome do conjunto de abas/daemon. Permite várias sessões paralelas.
+// Session is the name of the tab/daemon set. It allows multiple parallel sessions.
 func Session() string {
 	if v := os.Getenv("AXSCOPE_SESSION"); v != "" {
 		return v
@@ -50,8 +50,8 @@ func DaemonInfoPath(session string) string {
 	return filepath.Join(StateDir(), "sessions", session+".json")
 }
 
-// ActiveTabPath lembra qual aba estava ativa, para reiniciar o daemon não
-// trocar a aba por baixo do agente.
+// ActiveTabPath remembers which tab was active, so restarting the daemon does
+// not switch the tab under the agent.
 func ActiveTabPath(session string) string {
 	return filepath.Join(StateDir(), "sessions", session+".active")
 }
@@ -64,8 +64,8 @@ func BrowsersDir() string {
 	return filepath.Join(StateDir(), "browsers")
 }
 
-// BrowserExecutableMarker aponta para o Chromium baixado por `axscope install`,
-// por produto (chrome ou chrome-headless-shell).
+// BrowserExecutableMarker points to the Chromium downloaded by `axscope install`,
+// per product (chrome or chrome-headless-shell).
 func BrowserExecutableMarker(product string) string {
 	return filepath.Join(BrowsersDir(), "executable-"+product)
 }

@@ -1,5 +1,5 @@
-// Leitura da tela: a árvore de acessibilidade vira linhas legíveis, com `ref`
-// estável para agir. Percorre, decide o que é ruído e o que é alvo.
+// Screen reading: the accessibility tree becomes readable lines, with a stable
+// `ref` to act on. It walks, decides what is noise and what is a target.
 package browser
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// Snapshot é a tela lida, com o mapa de refs para o próximo passo.
+// Snapshot is the screen read, with the ref map for the next step.
 type Snapshot struct {
 	Text      string
 	Refs      map[string]int // "e12" -> backendNodeId
@@ -18,47 +18,47 @@ type Snapshot struct {
 	Title     string
 	URL       string
 	Truncated bool
-	// Page é o estado de rolagem do documento, e ScrollAreas são as áreas que
-	// rolam dentro dele. Vêm do DOM: a árvore de acessibilidade não carrega
-	// rolagem.
+	// Page is the scroll state of the document, and ScrollAreas are the areas
+	// that scroll inside it. They come from the DOM: the accessibility tree does
+	// not carry scrolling.
 	Page             *ScrollArea
 	ScrollAreas      []ScrollArea
 	ScrollAreasTotal int
 }
 
-// SnapshotOptions controla o tamanho da leitura.
+// SnapshotOptions controls the size of the reading.
 
 type SnapshotOptions struct {
 	MaxNodes int
-	// RefsOnly lista só os alvos acionáveis, sem texto solto.
+	// RefsOnly lists only the actionable targets, without loose text.
 	RefsOnly bool
-	// All desliga o corte de cromo de página (rodapé e links de atalho).
+	// All turns off the page chrome cut (footer and shortcut links).
 	All bool
-	// Gen é a geração da leitura. Entra na ref (e12#7) para que uma ref de
-	// leitura antiga seja recusada em vez de apontar para outro elemento.
+	// Gen is the generation of the reading. It enters the ref (e12#7) so that a
+	// ref from an old reading is refused instead of pointing at another element.
 	Gen int
 }
 
-// noiseNameRe reconhece o "cromo de página": blocos de pular navegação, padrão
-// WAI-ARIA presente em praticamente todo site e inútil para quem age por ref.
-// Não é nome de site cravado — é o padrão de acessibilidade.
+// noiseNameRe recognizes the "page chrome": skip-navigation blocks, a WAI-ARIA
+// pattern present on practically every site and useless to whoever acts by ref.
+// It is not a hardcoded site name — it is the accessibility pattern.
 
 type snapBuilder struct {
-	nodes     map[string]*axNode
-	children  map[string][]string
-	refs      map[string]int
-	out       []string
-	consumed  map[string]bool
-	alvoCache map[string]bool
-	nextRef   int
-	max       int
-	refsOnly  bool
-	tudo      bool
-	gen       int
-	truncated bool
+	nodes       map[string]*axNode
+	children    map[string][]string
+	refs        map[string]int
+	out         []string
+	consumed    map[string]bool
+	targetCache map[string]bool
+	nextRef     int
+	max         int
+	refsOnly    bool
+	all         bool
+	gen         int
+	truncated   bool
 }
 
-// TakeSnapshot lê a tela da sessão (aba) informada.
+// TakeSnapshot reads the screen of the informed session (tab).
 
 func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts SnapshotOptions) (*Snapshot, error) {
 	var tree struct {
@@ -68,51 +68,51 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 		return nil, err
 	}
 	if len(tree.Nodes) == 0 {
-		return nil, fmt.Errorf("árvore de acessibilidade vazia")
+		return nil, fmt.Errorf("empty accessibility tree")
 	}
 
-	// Iframe é outra árvore: a do frame principal mostra o iframe como uma linha
-	// só. Sem juntar, a leitura não diz o que tem dentro.
+	// An iframe is another tree: the main frame's shows the iframe as a single
+	// line. Without joining them, the reading does not say what is inside.
 	nodes := tree.Nodes
-	if temIframe(nodes) {
-		nodes = juntarFrames(ctx, client, session, nodes)
+	if hasIframe(nodes) {
+		nodes = joinFrames(ctx, client, session, nodes)
 	}
 
-	snap := montarTexto(nodes, opts)
-	meta := lerMetaDaPagina(ctx, client, session)
+	snap := buildText(nodes, opts)
+	meta := readPageMeta(ctx, client, session)
 	snap.Title, snap.URL = meta.Title, meta.URL
 	snap.Page, snap.ScrollAreas, snap.ScrollAreasTotal = meta.Page, meta.ScrollAreas, meta.Total
 
-	// Alvos que a árvore não marca (div com handler de clique) entram como uma
-	// seção no fim: sem eles, o agente tem de adivinhar seletor para metade dos
-	// botões de um app real.
-	clicaveis, total := lerClicaveis(ctx, client, session)
-	if secao := secaoDeClicaveis(clicaveis, total); secao != "" {
-		snap.Text += "\n" + secao
-		snap.Count += strings.Count(secao, "\n") + 1
+	// Targets that the tree does not mark (a div with a click handler) enter as
+	// a section at the end: without them, the agent has to guess a selector for
+	// half the buttons of a real app.
+	clickables, total := readClickables(ctx, client, session)
+	if section := clickablesSection(clickables, total); section != "" {
+		snap.Text += "\n" + section
+		snap.Count += strings.Count(section, "\n") + 1
 	}
 	return snap, nil
 }
 
-// montarTexto é a parte pura da leitura: transforma a árvore de acessibilidade
-// crua em linhas e refs, sem tocar CDP. Fica separada de TakeSnapshot porque é
-// onde mora todo o corte de ruído — a lógica mais frágil do projeto — e é o que
-// dá para testar com fixture.
+// buildText is the pure part of the reading: it turns the raw accessibility tree
+// into lines and refs, without touching the CDP. It is kept separate from
+// TakeSnapshot because that is where all the noise cut lives — the most fragile
+// logic in the project — and it is what can be tested with a fixture.
 
-func montarTexto(nodes []axNode, opts SnapshotOptions) *Snapshot {
+func buildText(nodes []axNode, opts SnapshotOptions) *Snapshot {
 	if opts.MaxNodes <= 0 {
 		opts.MaxNodes = 1500
 	}
 	b := &snapBuilder{
-		nodes:     make(map[string]*axNode, len(nodes)),
-		children:  make(map[string][]string),
-		refs:      make(map[string]int),
-		consumed:  make(map[string]bool),
-		alvoCache: make(map[string]bool),
-		max:       opts.MaxNodes,
-		refsOnly:  opts.RefsOnly,
-		tudo:      opts.All,
-		gen:       opts.Gen,
+		nodes:       make(map[string]*axNode, len(nodes)),
+		children:    make(map[string][]string),
+		refs:        make(map[string]int),
+		consumed:    make(map[string]bool),
+		targetCache: make(map[string]bool),
+		max:         opts.MaxNodes,
+		refsOnly:    opts.RefsOnly,
+		all:         opts.All,
+		gen:         opts.Gen,
 	}
 	var root *axNode
 	for i := range nodes {
@@ -131,9 +131,9 @@ func montarTexto(nodes []axNode, opts SnapshotOptions) *Snapshot {
 		root = &nodes[0]
 	}
 
-	// A raiz não é uma linha: os filhos dela começam na profundidade 0, e passam
-	// pelo mesmo corte de irmãos idênticos do resto da árvore.
-	b.walkFilhos(root.NodeID, "", 0, "")
+	// The root is not a line: its children start at depth 0, and go through the
+	// same identical-sibling cut as the rest of the tree.
+	b.walkChildren(root.NodeID, "", 0, "")
 
 	return &Snapshot{
 		Text:      strings.Join(b.out, "\n"),

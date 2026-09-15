@@ -8,20 +8,20 @@ import (
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
-// handler é a assinatura única dos comandos: recebe a sessão (nil nos que não
-// precisam de browser) e devolve a resposta.
+// handler is the single signature of the commands: it receives the session (nil
+// for those that do not need a browser) and returns the response.
 type handler func(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response
 
-// route diz como um comando é atendido e se exige browser vivo.
+// route says how a command is served and whether it requires a live browser.
 type route struct {
 	needsSession bool
 	handle       handler
 }
 
-// routes é o registro comando → handler. É o único lugar que liga o nome do
-// comando ao que ele faz; antes, comando novo exigia mexer no switch e no
-// handler. A tabela de command.Specs continua sendo a fonte da verdade do que
-// existe (CLI, ajuda e MCP derivam dela).
+// routes is the command → handler registry. It is the only place that ties the
+// command name to what it does; before, a new command meant touching the switch
+// and the handler. The command.Specs table remains the source of truth of what
+// exists (CLI, help and MCP derive from it).
 func (a *Agent) routes() map[string]route {
 	return map[string]route{
 		"ping":   {handle: a.ping},
@@ -58,9 +58,10 @@ func (a *Agent) routes() map[string]route {
 	}
 }
 
-// dispatch executa o pedido. ping/status/script não sobem browser; o resto
-// exige a sessão garantida. Comando desconhecido também garante a sessão antes
-// de recusar — é o que o switch fazia, e o erro é o mesmo.
+// dispatch runs the request. ping/status/script do not bring up a browser; the
+// rest require the session to be ensured. An unknown command also ensures the
+// session before refusing — that is what the switch did, and the error is the
+// same.
 func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Response {
 	r, found := a.routes()[req.Cmd]
 	if found && !r.needsSession {
@@ -71,7 +72,7 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 		return protocol.Fail(err)
 	}
 	if !found {
-		return protocol.Fail(fmt.Errorf("comando %q não é tratado pelo daemon", req.Cmd))
+		return protocol.Fail(fmt.Errorf("command %q is not handled by the daemon", req.Cmd))
 	}
 	return r.handle(ctx, sess, req)
 }

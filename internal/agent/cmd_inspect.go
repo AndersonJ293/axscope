@@ -16,7 +16,7 @@ func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Reque
 	booted := a.sess != nil
 	a.mu.Unlock()
 	if !booted {
-		return ok(fmt.Sprintf("sessão %q: browser ainda não iniciado", a.Session))
+		return ok(fmt.Sprintf("session %q: browser not started yet", a.Session))
 	}
 	sess := a.mustSess()
 	tabs := sess.Tabs()
@@ -24,11 +24,11 @@ func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Reque
 	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	title, _ := dom.EvalString(ctx, a.client(), sid, "document.title")
 	var b strings.Builder
-	fmt.Fprintf(&b, "sessão: %s\n", a.Session)
+	fmt.Fprintf(&b, "session: %s\n", a.Session)
 	fmt.Fprintf(&b, "url: %s\n", url)
-	fmt.Fprintf(&b, "título: %s\n", title)
-	fmt.Fprintf(&b, "abas: %d\n", len(tabs))
-	fmt.Fprintf(&b, "refs ativas: %d\n", len(a.currentRefs()))
+	fmt.Fprintf(&b, "title: %s\n", title)
+	fmt.Fprintf(&b, "tabs: %d\n", len(tabs))
+	fmt.Fprintf(&b, "active refs: %d\n", len(a.currentRefs()))
 	return ok(strings.TrimRight(b.String(), "\n"))
 }
 
@@ -40,7 +40,7 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	gen := a.nextGen()
 	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, browser.SnapshotOptions{
 		RefsOnly: req.Bool("refs", false),
-		All:      req.Bool("tudo", false),
+		All:      req.Bool("all", false),
 		Gen:      gen,
 	})
 	if err != nil {
@@ -50,46 +50,47 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	sess.UpdateHUD(ctx, "snap")
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "título: %s\n", snap.Title)
+	fmt.Fprintf(&b, "title: %s\n", snap.Title)
 	fmt.Fprintf(&b, "url: %s\n", snap.URL)
-	fmt.Fprintf(&b, "-- %d linhas, %d refs%s\n", snap.Count, len(snap.Refs), linhaDeRolagem(snap))
+	fmt.Fprintf(&b, "-- %d lines, %d refs%s\n", snap.Count, len(snap.Refs), scrollLine(snap))
 	b.WriteString(snap.Text)
 	if snap.Truncated {
-		b.WriteString("\n(... truncado; use `--refs` para reduzir)")
+		b.WriteString("\n(... truncated; use `--refs` to reduce)")
 	}
 	return ok(b.String())
 }
 
-// linhaDeRolagem resume, para o cabeçalho da leitura, onde estão as áreas que
-// rolam — quanto já rolou e quanto ainda cabe.
+// scrollLine summarizes, for the read header, where the areas that scroll are —
+// how far they have scrolled and how much still fits.
 //
-// Fica vazia quando não há o que dizer: página que não rola e nenhuma caixa com
-// rolagem. Existe porque a árvore de acessibilidade não carrega rolagem: sem
-// isso o agente vê as linhas e não sabe onde está nelas.
-func linhaDeRolagem(snap *browser.Snapshot) string {
-	var partes []string
+// It is empty when there is nothing to say: a page that does not scroll and no
+// box with scroll. It exists because the accessibility tree does not carry
+// scroll state: without this the agent sees the lines and does not know where it
+// is in them.
+func scrollLine(snap *browser.Snapshot) string {
+	var parts []string
 	if p := snap.Page; p != nil && p.Max > 1 {
-		partes = append(partes, fmt.Sprintf("%s %d/%d", p.Name, p.Pos, p.Max))
+		parts = append(parts, fmt.Sprintf("%s %d/%d", p.Name, p.Pos, p.Max))
 	}
 	for _, r := range snap.ScrollAreas {
-		if len(partes) >= maxAreasRolagem {
+		if len(parts) >= maxScrollAreas {
 			break
 		}
-		partes = append(partes, fmt.Sprintf("%s %d/%d", r.Name, r.Pos, r.Max))
+		parts = append(parts, fmt.Sprintf("%s %d/%d", r.Name, r.Pos, r.Max))
 	}
-	if len(partes) == 0 {
+	if len(parts) == 0 {
 		return ""
 	}
-	linha := " · rolagem: " + strings.Join(partes, " · ")
-	if resto := snap.ScrollAreasTotal - len(partes); resto > 0 {
-		linha += fmt.Sprintf(" (+%d)", resto)
+	line := " · scroll: " + strings.Join(parts, " · ")
+	if rest := snap.ScrollAreasTotal - len(parts); rest > 0 {
+		line += fmt.Sprintf(" (+%d)", rest)
 	}
-	return linha
+	return line
 }
 
-// maxAreasRolagem é quantas áreas entram no cabeçalho antes do resumo "+N": o
-// cabeçalho é aviso, não inventário.
-const maxAreasRolagem = 5
+// maxScrollAreas is how many areas enter the header before the "+N" summary: the
+// header is a warning, not an inventory.
+const maxScrollAreas = 5
 
 func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	sid, err := a.activeSID(sess)
@@ -110,7 +111,7 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 	text = squeeze(text)
 	if len(text) > 8000 {
-		text = text[:8000] + "\n(... truncado)"
+		text = text[:8000] + "\n(... truncated)"
 	}
 	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	return ok(fmt.Sprintf("url: %s\n\n%s", url, text))
@@ -119,7 +120,7 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	js := req.String("js")
 	if js == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope eval <js>"))
+		return protocol.Fail(fmt.Errorf("usage: axscope eval <js>"))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
@@ -160,7 +161,7 @@ func (a *Agent) console(_ context.Context, sess *browser.Session, req protocol.R
 		fmt.Fprintf(&b, "[%s] %s%s\n", e.Level, e.Text, loc)
 	}
 	if count == 0 {
-		return ok("(sem erros/avisos de console)")
+		return ok("(no console errors/warnings)")
 	}
 	return ok(strings.TrimRight(b.String(), "\n"))
 }
@@ -173,7 +174,7 @@ func (a *Agent) net(_ context.Context, sess *browser.Session, req protocol.Reque
 	filter := req.String("filter")
 	entries := sess.Observe.Network(sid, filter, 60)
 	if len(entries) == 0 {
-		return ok("(sem requisições)")
+		return ok("(no requests)")
 	}
 	var b strings.Builder
 	for _, e := range entries {

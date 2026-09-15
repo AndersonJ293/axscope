@@ -1,4 +1,4 @@
-// Popup: mostra as sessões conectadas (uma por agente) e permite reconectar.
+// Popup: shows the connected sessions (one per agent) and lets you reconnect.
 
 function render(state) {
   const versionEl = document.getElementById('version');
@@ -14,10 +14,10 @@ function render(state) {
   pill.classList.remove('on', 'off');
   if (sessions.length > 0) {
     pill.classList.add('on');
-    label.textContent = sessions.length === 1 ? 'conectado' : `${sessions.length} sessões`;
+    label.textContent = sessions.length === 1 ? 'connected' : `${sessions.length} sessions`;
   } else {
     pill.classList.add('off');
-    label.textContent = 'desconectado';
+    label.textContent = 'disconnected';
   }
 
   list.replaceChildren(
@@ -36,8 +36,8 @@ function render(state) {
   );
 
   detail.textContent = sessions.length
-    ? 'Arraste uma aba para dentro do grupo para dar acesso a esse agente.'
-    : 'Nenhum daemon ativo. Rode um comando axscope.';
+    ? 'Drag a tab into the group to give this agent access.'
+    : 'No active daemon. Run an axscope command.';
 }
 
 function refresh() {

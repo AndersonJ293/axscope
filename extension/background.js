@@ -1,11 +1,11 @@
-// Ponte entre os daemons (axscope) e o navegador.
+// Bridge between the axscope daemons and the browser.
 //
-// Cada sessão do axscope ocupa uma porta da faixa 8787..8802 e recebe o seu
-// próprio grupo de abas. A extensão mantém uma conexão por porta e traduz só o
-// domínio `Target` para a API de abas; todo o resto vai para o chrome.debugger.
+// Each axscope session takes a port in the 8787..8802 range and gets its own
+// tab group. The extension keeps one connection per port and translates only
+// the `Target` domain to the tabs API; everything else goes to chrome.debugger.
 //
-// Consequência: vários agentes rodam ao mesmo tempo, cada um enxergando apenas
-// as abas do seu grupo — as abas pessoais do usuário ficam intocadas.
+// Consequence: several agents run at once, each seeing only the tabs in its own
+// group — the user's personal tabs stay untouched.
 
 const BASE_PORT = 8787;
 const PORT_SPAN = 16;
@@ -15,23 +15,23 @@ const RETRY_MS = 2500;
 
 const GROUP_COLORS = ['blue', 'purple', 'green', 'orange', 'red', 'cyan', 'pink', 'yellow'];
 
-/** port -> estado da conexão daquela sessão. */
+/** port -> state of that session's connection. */
 const conns = new Map();
-/** tabId -> estado da conexão dona daquela aba. */
+/** tabId -> state of the connection that owns that tab. */
 const ownerByTab = new Map();
 
 let heartbeatTimer = null;
 
-// ------------------------------------------------------------------ contexto
+// ------------------------------------------------------------------- context
 
 const AGENT_DEFAULT = 'axscope';
 
-// groupTitle é o que aparece na barra de abas: "<Agente> <N>".
+// groupTitle is what shows in the tab strip: "<Agent> <N>".
 function groupTitle(st) {
   return st.groupTitle || `${st.agent || AGENT_DEFAULT} 1`;
 }
 
-/** Próximo número livre para um agente ("Opencode 1", "Opencode 2", …). */
+/** Next free number for an agent ("Opencode 1", "Opencode 2", …). */
 async function nextTitleFor(agent) {
   const name = agent || AGENT_DEFAULT;
   let max = 0;
@@ -43,7 +43,7 @@ async function nextTitleFor(agent) {
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
   } catch {
-    /* sem tabGroups: usa 1 */
+    /* no tabGroups: use 1 */
   }
   return `${name} ${max + 1}`;
 }
@@ -67,13 +67,13 @@ function refreshStatus() {
   const sessions = [];
   for (const st of conns.values()) {
     if (st.ws && st.ws.readyState === WebSocket.OPEN) {
-      sessions.push({ session: st.session || '(aguardando)', port: st.port });
+      sessions.push({ session: st.session || '(waiting)', port: st.port });
     }
   }
   chrome.storage.local.set({ connected: sessions.length > 0, sessions, at: Date.now() });
 }
 
-// ---------------------------------------------------------------- transporte
+// ----------------------------------------------------------------- transport
 
 function connectAll() {
   for (let i = 0; i < PORT_SPAN; i++) {
@@ -96,7 +96,7 @@ function connectPort(port) {
   try {
     ws = new WebSocket(`ws://127.0.0.1:${port}/cdp`);
   } catch {
-    return; // porta sem daemon: tenta de novo no próximo ciclo
+    return; // port without a daemon: retry on the next cycle
   }
   st.ws = ws;
 
@@ -105,12 +105,12 @@ function connectPort(port) {
   };
   ws.onclose = () => {
     st.ws = null;
-    // Daemon morreu: solta o depurador das abas desta sessão. Sem isso a aba
-    // fica presa e o próximo daemon não consegue anexar.
+    // The daemon died: release the debugger from this session's tabs. Without
+    // this the tab stays stuck and the next daemon cannot attach.
     for (const tabId of st.tabBySession.values()) {
       chrome.debugger.detach({ tabId }).catch(() => {});
     }
-    // A sessão caiu: solta as abas dela para o mapa de donos.
+    // The session went down: release its tabs from the owner map.
     for (const [tabId, owner] of ownerByTab) {
       if (owner === st) ownerByTab.delete(tabId);
     }
@@ -118,7 +118,7 @@ function connectPort(port) {
     refreshStatus();
   };
   ws.onerror = () => {
-    /* onclose cuida da reconexão */
+    /* onclose handles reconnection */
   };
   ws.onmessage = (event) => {
     let msg;
@@ -156,7 +156,7 @@ function startHeartbeat() {
   }, HEARTBEAT_MS);
 }
 
-// ------------------------------------------------------------------- roteador
+// -------------------------------------------------------------------- router
 
 async function handleMessage(st, msg) {
   const { id, method, params, sessionId } = msg;
@@ -166,14 +166,14 @@ async function handleMessage(st, msg) {
     const agent = (params && params.agent) || AGENT_DEFAULT;
     if (st.agent !== agent) {
       st.agent = agent;
-      // Já tem grupo? Renomeia mantendo o número ("Opencode 2" continua 2).
+      // Already has a group? Rename keeping the number ("Opencode 2" stays 2).
       if (st.groupId !== null && st.groupId !== undefined) {
         const m = / (\d+)$/.exec(st.groupTitle || '');
         st.groupTitle = `${agent}${m ? ' ' + m[1] : ''}`;
         try {
           await chrome.tabGroups.update(st.groupId, { title: st.groupTitle });
         } catch {
-          /* grupo sumiu */
+          /* group is gone */
         }
       } else {
         st.groupTitle = null;
@@ -190,19 +190,19 @@ async function handleMessage(st, msg) {
     return;
   }
 
-  if (!sessionId) throw new Error(`comando ${method} sem sessão (aba)`);
+  if (!sessionId) throw new Error(`command ${method} without a session (tab)`);
   const tabId = st.tabBySession.get(sessionId);
-  if (tabId === undefined) throw new Error(`sessão ${sessionId} não está mais ativa`);
+  if (tabId === undefined) throw new Error(`session ${sessionId} is no longer active`);
   respond(st, id, await chrome.debugger.sendCommand({ tabId }, method, params || {}));
 }
 
-// ---------------------------------------------------------------------- grupo
+// ---------------------------------------------------------------------- group
 
 async function adoptExistingGroup(st) {
   if (!st.session) return;
   const key = `group:${st.session}`;
 
-  // 1) Tenta o grupo que já era desta sessão (sobrevive a renomear o grupo).
+  // 1) Try the group that already belonged to this session (survives a rename).
   try {
     const stored = (await chrome.storage.local.get(key))[key];
     if (stored !== undefined && stored !== null) {
@@ -218,7 +218,7 @@ async function adoptExistingGroup(st) {
     await chrome.storage.local.remove(key);
   }
 
-  // 2) Senão, adota um grupo cujo título case com o nome do agente.
+  // 2) Otherwise adopt a group whose title matches the agent name.
   try {
     const groups = await chrome.tabGroups.query({});
     const name = st.agent || AGENT_DEFAULT;
@@ -233,11 +233,11 @@ async function adoptExistingGroup(st) {
       }
     }
   } catch {
-    /* tabGroups indisponível: segue sem grupo */
+    /* tabGroups unavailable: carry on without a group */
   }
 }
 
-/** Reassocia as abas do grupo que já existia na sessão recém-conectada. */
+/** Re-associates the tabs of a group that already existed in the new session. */
 async function syncGroupTabs(st) {
   if (st.groupId === null || st.groupId === undefined) return;
   const tabs = await chrome.tabs.query({});
@@ -264,18 +264,18 @@ async function addTabToGroup(st, tabId) {
     }
     ownerByTab.set(tabId, st);
   } catch {
-    /* sem permissão de grupo: a aba continua utilizável */
+    /* no group permission: the tab stays usable */
   }
 }
 
-/** Só as abas deste grupo — é o isolamento entre sessões. */
+/** Only the tabs of this group — that is the isolation between sessions. */
 async function listGroupTabs(st) {
   if (st.groupId === null || st.groupId === undefined) return [];
   const tabs = await chrome.tabs.query({});
   return tabs.filter((t) => t.groupId === st.groupId);
 }
 
-// -------------------------------------------------------------------- Target
+// --------------------------------------------------------------------- Target
 
 async function handleTarget(st, method, params) {
   switch (method) {
@@ -302,7 +302,8 @@ async function handleTarget(st, method, params) {
     }
 
     case 'Target.activateTarget': {
-      // Ativa a aba no grupo sem levantar a janela: foco só se o usuário pedir.
+      // Activates the tab in the group without raising the window: focus only
+      // if the user asks for it.
       await chrome.tabs.update(Number(params.targetId), { active: true });
       return {};
     }
@@ -318,7 +319,7 @@ async function handleTarget(st, method, params) {
         try {
           await chrome.debugger.detach({ tabId });
         } catch {
-          /* já destacado */
+          /* already detached */
         }
       }
       return {};
@@ -341,12 +342,13 @@ function toTargetInfo(st, tab) {
 
 async function attach(st, targetId) {
   const tabId = Number(targetId);
-  if (Number.isNaN(tabId)) throw new Error(`targetId inválido: ${targetId}`);
+  if (Number.isNaN(tabId)) throw new Error(`invalid targetId: ${targetId}`);
 
   const sessionId = `t${tabId}`;
   if (st.tabBySession.has(sessionId)) return { sessionId };
 
-  // Anexo preso (daemon anterior morreu sem soltar): desanexa e tenta de novo.
+  // Stuck attachment (a previous daemon died without releasing): detach and
+  // try again.
   try {
     await chrome.debugger.attach({ tabId }, PROTOCOL);
   } catch (err) {
@@ -354,7 +356,7 @@ async function attach(st, targetId) {
     try {
       await chrome.debugger.detach({ tabId });
     } catch {
-      /* não era nosso (DevTools aberto, por exemplo) */
+      /* it was not ours (DevTools open, for example) */
     }
     await chrome.debugger.attach({ tabId }, PROTOCOL);
   }
@@ -363,7 +365,7 @@ async function attach(st, targetId) {
   return { sessionId };
 }
 
-// -------------------------------------------------------------------- eventos
+// --------------------------------------------------------------------- events
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
   const st = ownerByTab.get(source.tabId);
@@ -381,7 +383,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  // Aba nova só interessa à sessão cujo grupo ela entrar (definido adiante).
+  // A new tab only concerns the session whose group it joins (set later).
   const st = ownerByTab.get(tab.id);
   if (!st) return;
   sendOn(st, { method: 'Target.targetCreated', params: { targetInfo: toTargetInfo(st, tab) } });
@@ -398,23 +400,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const st = ownerByTab.get(tabId);
 
-  // Mudança de grupo é o gesto de conceder/revogar acesso: arrastar uma aba
-  // para dentro do grupo dá acesso ao agente; para fora, tira.
+  // A group change is the grant/revoke gesture: dragging a tab into the group
+  // gives the agent access; dragging it out takes it away.
   if (changeInfo.groupId !== undefined) {
     if (st && st.groupId !== null && st.groupId !== undefined && changeInfo.groupId !== st.groupId) {
-      // Saiu do grupo: perde o acesso e soltamos o depurador.
+      // Left the group: loses access and we release the debugger.
       st.tabBySession.delete(`t${tabId}`);
       ownerByTab.delete(tabId);
       try {
         await chrome.debugger.detach({ tabId });
       } catch {
-        /* não estava anexada */
+        /* was not attached */
       }
       sendOn(st, { method: 'Target.targetDestroyed', params: { targetId: String(tabId) } });
       return;
     }
     if (!st) {
-      // Entrou no grupo de alguma sessão conectada: passa a enxergá-la.
+      // Entered the group of some connected session: it now sees the tab.
       for (const s of conns.values()) {
         if (s.groupId !== null && s.groupId !== undefined && s.groupId === changeInfo.groupId) {
           ownerByTab.set(tabId, s);
@@ -437,7 +439,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const sessions = [];
     for (const st of conns.values()) {
       if (st.ws && st.ws.readyState === WebSocket.OPEN) {
-        sessions.push({ session: st.session || '(aguardando)', port: st.port });
+        sessions.push({ session: st.session || '(waiting)', port: st.port });
       }
     }
     sendResponse({ connected: sessions.length > 0, sessions });
@@ -449,7 +451,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         try {
           st.ws.close();
         } catch {
-          /* ignora */
+          /* ignore */
         }
       }
     }
@@ -471,7 +473,7 @@ chrome.runtime.onInstalled.addListener(() => {
   startHeartbeat();
 });
 
-// O service worker acorda e reconecta sozinho.
+// The service worker wakes up and reconnects on its own.
 connectAll();
 startHeartbeat();
 setInterval(connectAll, RETRY_MS);

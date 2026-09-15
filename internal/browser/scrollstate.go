@@ -1,14 +1,15 @@
-// Estado de rolagem, lido do DOM.
+// Scroll state, read from the DOM.
 //
-// A árvore de acessibilidade não carrega rolagem: o CDP não serializa
-// scrollTop/scrollHeight nela. Sem isso a leitura mostra as linhas e nunca onde
-// se está nelas — "rolar até o item 777 de 1000" vira chute. A informação vem
-// numa passada no DOM, junto com título e URL, para não custar ida e volta a
-// mais: antes eram duas avaliações, agora é uma.
+// The accessibility tree does not carry scrolling: the CDP does not serialize
+// scrollTop/scrollHeight in it. Without that the reading shows the lines and
+// never where one is in them — "scroll to item 777 of 1000" becomes a guess. The
+// information comes in a pass over the DOM, together with title and URL, so it
+// does not cost an extra round trip: before it was two evaluations, now it is
+// one.
 //
-// Só o eixo vertical entra. O horizontal existe (barra de código, painel largo)
-// e hoje fica de fora: reportar os dois inventaria um formato para um caso que
-// ainda não mordeu. Quando morder, o lugar é aqui.
+// Only the vertical axis enters. The horizontal one exists (code bar, wide panel)
+// and today stays out: reporting both would invent a format for a case that has
+// not bitten yet. When it bites, the place is here.
 package browser
 
 import (
@@ -19,29 +20,30 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// ScrollArea é onde uma área rolável está: quem rola, quanto já rolou e quanto
-// ainda cabe.
+// ScrollArea is where a scrollable area is: who scrolls, how much has already
+// scrolled and how much still fits.
 type ScrollArea struct {
-	Name string `json:"alvo"`
+	Name string `json:"target"`
 	Pos  int    `json:"pos"`
 	Max  int    `json:"max"`
 }
 
-// metaDaPagina é o que a leitura precisa saber da página além da árvore.
-type metaDaPagina struct {
+// pageMeta is what the reading needs to know about the page beyond the tree.
+type pageMeta struct {
 	Title       string       `json:"title"`
 	URL         string       `json:"url"`
-	Page        *ScrollArea  `json:"pagina"`
-	ScrollAreas []ScrollArea `json:"rolagens"`
+	Page        *ScrollArea  `json:"page"`
+	ScrollAreas []ScrollArea `json:"scrollAreas"`
 	Total       int          `json:"total"`
 }
 
-// lerMetaDaPagina busca título, URL e o estado de rolagem numa avaliação só.
-// Falha em silêncio: leitura sem isso ainda é leitura útil — o que não pode é a
-// tela não ser lida porque a página não deixou medir a rolagem.
-func lerMetaDaPagina(ctx context.Context, client *cdp.Client, session string) metaDaPagina {
-	var meta metaDaPagina
-	raw, err := dom.Eval(ctx, client, session, metaDaPaginaJS)
+// readPageMeta fetches title, URL and the scroll state in a single evaluation.
+// It fails silently: a reading without that is still a useful reading — what
+// cannot happen is the screen not being read because the page did not let the
+// scroll be measured.
+func readPageMeta(ctx context.Context, client *cdp.Client, session string) pageMeta {
+	var meta pageMeta
+	raw, err := dom.Eval(ctx, client, session, pageMetaJS)
 	if err != nil {
 		return meta
 	}
@@ -49,32 +51,33 @@ func lerMetaDaPagina(ctx context.Context, client *cdp.Client, session string) me
 	return meta
 }
 
-// metaDaPaginaJS coleta o estado da página. As áreas roláveis saem nomeadas com
-// um seletor curto, para o agente poder mirá-las por `css=` sem tradução.
-const metaDaPaginaJS = `(() => {
-	const curto = (el) => {
+// pageMetaJS collects the page state. The scrollable areas come out named with a
+// short selector, so the agent can aim at them by `css=` without translation.
+const pageMetaJS = `(() => {
+	const short = (el) => {
 		if (el.id) return '#' + el.id;
 		const tag = (el.tagName || '?').toLowerCase();
 		const cls = [...(el.classList || [])].slice(0, 2);
 		return cls.length ? tag + '.' + cls.join('.') : tag;
 	};
 	const doc = document.scrollingElement || document.documentElement;
-	const sobraPagina = Math.round(doc.scrollHeight - doc.clientHeight);
-	const pagina = { alvo: 'página', pos: Math.round(doc.scrollTop), max: sobraPagina };
-	const rolagens = [];
-	let total = sobraPagina > 1 ? 1 : 0;
+	const pageRemainder = Math.round(doc.scrollHeight - doc.clientHeight);
+	const page = { target: 'page', pos: Math.round(doc.scrollTop), max: pageRemainder };
+	const scrollAreas = [];
+	let total = pageRemainder > 1 ? 1 : 0;
 	for (const el of document.querySelectorAll('*')) {
 		if (el === doc || el === document.documentElement || el === document.body) continue;
-		// O teste barato vem primeiro: quase todo elemento não rola, e o
-		// getComputedStyle de todos custa caro. Só quem sobra paga.
-		const sobra = el.scrollHeight - el.clientHeight;
-		if (sobra <= 1) continue;
+		// The cheap test comes first: almost every element does not scroll, and
+		// getComputedStyle on all of them is expensive. Only the survivors pay.
+		const remainder = el.scrollHeight - el.clientHeight;
+		if (remainder <= 1) continue;
 		if (!/(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY)) continue;
 		total++;
-		rolagens.push({ alvo: curto(el), pos: Math.round(el.scrollTop), max: sobra });
+		scrollAreas.push({ target: short(el), pos: Math.round(el.scrollTop), max: remainder });
 	}
-	// Maior primeiro: a área que rola mais é a que costuma importar para
-	// "rolar até o item 777 de 1000", e o cabeçalho é curto por definição.
-	rolagens.sort((a, b) => b.max - a.max);
-	return { title: document.title, url: location.href, pagina: pagina, rolagens: rolagens.slice(0, 8), total: total };
+	// Largest first: the area that scrolls the most is the one that usually
+	// matters for "scroll to item 777 of 1000", and the header is short by
+	// definition.
+	scrollAreas.sort((a, b) => b.max - a.max);
+	return { title: document.title, url: location.href, page: page, scrollAreas: scrollAreas.slice(0, 8), total: total };
 })()`

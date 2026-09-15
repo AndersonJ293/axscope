@@ -1,4 +1,4 @@
-// Cliente do daemon: garante que ele está de pé e envia um pedido.
+// Daemon client: makes sure the daemon is up and sends a request.
 package daemonclient
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
-// EnsureDaemon sobe o daemon (destacado) se ainda não houver um atendendo.
+// EnsureDaemon starts the daemon (detached) if there is not one already serving.
 func EnsureDaemon() (string, error) {
 	socketPath := paths.SocketPath(paths.Session())
 	if socketAlive(socketPath) {
@@ -42,9 +42,9 @@ func EnsureDaemon() (string, error) {
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("subindo daemon: %w", err)
+		return "", fmt.Errorf("starting daemon: %w", err)
 	}
-	// Não esperamos o processo; ele é órfão por design (Setsid).
+	// We do not wait for the process; it is orphaned by design (Setsid).
 	_ = cmd.Process.Release()
 
 	deadline := time.Now().Add(20 * time.Second)
@@ -54,7 +54,7 @@ func EnsureDaemon() (string, error) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return "", fmt.Errorf("daemon não subiu em 20s (veja %s)", paths.DaemonLogPath(paths.Session()))
+	return "", fmt.Errorf("daemon did not come up within 20s (see %s)", paths.DaemonLogPath(paths.Session()))
 }
 
 func socketAlive(socketPath string) bool {
@@ -69,7 +69,7 @@ func socketAlive(socketPath string) bool {
 	return true
 }
 
-// Send garante o daemon e envia um pedido, devolvendo a resposta.
+// Send ensures the daemon and sends a request, returning the response.
 func Send(req protocol.Request) (protocol.Response, error) {
 	socketPath, err := EnsureDaemon()
 	if err != nil {
@@ -81,7 +81,7 @@ func Send(req protocol.Request) (protocol.Response, error) {
 	return SendTo(socketPath, req)
 }
 
-// AgentName é quem está dirigindo: AXSCOPE_AGENT, ou um padrão neutro.
+// AgentName is whoever is driving: AXSCOPE_AGENT, or a neutral default.
 func AgentName() string {
 	if v := os.Getenv("AXSCOPE_AGENT"); v != "" {
 		return v
@@ -89,8 +89,9 @@ func AgentName() string {
 	return "axscope"
 }
 
-// SendTo fala direto com um socket, sem subir daemon nenhum. É o que o
-// `stop --all` usa: garantir o daemon ali seria ressuscitar o que se quer fechar.
+// SendTo talks directly to a socket, without starting any daemon. This is what
+// `stop --all` uses: ensuring the daemon there would resurrect what we want to
+// shut down.
 func SendTo(socketPath string, req protocol.Request) (protocol.Response, error) {
 	conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
 	if err != nil {
@@ -109,7 +110,7 @@ func SendTo(socketPath string, req protocol.Request) (protocol.Response, error) 
 	dec := json.NewDecoder(conn)
 	var resp protocol.Response
 	if err := dec.Decode(&resp); err != nil {
-		return protocol.Response{}, fmt.Errorf("lendo resposta do daemon: %w", err)
+		return protocol.Response{}, fmt.Errorf("reading daemon response: %w", err)
 	}
 	return resp, nil
 }

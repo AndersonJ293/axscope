@@ -7,74 +7,76 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// Regressão (missão 13 do laboratório): `pos=x,y` resolvia o elemento sob o
-// ponto e depois agia no **centro dele**. Sobre um iframe isso é o centro do
-// iframe — a dezenas de pixels do botão pedido — e o clique acertava o vazio.
-func TestAlvoPorPosicaoAgeNoPontoPedido(t *testing.T) {
-	alvo := &Target{
+// Regression (mission 13 of the lab): `pos=x,y` resolved the element under the
+// point and then acted on its **center**. Over an iframe that is the iframe's
+// center — dozens of pixels from the requested button — and the click hit
+// nothing.
+func TestTargetByPositionActsAtRequestedPoint(t *testing.T) {
+	target := &Target{
 		Rect:  dom.Rect{X: 279, Y: 428, Width: 628, Height: 170},
 		Point: &Point{X: 385, Y: 527},
 	}
-	x, y := alvo.ondeAgir()
+	x, y := target.actionPoint()
 	if x != 385 || y != 527 {
-		t.Errorf("agiu em %v,%v — devia agir no ponto pedido, não no centro do elemento (%v,%v)",
-			x, y, alvo.Rect.X+alvo.Rect.Width/2, alvo.Rect.Y+alvo.Rect.Height/2)
+		t.Errorf("acted at %v,%v — it should act at the requested point, not at the element's center (%v,%v)",
+			x, y, target.Rect.X+target.Rect.Width/2, target.Rect.Y+target.Rect.Height/2)
 	}
 
-	// Sem posição, o centro do elemento continua valendo.
-	so := &Target{Rect: dom.Rect{X: 0, Y: 0, Width: 100, Height: 50}}
-	if x, y := so.ondeAgir(); x != 50 || y != 25 {
-		t.Errorf("sem pos= o centro virou %v,%v", x, y)
+	// Without a position, the element's center still holds.
+	only := &Target{Rect: dom.Rect{X: 0, Y: 0, Width: 100, Height: 50}}
+	if x, y := only.actionPoint(); x != 50 || y != 25 {
+		t.Errorf("without pos= the center became %v,%v", x, y)
 	}
 }
 
-// Regressão (missão 12 do laboratório): a árvore de acessibilidade **achata**
-// shadow DOM, então a leitura mostra o botão que está dentro de um shadow root
-// — com nome e ref, e o ref até alcança. A mira por DOM andava só no documento
-// claro: a leitura mostrava e o `text=` não encontrava.
-func TestExpressoesDeAlvoAtravessamShadowRoot(t *testing.T) {
-	if expr := expressaoTexto("Botão no Shadow DOM"); !strings.Contains(expr, "shadowRoot") {
-		t.Error("expressaoTexto não atravessa shadow root — a leitura mostra o que está dentro e a mira não alcança")
+// Regression (mission 12 of the lab): the accessibility tree **flattens** shadow
+// DOM, so the reading shows the button that is inside a shadow root — with name
+// and ref, and the ref even reaches it. Aiming by DOM walked only in the light
+// document: the reading showed it and the `text=` did not find it.
+func TestTargetExpressionsCrossShadowRoot(t *testing.T) {
+	if expr := textExpression("Button in Shadow DOM"); !strings.Contains(expr, "shadowRoot") {
+		t.Error("textExpression does not cross shadow root — the reading shows what is inside and the aim does not reach it")
 	}
 
-	// No css= a ordem importa: o documento claro primeiro, porque é a semântica
-	// do seletor; a sombra é saída, não preferência. Assim uma página que sempre
-	// funcionou não muda de alvo.
-	expr := expressaoCSS("#shadowButton")
+	// In css= the order matters: the light document first, because that is the
+	// selector's semantics; the shadow is a way out, not a preference. This way
+	// a page that always worked does not change its target.
+	expr := cssExpression("#shadowButton")
 	if !strings.Contains(expr, "document.querySelector") {
-		t.Error("expressaoCSS não tenta o documento claro")
+		t.Error("cssExpression does not try the light document")
 	}
-	if !strings.Contains(expr, "|| sobASombra(") {
-		t.Error("expressaoCSS não cai na sombra quando o claro não acha")
+	if !strings.Contains(expr, "|| underShadow(") {
+		t.Error("cssExpression does not fall back to the shadow when the light one finds nothing")
 	}
 }
 
-// Regressão (laboratório v2): o alvo de texto sem área visível rendia só "sem
-// área visível" — e quem lê ficava sem saber que a causa era o menu estar
-// fechado, nem quantos candidatos existiam. Seis "Ocultar publicação" casavam e
-// nenhum estava à vista.
-func TestMensagemTextoEscondido(t *testing.T) {
-	got := mensagemTextoEscondido("Ocultar publicação", 6)
-	for _, querido := range []string{"6", `"Ocultar publicação"`, "escondidos", "abra o que os revela"} {
-		if !strings.Contains(got, querido) {
-			t.Errorf("mensagem %q não diz %q", got, querido)
+// Regression (lab v2): a text target with no visible area yielded only "no
+// visible area" — and whoever reads was left not knowing that the cause was the
+// menu being closed, nor how many candidates existed. Six "Hide post" matched
+// and none was in view.
+func TestHiddenTextMessage(t *testing.T) {
+	got := hiddenTextMessage("Hide post", 6)
+	for _, wanted := range []string{"6", `"Hide post"`, "hidden", "open what reveals them"} {
+		if !strings.Contains(got, wanted) {
+			t.Errorf("message %q does not say %q", got, wanted)
 		}
 	}
 
-	// A preferência por visível precisa estar na busca, e depois do nome exato.
-	expr := expressaoTexto("Ocultar publicação")
-	if !strings.Contains(expr, "oculto(el)") {
-		t.Error("expressaoTexto não prefere candidato à vista")
+	// The preference for visible must be in the search, and after the exact
+	// name.
+	expr := textExpression("Hide post")
+	if !strings.Contains(expr, "hidden(el)") {
+		t.Error("textExpression does not prefer a candidate in view")
 	}
-	if strings.Index(expr, "exato ? 0 : 1, oculto(el)") < 0 {
-		t.Error("a ordem mudou: exato tem de vir antes de à vista")
+	if strings.Index(expr, "exact ? 0 : 1, hidden(el)") < 0 {
+		t.Error("the order changed: exact must come before in view")
 	}
 
-	// textoPedido só reconhece a forma text=.
-	if textoPedido("css=#x") != "" || textoPedido("e12") != "" {
-		t.Error("textoPedido só vale para text=")
+	// requestedText only recognizes the text= form.
+	if requestedText("css=#x") != "" || requestedText("e12") != "" {
+		t.Error("requestedText is only valid for text=")
 	}
-	if textoPedido("text= Aguardando ") != "Aguardando" {
-		t.Errorf("textoPedido = %q", textoPedido("text= Aguardando "))
+	if requestedText("text= Waiting ") != "Waiting" {
+		t.Errorf("requestedText = %q", requestedText("text= Waiting "))
 	}
 }

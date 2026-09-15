@@ -1,5 +1,5 @@
-// Daemon: um processo que mantém o browser vivo e atende comandos por um socket
-// unix. Uma conexão = um pedido (JSON por linha) + uma resposta.
+// Daemon: a process that keeps the browser alive and serves commands over a
+// unix socket. One connection = one request (JSON per line) + one response.
 package daemon
 
 import (
@@ -22,7 +22,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
-// Options configuram a subida do daemon.
+// Options configure the daemon startup.
 type Options struct {
 	Session  string
 	Attach   string
@@ -30,8 +30,8 @@ type Options struct {
 	Engine   string
 }
 
-// capLog impede que o log do daemon cresça sem limite. O processo escreve no
-// arquivo com O_APPEND, então truncar é seguro.
+// capLog prevents the daemon log from growing without limit. The process writes
+// to the file with O_APPEND, so truncating is safe.
 func capLog(session string) {
 	const maxBytes = 2 << 20 // 2 MB
 	path := paths.DaemonLogPath(session)
@@ -42,7 +42,7 @@ func capLog(session string) {
 	_ = os.Truncate(path, 0)
 }
 
-// Run sobe o daemon e só retorna quando ele é encerrado.
+// Run brings up the daemon and only returns when it is terminated.
 func Run(ctx context.Context, opts Options) error {
 	capLog(opts.Session)
 	socketPath := paths.SocketPath(opts.Session)
@@ -53,7 +53,7 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	// Socket remanescente de um daemon morto não pode impedir o bind.
+	// A leftover socket from a dead daemon must not prevent the bind.
 	if info, err := os.Stat(socketPath); err == nil && info.Mode()&os.ModeSocket != 0 {
 		if _, err := os.Stat(socketPath); err == nil {
 			if !socketAlive(socketPath) {
@@ -64,7 +64,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	ln, err := net.Listen("unix", socketPath)
 	if err != nil {
-		return fmt.Errorf("abrindo socket %s: %w", socketPath, err)
+		return fmt.Errorf("opening socket %s: %w", socketPath, err)
 	}
 	defer ln.Close()
 
@@ -85,14 +85,14 @@ func Run(ctx context.Context, opts Options) error {
 		shutdown()
 	}()
 
-	// Fecha o listener quando pedirem parada, destravando o Accept.
+	// Close the listener when asked to stop, unblocking Accept.
 	go func() {
 		<-stop
 		_ = ln.Close()
 	}()
 
-	// Desligamento por ociosidade: sem isso o browser fica de pé para sempre
-	// (e ocupando memória) depois que o agente termina. 0 desliga o recurso.
+	// Idle shutdown: without this the browser stays up forever (and consuming
+	// memory) after the agent finishes. 0 disables the feature.
 	if idle := idleTimeout(); idle > 0 {
 		go func() {
 			ticker := time.NewTicker(time.Minute)
@@ -132,11 +132,12 @@ func Run(ctx context.Context, opts Options) error {
 	}
 }
 
-// idleTimeout lê AXSCOPE_IDLE_MINUTES (default 0 = desligado).
+// idleTimeout reads AXSCOPE_IDLE_MINUTES (default 0 = disabled).
 //
-// Desligado por padrão de propósito: fechar o browser sozinho faz a próxima
-// chamada subir um Chrome novo, e subir Chrome traz a janela para frente — que
-// é exatamente o que atrapalha. Quem quiser o encerramento, liga explicitamente.
+// Disabled by default on purpose: closing the browser on its own makes the next
+// call start a new Chrome, and starting Chrome brings the window to the front —
+// which is exactly what gets in the way. Anyone who wants the shutdown turns it
+// on explicitly.
 func idleTimeout() time.Duration {
 	minutes := 0
 	if v := os.Getenv("AXSCOPE_IDLE_MINUTES"); v != "" {
@@ -152,11 +153,12 @@ func idleTimeout() time.Duration {
 
 func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()) {
 	defer conn.Close()
-	// Um panic num comando não pode derrubar o daemon inteiro (e com ele o
-	// browser). Vira erro na resposta, com o texto do panic à mostra.
+	// A panic in a command must not bring down the whole daemon (and the
+	// browser with it). It becomes an error in the response, with the panic
+	// text shown.
 	defer func() {
 		if r := recover(); r != nil {
-			writeResponse(conn, protocol.Fail(fmt.Errorf("panic no daemon: %v", r)))
+			writeResponse(conn, protocol.Fail(fmt.Errorf("panic in daemon: %v", r)))
 		}
 	}()
 	reader := bufio.NewReaderSize(conn, 1<<20)
@@ -171,12 +173,12 @@ func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()
 
 	var req protocol.Request
 	if err := json.Unmarshal(line, &req); err != nil {
-		writeResponse(conn, protocol.Fail(fmt.Errorf("pedido inválido: %w", err)))
+		writeResponse(conn, protocol.Fail(fmt.Errorf("invalid request: %w", err)))
 		return
 	}
 
 	if req.Cmd == "stop" {
-		writeResponse(conn, protocol.Response{OK: true, Text: "encerrando"})
+		writeResponse(conn, protocol.Response{OK: true, Text: "shutting down"})
 		shutdown()
 		return
 	}

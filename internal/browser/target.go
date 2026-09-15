@@ -1,6 +1,6 @@
-// Resolução de alvo: ref, seletor CSS, texto visível ou posição viram um alvo
-// com geometria na tela — trazido ao alcance com rolagem visível, para quem
-// olha acompanhar em vez de a página pular.
+// Target resolution: ref, CSS selector, visible text or position become a target
+// with geometry on screen — brought into reach with a visible scroll, so whoever
+// watches follows instead of the page jumping.
 package browser
 
 import (
@@ -14,79 +14,82 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// Target é um alvo resolvido pronto para receber a ação.
+// Target is a resolved target ready to receive the action.
 type Target struct {
 	ObjectID      string
 	BackendNodeID int
 	Rect          dom.Rect
 	Description   string
-	// Point, quando não é nil, é onde a ação deve acontecer — o alvo veio de
-	// `pos=x,y`. O Rect continua sendo o do elemento sob o ponto, para o
-	// destaque e para o hover saber de onde entrar; sem separar os dois, a ação
-	// cairia no centro do elemento, que num iframe fica a dezenas de pixels do
-	// lugar pedido.
+	// Point, when it is not nil, is where the action should happen — the target
+	// came from `pos=x,y`. The Rect remains the one of the element under the
+	// point, for the highlight and for the hover to know where to enter from;
+	// without separating the two, the action would fall on the element's center,
+	// which in an iframe is dozens of pixels from the requested place.
 	Point *Point
 }
 
-// Point é uma coordenada de tela.
+// Point is a screen coordinate.
 type Point struct{ X, Y float64 }
 
-// ResolveTarget resolve uma referência em um alvo com geometria.
+// ResolveTarget resolves a reference into a target with geometry.
 //
-// Formas aceitas:
-//   - "e12"        → ref do último `snap`
-//   - "css=..."    → seletor CSS
-//   - "text=..."   → nome acessível ou texto visível que casa
-//   - "pos=x,y"    → o elemento sob o ponto (último recurso, para alvo sem nome)
+// Accepted forms:
+//   - "e12"        → ref from the last `snap`
+//   - "css=..."    → CSS selector
+//   - "text=..."   → accessible name or visible text that matches
+//   - "pos=x,y"    → the element under the point (last resort, for a target
+//     without a name)
 func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs map[string]int, spec string) (*Target, error) {
 	if spec == "" {
-		return nil, fmt.Errorf("alvo vazio")
+		return nil, fmt.Errorf("empty target")
 	}
 
 	var objectID string
 	var backendID int
-	var ponto *Point
-	// Expressão que produziu o nó, para poder resolver de novo se a rolagem
-	// invalidar o que foi resolvido (lista virtualizada recria as linhas).
+	var point *Point
+	// Expression that produced the node, to be able to resolve again if the
+	// scroll invalidates what was resolved (a virtualized list recreates the
+	// rows).
 	var expr string
 
 	switch {
 	case strings.HasPrefix(spec, "css="):
 		sel := strings.TrimPrefix(spec, "css=")
-		expr = expressaoCSS(sel)
+		expr = cssExpression(sel)
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
-			return nil, fmt.Errorf("seletor inválido %q: %w", sel, err)
+			return nil, fmt.Errorf("invalid selector %q: %w", sel, err)
 		}
 		if id == "" {
-			return nil, fmt.Errorf("nenhum elemento para o seletor %q", sel)
+			return nil, fmt.Errorf("no element for selector %q", sel)
 		}
 		objectID = id
 
 	case strings.HasPrefix(spec, "text="):
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
-		expr = expressaoTexto(want)
+		expr = textExpression(want)
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, err
 		}
 		if id == "" {
 			return nil, fmt.Errorf(
-				"nenhum elemento com texto %q — se a página carrega por rolagem, desça até a seção e tente de novo", want)
+				"no element with text %q — if the page loads on scroll, scroll down to the section and try again", want)
 		}
 		objectID = id
 
 	case strings.HasPrefix(spec, "pos="):
-		// Último recurso, para alvo sem nome acessível nenhum (alça de arrastar
-		// sem aria-label, por exemplo). É posição, não identidade: quebra fácil.
+		// Last resort, for a target with no accessible name at all (a drag
+		// handle without aria-label, for example). It is position, not identity:
+		// it breaks easily.
 		xy := strings.Split(strings.TrimPrefix(spec, "pos="), ",")
 		if len(xy) != 2 {
-			return nil, fmt.Errorf("posição mal formada %q — use pos=x,y", spec)
+			return nil, fmt.Errorf("malformed position %q — use pos=x,y", spec)
 		}
 		x, errX := strconv.ParseFloat(strings.TrimSpace(xy[0]), 64)
 		y, errY := strconv.ParseFloat(strings.TrimSpace(xy[1]), 64)
 		if errX != nil || errY != nil {
-			return nil, fmt.Errorf("posição mal formada %q — use pos=x,y", spec)
+			return nil, fmt.Errorf("malformed position %q — use pos=x,y", spec)
 		}
 		expr = fmt.Sprintf("document.elementFromPoint(%v, %v)", x, y)
 		id, err := dom.EvalObject(ctx, client, session, expr)
@@ -94,15 +97,15 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			return nil, err
 		}
 		if id == "" {
-			return nil, fmt.Errorf("nada em %s (fora da tela?)", spec)
+			return nil, fmt.Errorf("nothing at %s (off screen?)", spec)
 		}
 		objectID = id
-		ponto = &Point{X: x, Y: y}
+		point = &Point{X: x, Y: y}
 
 	default:
 		backend, ok := refs[spec]
 		if !ok {
-			return nil, fmt.Errorf("ref %q não existe — rode `snap` de novo (as refs são por leitura)", spec)
+			return nil, fmt.Errorf("ref %q does not exist — run `snap` again (refs are per reading)", spec)
 		}
 		backendID = backend
 		var res struct {
@@ -112,179 +115,183 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		}
 		if err := client.SendJSON(ctx, "DOM.resolveNode",
 			map[string]any{"backendNodeId": backend}, session, &res); err != nil {
-			return nil, fmt.Errorf("ref %q não resolve mais (página mudou?) — rode `snap` de novo", spec)
+			return nil, fmt.Errorf("ref %q no longer resolves (did the page change?) — run `snap` again", spec)
 		}
 		if res.Object.ObjectID == "" {
-			return nil, fmt.Errorf("ref %q não resolve mais — rode `snap` de novo", spec)
+			return nil, fmt.Errorf("ref %q no longer resolves — run `snap` again", spec)
 		}
 		objectID = res.Object.ObjectID
 	}
 
-	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Point: ponto}
+	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Point: point}
 
-	// Traz para a tela em passos visíveis; se não bastar, garante com o scroll
-	// direto — o que não pode é a ação não alcançar o alvo.
-	rolagem := scrollAoAlcance(ctx, client, session, objectID)
-	rolou := rolagem != "ja" && rolagem != "sem alvo"
-	if rolagem != "ja" && rolagem != "ok" {
+	// Bring it to the screen in visible steps; if that is not enough, guarantee
+	// it with a direct scroll — what cannot happen is the action not reaching
+	// the target.
+	scrollResult := scrollIntoReach(ctx, client, session, objectID)
+	scrolled := scrollResult != "already" && scrollResult != "no target"
+	if scrollResult != "already" && scrollResult != "ok" {
 		_ = dom.ScrollTo(ctx, client, session, objectID)
 	}
 
 	rect, err := dom.BoxOf(ctx, client, session, objectID)
 	if err != nil && expr != "" {
-		// A rolagem pode ter invalidado o nó: lista virtualizada recria as
-		// linhas conforme rola, e o elemento resolvido antes vira órfão (sem
-		// caixa). Resolve de novo pela mesma expressão e mede outra vez.
+		// The scroll may have invalidated the node: a virtualized list recreates
+		// the rows as it scrolls, and the element resolved before becomes an
+		// orphan (no box). Resolve again by the same expression and measure
+		// again.
 		if id, errEval := dom.EvalObject(ctx, client, session, expr); errEval == nil && id != "" && id != objectID {
 			objectID = id
 			rect, err = dom.BoxOf(ctx, client, session, objectID)
 		}
 	}
 	if err != nil {
-		// Ref não tem expressão para re-resolver: a identidade dela era o nó, e o
-		// nó foi recriado. O caminho é a leitura nova — e dizer isso é o que
-		// separa um beco sem saída de um passo a mais.
-		if expr == "" && backendID != 0 && rolou {
+		// A ref has no expression to re-resolve: its identity was the node, and
+		// the node was recreated. The way is a new reading — and saying that is
+		// what separates a dead end from one more step.
+		if expr == "" && backendID != 0 && scrolled {
 			return nil, fmt.Errorf(
-				"a rolagem trouxe o alvo para a vista e a página recriou o elemento (lista que recicla linhas?) — rode `snap` de novo e use a ref nova")
+				"the scroll brought the target into view and the page recreated the element (a list that recycles rows?) — run `snap` again and use the new ref")
 		}
-		if want := textoPedido(spec); want != "" {
-			if msg := textoEscondido(ctx, client, session, want); msg != "" {
+		if want := requestedText(spec); want != "" {
+			if msg := hiddenText(ctx, client, session, want); msg != "" {
 				return nil, fmt.Errorf("%s", msg)
 			}
 		}
-		return nil, fmt.Errorf("alvo %q sem área visível: %w", spec, err)
+		return nil, fmt.Errorf("target %q has no visible area: %w", spec, err)
 	}
 	t.ObjectID = objectID
 	t.Rect = rect
 	return t, nil
 }
 
-// sobASombra anda também dentro de shadow roots abertos.
+// underShadow walks inside open shadow roots too.
 //
-// A árvore de acessibilidade **achata** shadow DOM: a leitura mostra o botão que
-// está lá dentro, com nome e ref, e o ref alcança (resolve por backendNodeId).
-// A mira por DOM, não — ela andava só no documento claro, de modo que a leitura
-// mostrava e o `text=` não alcançava. Medido na missão 12 do laboratório.
-const sobASombra = `
-	const sobASombra = (raiz, sel, acc) => {
-		for (const el of raiz.querySelectorAll(sel)) acc.push(el);
-		for (const el of raiz.querySelectorAll('*')) {
-			if (el.shadowRoot) sobASombra(el.shadowRoot, sel, acc);
+// The accessibility tree **flattens** shadow DOM: the reading shows the button
+// that is in there, with name and ref, and the ref even reaches it (resolves by
+// backendNodeId). Aiming by DOM does not — it walked only in the light document,
+// so that the reading showed it and the `text=` did not reach it. Measured in
+// mission 12 of the lab.
+const underShadow = `
+	const underShadow = (root, sel, acc) => {
+		for (const el of root.querySelectorAll(sel)) acc.push(el);
+		for (const el of root.querySelectorAll('*')) {
+			if (el.shadowRoot) underShadow(el.shadowRoot, sel, acc);
 		}
 		return acc;
 	};`
 
-// jsCandidatos lista os elementos que podem ser alvo de texto.
-const jsCandidatos = `
+// jsCandidates lists the elements that can be a text target.
+const jsCandidates = `
 	const sel = 'a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div';`
 
-// jsTextoDeElemento diz o texto/nome de um elemento e se ele está à vista.
+// jsElementText says an element's text/name and whether it is in view.
 //
-// Compartilhado entre a busca por texto e a contagem de candidatos, para as duas
-// concordarem — contar por um critério e escolher por outro seria pior do que não
-// contar.
-const jsTextoDeElemento = `
-	const texto = el => {
+// Shared between the text search and the candidate count, so the two agree —
+// counting by one criterion and choosing by another would be worse than not
+// counting.
+const jsElementText = `
+	const text = el => {
 		const aria = (el.getAttribute('aria-label') || '').trim();
 		if (aria) return aria;
 		if (el.labels && el.labels.length) {
-			const rotulo = (el.labels[0].innerText || '').trim();
-			if (rotulo) return rotulo;
+			const label = (el.labels[0].innerText || '').trim();
+			if (label) return label;
 		}
-		const visivel = (el.innerText || '').trim();
-		if (visivel) return visivel;
-		const dica = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
-		if (dica) return dica;
+		const visible = (el.innerText || '').trim();
+		if (visible) return visible;
+		const hint = (el.getAttribute('placeholder') || el.getAttribute('title') || '').trim();
+		if (hint) return hint;
 		return (el.value || '').trim();
 	};
-	const oculto = el => {
+	const hidden = el => {
 		if (el.getClientRects().length === 0) return 1;
 		return getComputedStyle(el).visibility === 'hidden' ? 1 : 0;
 	};`
 
-// expressaoTexto monta a busca por texto visível/nome acessível.
+// textExpression builds the search by visible text/accessible name.
 //
-// Separada de ResolveTarget porque é testável — e o teste existe para fixar que
-// ela atravessa shadow root.
-func expressaoTexto(want string) string {
+// Separated from ResolveTarget because it is testable — and the test exists to
+// pin down that it crosses shadow root.
+func textExpression(want string) string {
 	return fmt.Sprintf(`(() => {
 		const want = %s;
 		%s
 		%s
 		%s
-		const nodes = sobASombra(document, sel, []);
-		// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
-		// é o <li draggable> / <a> em volta. Sem isso o alvo vira o texto.
-		const acionavel = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
-		// Ordem de preferência: nome exato, depois à vista, depois o mais justo
-		// (menos sobra de texto); acionável só desempata. O "à vista" vem cedo
-		// de propósito: um item de menu fechado casando antes do visível é o que
-		// fazia o clique por texto mirar num botão de outro menu. E vem depois do
-		// exato porque mirar por texto é mirar pelo nome: nome exato escondido
-		// ainda ganha de nome parcial visível.
-		const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4];
-		// Nome que colide com o cromo da página é armadilha: o menu "⋯" do
-		// LinkedIn se chama "Resources", igual ao "Resources" do topo. Fora
-		// do cromo ganha o desempate.
-		const cromo = el => el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]') ? 1 : 0;
-		let escolhido = null, chave = null;
+		const nodes = underShadow(document, sel, []);
+		// "Actionable" breaks ties: the text lives in the <span>, but whoever
+		// accepts the action is the <li draggable> / <a> around it. Without
+		// that the target becomes the text.
+		const actionable = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
+		// Preference order: exact name, then in view, then the tightest (least
+		// leftover text); actionable only breaks ties. "In view" comes early on
+		// purpose: a closed menu item matching before the visible one is what
+		// made the click by text aim at a button of another menu. And it comes
+		// after exact because aiming by text is aiming by name: an exact hidden
+		// name still beats a partial visible name.
+		const betterThan = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4];
+		// A name that collides with the page chrome is a trap: the LinkedIn "⋯"
+		// menu is called "Resources", the same as the "Resources" at the top.
+		// Outside the chrome wins the tie.
+		const chrome = el => el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]') ? 1 : 0;
+		let chosen = null, key = null;
 		for (const el of nodes) {
-			const t = texto(el);
+			const t = text(el);
 			if (!t) continue;
-			const exato = t === want;
-			if (!exato && !t.includes(want)) continue;
-			const atual = [exato ? 0 : 1, oculto(el), t.length - want.length, cromo(el), acionavel(el) ? 0 : 1];
-			if (chave === null || melhorQue(atual, chave) < 0) {
-				escolhido = el;
-				chave = atual;
+			const exact = t === want;
+			if (!exact && !t.includes(want)) continue;
+			const current = [exact ? 0 : 1, hidden(el), t.length - want.length, chrome(el), actionable(el) ? 0 : 1];
+			if (key === null || betterThan(current, key) < 0) {
+				chosen = el;
+				key = current;
 			}
 		}
-		return escolhido;
-	})()`, strconv.Quote(want), sobASombra, jsCandidatos, jsTextoDeElemento)
+		return chosen;
+	})()`, strconv.Quote(want), underShadow, jsCandidates, jsElementText)
 }
 
-// expressaoContagem conta quantos elementos casam com o texto e quantos estão à
-// vista. É o que deixa a recusa dizer por que não deu, em vez de só dizer que não
-// deu — quem lê fica sabendo se precisa abrir um menu ou um modal.
-func expressaoContagem(want string) string {
+// countExpression counts how many elements match the text and how many are in
+// view. It is what lets the refusal say why it failed, instead of only saying it
+// failed — whoever reads learns whether they need to open a menu or a modal.
+func countExpression(want string) string {
 	return fmt.Sprintf(`(() => {
 		const want = %s;
 		%s
 		%s
 		%s
-		const todos = sobASombra(document, sel, []).filter(el => {
-			const t = texto(el);
+		const all = underShadow(document, sel, []).filter(el => {
+			const t = text(el);
 			return t !== '' && (t === want || t.includes(want));
 		});
-		return { total: todos.length, visiveis: todos.filter(el => !oculto(el)).length };
-	})()`, strconv.Quote(want), sobASombra, jsCandidatos, jsTextoDeElemento)
+		return { total: all.length, visible: all.filter(el => !hidden(el)).length };
+	})()`, strconv.Quote(want), underShadow, jsCandidates, jsElementText)
 }
 
-// expressaoCSS monta a busca por seletor CSS.
+// cssExpression builds the search by CSS selector.
 //
-// O seletor CSS tem semântica própria no documento claro, então ele é tentado
-// primeiro. Só quando não acha nada é que vale procurar dentro de shadow roots:
-// assim uma página que sempre funcionou não muda de alvo, e a que tem web
-// component deixa de ser um beco sem saída.
-func expressaoCSS(sel string) string {
-	alvo := strconv.Quote(sel)
+// The CSS selector has its own semantics in the light document, so it is tried
+// first. Only when it finds nothing is it worth looking inside shadow roots:
+// this way a page that always worked does not change its target, and one with a
+// web component stops being a dead end.
+func cssExpression(sel string) string {
+	target := strconv.Quote(sel)
 	return fmt.Sprintf(`(() => {
 		%s
-		return document.querySelector(%s) || sobASombra(document, %s, [])[0] || null;
-	})()`, sobASombra, alvo, alvo)
+		return document.querySelector(%s) || underShadow(document, %s, [])[0] || null;
+	})()`, underShadow, target, target)
 }
 
-// scrollAoAlcance rola em passos até o elemento ficar visível, para quem olha
-// acompanhar o movimento em vez de ver a página pular. Devolve o que aconteceu:
-// "ja" (já estava visível), "ok" (rolou e chegou), "nao" (rolou e não chegou) ou
-// "sem alvo".
+// scrollIntoReach scrolls in steps until the element becomes visible, so whoever
+// watches follows the movement instead of seeing the page jump. It returns what
+// happened: "already" (it was already visible), "ok" (it scrolled and arrived),
+// "miss" (it scrolled and did not arrive) or "no target".
 //
-// Rola pelo `scrollTop` do ancestral que de fato rola, e não por roda de mouse
-// num ponto fixo: a roda vai para quem estiver sob o ponteiro, e numa página com
-// container rolável no meio do caminho (caixa de rolagem interna, lista virtual)
-// ela rola o container errado — e a página não anda.
-func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID string) string {
+// It scrolls by the `scrollTop` of the ancestor that actually scrolls, and not by
+// a mouse wheel at a fixed point: the wheel goes to whoever is under the pointer,
+// and on a page with a scrollable container in the way (an inner scroll box, a
+// virtual list) it scrolls the wrong container — and the page does not move.
+func scrollIntoReach(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            objectID,
 		"functionDeclaration": scrollScript,
@@ -293,7 +300,7 @@ func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID 
 		"awaitPromise":        true,
 	}, session)
 	if err != nil {
-		return "sem alvo"
+		return "no target"
 	}
 	var res struct {
 		Result struct {
@@ -301,29 +308,30 @@ func scrollAoAlcance(ctx context.Context, client *cdp.Client, session, objectID 
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil {
-		return "sem alvo"
+		return "no target"
 	}
 	return res.Result.Value
 }
 
-// scrollScript rola o ancestral rolável do elemento, em passos, e confirma.
-const scrollScript = `function (intervalo) {` + jsEstaNoPonto + `
+// scrollScript scrolls the element's scrollable ancestor, in steps, and
+// confirms.
+const scrollScript = `function (interval) {` + jsIsAtPoint + `
 	const el = this;
-	if (!el || !el.getBoundingClientRect) return Promise.resolve('sem alvo');
-	const margem = 60;
-	// Visível é estar no ponto — a mesma pergunta que o clique faz. A caixa pode
-	// estar na tela e mesmo assim fora da janela do container que a recorta
-	// (lista virtualizada recorta por overflow), e aí o clique acontece fora do
-	// alvo.
-	const visivel = () => {
+	if (!el || !el.getBoundingClientRect) return Promise.resolve('no target');
+	const margin = 60;
+	// Visible is being at the point — the same question the click asks. The box
+	// can be on screen and still outside the window of the container that clips
+	// it (a virtualized list clips by overflow), and then the click happens
+	// outside the target.
+	const visible = () => {
 		const r = el.getBoundingClientRect();
 		if (r.width === 0 || r.height === 0) return false;
-		if (r.top < margem || r.bottom > innerHeight - margem) return false;
-		return estaNoPonto(el, r.left + r.width / 2, r.top + r.height / 2);
+		if (r.top < margin || r.bottom > innerHeight - margin) return false;
+		return isAtPoint(el, r.left + r.width / 2, r.top + r.height / 2);
 	};
-	if (visivel()) return Promise.resolve('ja');
+	if (visible()) return Promise.resolve('already');
 
-	const rolavel = (() => {
+	const scrollable = (() => {
 		let c = el.parentElement;
 		while (c) {
 			const st = getComputedStyle(c);
@@ -333,70 +341,71 @@ const scrollScript = `function (intervalo) {` + jsEstaNoPonto + `
 		return document.scrollingElement || document.documentElement;
 	})();
 
-	const de = rolavel.scrollTop;
+	const from = scrollable.scrollTop;
 	const r = el.getBoundingClientRect();
-	// O centro é o do próprio scroller, não o da janela: um container de 420px
-	// com a altura da janela no cálculo manda o alvo para muito além do meio.
-	const janela = rolavel === (document.scrollingElement || document.documentElement)
-		? { topo: 0, altura: innerHeight }
-		: { topo: rolavel.getBoundingClientRect().top, altura: rolavel.clientHeight };
-	const delta = r.top - (janela.topo + janela.altura / 2) + r.height / 2;
-	// Aba em segundo plano estrangula setTimeout; escondida, vai de uma vez.
-	const passos = document.hidden ? 1 : 6;
+	// The center is the scroller's own, not the window's: a 420px container with
+	// the window height in the calculation sends the target far beyond the
+	// middle.
+	const viewport = scrollable === (document.scrollingElement || document.documentElement)
+		? { top: 0, height: innerHeight }
+		: { top: scrollable.getBoundingClientRect().top, height: scrollable.clientHeight };
+	const delta = r.top - (viewport.top + viewport.height / 2) + r.height / 2;
+	// A background tab throttles setTimeout; hidden, it goes all at once.
+	const steps = document.hidden ? 1 : 6;
 	let i = 0;
-	return new Promise((pronto) => {
-		const passo = () => {
+	return new Promise((done) => {
+		const step = () => {
 			i++;
-			// behavior 'instant' é obrigatório: com scroll-behavior smooth no
-			// CSS, atribuir scrollTop anima — e o passo seguinte reinicia a
-			// animação, de modo que a rolagem nunca anda. A animação é a nossa,
-			// nos passos acima.
-			rolavel.scrollTo({ top: de + delta * (i / passos), behavior: 'instant' });
-			if (i < passos) { setTimeout(passo, intervalo); return; }
-			if (document.hidden) rolavel.dispatchEvent(new Event('scroll'));
-			pronto(visivel() ? 'ok' : 'nao');
+			// behavior 'instant' is mandatory: with scroll-behavior smooth in the
+			// CSS, assigning scrollTop animates — and the next step restarts the
+			// animation, so that the scroll never moves. The animation is ours,
+			// in the steps above.
+			scrollable.scrollTo({ top: from + delta * (i / steps), behavior: 'instant' });
+			if (i < steps) { setTimeout(step, interval); return; }
+			if (document.hidden) scrollable.dispatchEvent(new Event('scroll'));
+			done(visible() ? 'ok' : 'miss');
 		};
-		passo();
+		step();
 	});
 }`
 
-// ondeAgir devolve o ponto exato onde a ação acontece: o ponto pedido, quando o
-// alvo veio de `pos=x,y`; senão o centro do elemento.
-// textoPedido devolve o texto de um alvo `text=`, ou "" para as outras formas.
-func textoPedido(spec string) string {
+// actionPoint returns the exact point where the action happens: the requested
+// point, when the target came from `pos=x,y`; otherwise the element's center.
+// requestedText returns the text of a `text=` target, or "" for the other forms.
+func requestedText(spec string) string {
 	if !strings.HasPrefix(spec, "text=") {
 		return ""
 	}
 	return strings.TrimSpace(strings.TrimPrefix(spec, "text="))
 }
 
-// textoEscondido explica por que um alvo de texto não tem área visível, quando a
-// causa é todos os candidatos estarem escondidos — o caso do menu fechado, que
-// antes só rendia "sem área visível" e deixava quem lê sem próximo passo.
-func textoEscondido(ctx context.Context, client *cdp.Client, session, want string) string {
-	raw, err := dom.Eval(ctx, client, session, expressaoContagem(want))
+// hiddenText explains why a text target has no visible area, when the cause is
+// that all the candidates are hidden — the case of the closed menu, which before
+// only yielded "no visible area" and left whoever reads without a next step.
+func hiddenText(ctx context.Context, client *cdp.Client, session, want string) string {
+	raw, err := dom.Eval(ctx, client, session, countExpression(want))
 	if err != nil {
 		return ""
 	}
 	var res struct {
 		Total   int `json:"total"`
-		Visible int `json:"visiveis"`
+		Visible int `json:"visible"`
 	}
 	if json.Unmarshal(raw, &res) != nil || res.Total == 0 || res.Visible > 0 {
 		return ""
 	}
-	return mensagemTextoEscondido(want, res.Total)
+	return hiddenTextMessage(want, res.Total)
 }
 
-// mensagemTextoEscondido é a frase da recusa — separada para o teste prender o
-// que ela precisa dizer: quantos são, e o próximo passo.
-func mensagemTextoEscondido(want string, total int) string {
+// hiddenTextMessage is the refusal sentence — separated so the test pins down
+// what it needs to say: how many there are, and the next step.
+func hiddenTextMessage(want string, total int) string {
 	return fmt.Sprintf(
-		"achei %d elementos com texto %q e todos estão escondidos — abra o que os revela (um menu, um painel) e tente de novo",
+		"found %d elements with text %q and all of them are hidden — open what reveals them (a menu, a panel) and try again",
 		total, want)
 }
 
-func (t *Target) ondeAgir() (float64, float64) {
+func (t *Target) actionPoint() (float64, float64) {
 	if t.Point != nil {
 		return t.Point.X, t.Point.Y
 	}

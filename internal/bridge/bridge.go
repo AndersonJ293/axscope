@@ -1,7 +1,7 @@
-// Ponte com a extensão: o daemon abre um WebSocket local e a extensão se
-// conecta. Do ponto de vista do resto do driver, é a mesma conexão CDP de
-// sempre — a extensão só sintetiza o domínio Target (abas) e repassa o resto
-// para o chrome.debugger.
+// Bridge to the extension: the daemon opens a local WebSocket and the extension
+// connects to it. From the point of view of the rest of the driver, it is the
+// same CDP connection as always — the extension only synthesizes the Target
+// domain (tabs) and forwards the rest to chrome.debugger.
 package bridge
 
 import (
@@ -18,13 +18,13 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// DefaultPort é a primeira porta da faixa onde o daemon espera a extensão.
+// DefaultPort is the first port in the range where the daemon waits for the extension.
 const DefaultPort = 8787
 
-// portSpan é quantas sessões simultâneas cabem, uma porta por sessão.
+// portSpan is how many concurrent sessions fit, one port per session.
 const portSpan = 16
 
-// Server aceita conexões da extensão e as entrega como clientes CDP.
+// Server accepts connections from the extension and delivers them as CDP clients.
 type Server struct {
 	mu       sync.Mutex
 	listener net.Listener
@@ -36,8 +36,8 @@ type Server struct {
 	conns    chan *cdp.Client
 }
 
-// SetLabel troca o nome exibido (ex.: "Opencode") e reavisa a extensão, que
-// renomeia o grupo de abas mantendo o número que já tinha.
+// SetLabel changes the displayed name (e.g., "Opencode") and notifies the
+// extension, which renames the tab group while keeping the number it already had.
 func (s *Server) SetLabel(label string) {
 	s.mu.Lock()
 	if label == "" || s.label == label {
@@ -60,11 +60,12 @@ func (s *Server) currentLabel() string {
 	return s.label
 }
 
-// Start sobe o servidor em 127.0.0.1 (nunca exposto para fora da máquina) e
-// anuncia à extensão a qual sessão ela pertence — é o que define o grupo de abas.
+// Start brings up the server on 127.0.0.1 (never exposed outside the machine)
+// and announces to the extension which session it belongs to — that is what
+// defines the tab group.
 //
-// Cada sessão ocupa uma porta da faixa: assim vários agentes rodam ao mesmo
-// tempo, cada um com seu grupo de abas, sem disputar porta.
+// Each session takes one port in the range: this way several agents run at the
+// same time, each with its own tab group, without fighting over a port.
 func Start(session string, basePort int) (*Server, error) {
 	if basePort <= 0 {
 		basePort = DefaultPort
@@ -81,7 +82,7 @@ func Start(session string, basePort int) (*Server, error) {
 	}
 	if ln == nil {
 		return nil, fmt.Errorf(
-			"nenhuma porta livre entre %d e %d para a extensão: %w",
+			"no free port between %d and %d for the extension: %w",
 			basePort, basePort+portSpan-1, lastErr)
 	}
 	s := &Server{
@@ -93,14 +94,14 @@ func Start(session string, basePort int) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/cdp", func(w http.ResponseWriter, r *http.Request) {
-		// Só escutamos em loopback; a origem da extensão é chrome-extension://,
-		// que não casaria com a checagem padrão de Origin.
+		// We only listen on loopback; the extension's origin is
+		// chrome-extension://, which would not match the default Origin check.
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
 			return
 		}
-		// Handshake: diz à extensão qual sessão/grupo de abas é dela e como
-		// exibir esse grupo (o nome do agente que está dirigindo).
+		// Handshake: tell the extension which session/tab group is its and how
+		// to display that group (the name of the agent that is driving).
 		hello, _ := json.Marshal(map[string]any{
 			"method": "__session",
 			"params": map[string]any{"session": s.session, "agent": s.currentLabel()},
@@ -116,7 +117,8 @@ func Start(session string, basePort int) (*Server, error) {
 		select {
 		case s.conns <- client:
 		default:
-			// Já tem uma conexão ativa; descarta a extra em vez de acumular.
+			// There is already an active connection; discard the extra one
+			// instead of piling up.
 			client.Close()
 			return
 		}
@@ -128,14 +130,14 @@ func Start(session string, basePort int) (*Server, error) {
 	return s, nil
 }
 
-// Port devolve a porta efetiva (útil quando 0 foi pedido).
+// Port returns the effective port (useful when 0 was requested).
 func (s *Server) Port() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.port
 }
 
-// Wait espera a extensão conectar e devolve a conexão CDP.
+// Wait waits for the extension to connect and returns the CDP connection.
 func (s *Server) Wait(ctx context.Context, timeout time.Duration) (*cdp.Client, error) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -144,16 +146,16 @@ func (s *Server) Wait(ctx context.Context, timeout time.Duration) (*cdp.Client, 
 		return c, nil
 	case <-timer.C:
 		return nil, fmt.Errorf(
-			"a extensão axscope não conectou na porta %d em %s.\n"+
-				"Confira: (1) o Brave está aberto; (2) a extensão está carregada em brave://extensions;\n"+
-				"(3) o ícone da extensão mostra 'conectado'. Se o Brave não está aberto, use --ver ou --leve",
+			"the axscope extension did not connect on port %d within %s.\n"+
+				"Check: (1) Brave is open; (2) the extension is loaded at brave://extensions;\n"+
+				"(3) the extension icon shows 'connected'. If Brave is not open, use --chrome or --headless",
 			s.Port(), timeout)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
-// Close derruba o servidor.
+// Close brings down the server.
 func (s *Server) Close() {
 	if s.http != nil {
 		_ = s.http.Close()

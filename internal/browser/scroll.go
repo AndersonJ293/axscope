@@ -1,5 +1,5 @@
-// ScrollArea: a página, ou o container de um alvo. Vai em passos, para quem olha
-// acompanhar o movimento em vez de a página pular de uma vez.
+// ScrollArea: the page, or a target's container. It goes in steps, so whoever
+// watches follows the movement instead of the page jumping all at once.
 package browser
 
 import (
@@ -10,28 +10,29 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// Scroll rola o viewport por (dx, dy). Vai em passos, para quem olha acompanhar
-// o movimento em vez de a página pular de uma vez.
+// Scroll scrolls the viewport by (dx, dy). It goes in steps, so whoever watches
+// follows the movement instead of the page jumping all at once.
 //
-// Rola pelo scroller sob o centro da tela, e não por roda de mouse: a roda
-// depende de quem está sob o ponteiro (numa página com caixa de rolagem no meio
-// do caminho, ela rola o container errado) e o ack dela pelo chrome.debugger às
-// vezes não volta — medido: 30s de timeout sem rolar nada.
+// It scrolls by the scroller under the center of the screen, not by a mouse
+// wheel: the wheel depends on who is under the pointer (on a page with a scroll
+// box in the way, it scrolls the wrong container) and its ack from
+// chrome.debugger sometimes does not come back — measured: 30s of timeout without
+// scrolling anything.
 //
-// Depois de rolar, avisa a página com um evento de scroll quando a aba está
-// oculta: nessa condição o navegador segura a entrega (ela depende do ciclo de
-// quadros, que não roda escondido) e quem redesenha no scroll — lista
-// virtualizada, carregamento preguiçoso — nunca fica sabendo que rolou. Foi
-// assim que a lista virtualizada do laboratório ficou com o DOM parado em outro
-// ponto enquanto a posição já era a certa.
+// After scrolling, it notifies the page with a scroll event when the tab is
+// hidden: in that condition the browser holds the delivery (it depends on the
+// frame cycle, which does not run hidden) and whoever redraws on scroll —
+// virtualized list, lazy loading — never learns that it scrolled. That was how
+// the lab's virtualized list ended up with the DOM stopped at another point while
+// the position was already the right one.
 //
-// Devolve onde parou, no formato "<quem> <posicao>/<maximo>": a resposta diz o
-// que a rolagem alcançou, não o que foi pedido — com scroll-snap, ou pedindo
-// além do limite, os dois diferem. `pagina` força o documento, para quando o
-// alvo está aninhado e o que se quer rolar é a página.
-func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64, pagina bool) (string, error) {
+// It returns where it stopped, in the format "<who> <position>/<max>": the answer
+// says what the scroll reached, not what was asked — with scroll-snap, or asking
+// beyond the limit, the two differ. `page` forces the document, for when the
+// target is nested and what one wants to scroll is the page.
+func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64, page bool) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    fmt.Sprintf("(%s)(%v, %v, %v)", scrollPassos, dx, dy, pagina),
+		"expression":    fmt.Sprintf("(%s)(%v, %v, %v)", scrollSteps, dx, dy, page),
 		"returnByValue": true,
 		"awaitPromise":  true,
 	}, session)
@@ -44,18 +45,18 @@ func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy floa
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil || res.Result.Value == "" {
-		return "", fmt.Errorf("não consegui rolar")
+		return "", fmt.Errorf("could not scroll")
 	}
 	return res.Result.Value, nil
 }
 
-// ScrollTarget rola o container do alvo — o próprio, se ele rola, ou o
-// ancestral rolável mais próximo; sem nenhum, o documento. Devolve onde parou,
-// como o Scroll.
+// ScrollTarget scrolls the target's container — the target itself, if it
+// scrolls, or the nearest scrollable ancestor; with none, the document. It
+// returns where it stopped, like Scroll.
 func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID string, dx, dy float64) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            objectID,
-		"functionDeclaration": scrollDoAlvo,
+		"functionDeclaration": scrollTargetScript,
 		"arguments": []any{
 			map[string]any{"value": dx},
 			map[string]any{"value": dy},
@@ -72,98 +73,99 @@ func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID str
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil || res.Result.Value == "" {
-		return "", fmt.Errorf("não consegui rolar o alvo")
+		return "", fmt.Errorf("could not scroll the target")
 	}
 	return res.Result.Value, nil
 }
 
-// jsDescreveRolagem é colado nos dois scripts de rolagem: descreve onde parou e,
-// no fim da página com a aba oculta, avisa do que isso impede. O aviso entra só
-// no fim — é quando a ausência de conteúdo novo intriga —, e não em toda
-// rolagem, que viraria ruído num caso que é o normal aqui.
-const jsDescreveRolagem = `
-	const descreve = (el) => {
-		const nome = el === (document.scrollingElement || document.documentElement) ? 'página'
+// jsDescribeScroll is pasted into both scroll scripts: it describes where it
+// stopped and, at the end of the page with the tab hidden, warns what that
+// prevents. The warning enters only at the end — it is when the absence of new
+// content intrigues —, and not on every scroll, which would become noise in a
+// case that is the normal one here.
+const jsDescribeScroll = `
+	const describe = (el) => {
+		const name = el === (document.scrollingElement || document.documentElement) ? 'page'
 			: (el.id ? '#' + el.id : el.tagName.toLowerCase());
-		const fim = el.scrollTop >= (el.scrollHeight - el.clientHeight) - 1;
-		const nota = (fim && document.hidden)
-			? ' — fim, e a aba está oculta: o que carrega por IntersectionObserver não dispara (use axscope tab <n> --focus)'
+		const end = el.scrollTop >= (el.scrollHeight - el.clientHeight) - 1;
+		const note = (end && document.hidden)
+			? ' — end, and the tab is hidden: what loads via IntersectionObserver does not fire (use axscope tab <n> --focus)'
 			: '';
-		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight) + nota;
+		return name + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight) + note;
 	};`
 
-// scrollDoAlvo rola o container do elemento, em passos.
-const scrollDoAlvo = `function (dx, dy) {` + jsDescreveRolagem + `
-	const rola = (el) => {
+// scrollTargetScript scrolls the element's container, in steps.
+const scrollTargetScript = `function (dx, dy) {` + jsDescribeScroll + `
+	const scrollable = (el) => {
 		if (!el || !el.scrollHeight) return false;
 		const st = getComputedStyle(el);
 		return /(auto|scroll|overlay)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1;
 	};
-	let rolavel = null;
-	if (rola(this)) rolavel = this;
+	let scroller = null;
+	if (scrollable(this)) scroller = this;
 	else {
 		let c = this && this.parentElement;
-		while (c) { if (rola(c)) { rolavel = c; break; } c = c.parentElement; }
+		while (c) { if (scrollable(c)) { scroller = c; break; } c = c.parentElement; }
 	}
-	if (!rolavel) rolavel = document.scrollingElement || document.documentElement;
-	const deX = rolavel.scrollLeft, deY = rolavel.scrollTop;
-	const passos = (document.hidden || !rolavel.scrollHeight) ? 1 : 6;
+	if (!scroller) scroller = document.scrollingElement || document.documentElement;
+	const fromX = scroller.scrollLeft, fromY = scroller.scrollTop;
+	const steps = (document.hidden || !scroller.scrollHeight) ? 1 : 6;
 	let i = 0;
-	return new Promise((pronto) => {
-		const passo = () => {
+	return new Promise((done) => {
+		const step = () => {
 			i++;
-			rolavel.scrollTo({
-				left: deX + dx * (i / passos),
-				top: deY + dy * (i / passos),
+			scroller.scrollTo({
+				left: fromX + dx * (i / steps),
+				top: fromY + dy * (i / steps),
 				behavior: 'instant',
 			});
-			if (i < passos) { setTimeout(passo, 35); return; }
+			if (i < steps) { setTimeout(step, 35); return; }
 			if (document.hidden) {
-				rolavel.dispatchEvent(new Event('scroll'));
-				if (rolavel === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
+				scroller.dispatchEvent(new Event('scroll'));
+				if (scroller === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
 			}
-			pronto(descreve(rolavel));
+			done(describe(scroller));
 		};
-		passo();
+		step();
 	});
 }`
 
-// scrollPassos rola o elemento rolável sob o centro da tela, em passos; com
-// `pagina`, rola o documento.
-const scrollPassos = `function (dx, dy, pagina) {` + jsDescreveRolagem + `
-	let rolavel = document.scrollingElement || document.documentElement;
-	if (!pagina) {
+// scrollSteps scrolls the scrollable element under the center of the screen, in
+// steps; with `page`, it scrolls the document.
+const scrollSteps = `function (dx, dy, page) {` + jsDescribeScroll + `
+	let scroller = document.scrollingElement || document.documentElement;
+	if (!page) {
 		const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);
-		const alvo = document.elementFromPoint(cx, cy);
-		if (alvo) {
-			let c = alvo;
+		const target = document.elementFromPoint(cx, cy);
+		if (target) {
+			let c = target;
 			while (c) {
 				const st = getComputedStyle(c);
-				if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) { rolavel = c; break; }
+				if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) { scroller = c; break; }
 				c = c.parentElement;
 			}
 		}
 	}
-	const deX = rolavel.scrollLeft, deY = rolavel.scrollTop;
-	// Aba em segundo plano estrangula setTimeout, e animar para ninguém só
-	// deixa a rolagem lenta: escondida, vai de uma vez.
-	const passos = document.hidden ? 1 : 6;
+	const fromX = scroller.scrollLeft, fromY = scroller.scrollTop;
+	// A background tab throttles setTimeout, and animating for nobody only makes
+	// the scroll slow: hidden, it goes all at once.
+	const steps = document.hidden ? 1 : 6;
 	let i = 0;
-	return new Promise((pronto) => {
-		const passo = () => {
+	return new Promise((done) => {
+		const step = () => {
 			i++;
-			rolavel.scrollTo({
-				left: deX + dx * (i / passos),
-				top: deY + dy * (i / passos),
+			scroller.scrollTo({
+				left: fromX + dx * (i / steps),
+				top: fromY + dy * (i / steps),
 				behavior: 'instant',
 			});
-			if (i < passos) { setTimeout(passo, 35); return; }
+			if (i < steps) { setTimeout(step, 35); return; }
 			if (document.hidden) {
-				rolavel.dispatchEvent(new Event('scroll'));
-				if (rolavel === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
+				scroller.dispatchEvent(new Event('scroll'));
+				if (scroller === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
 			}
-			pronto(descreve(rolavel));
+			done(describe(scroller));
 		};
-		passo();
+		step();
 	});
 }`

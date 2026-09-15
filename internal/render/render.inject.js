@@ -1,12 +1,12 @@
-// Overlay injetado na página: cursor renderizado, ripple de clique, spotlight
-// opcional e um HUD com abas/ação.
+// Overlay injected into the page: rendered cursor, click ripple, optional
+// spotlight and a HUD with tabs/action.
 //
-// Cuidados deliberados, porque roda em páginas reais e hostis:
-//   - sem innerHTML (páginas com Trusted Types recusariam);
-//   - CSS por adoptedStyleSheets (não é bloqueado por `style-src`);
-//   - posicionamento por CSSOM (el.style.*), não por atributo style;
-//   - shadow DOM + pointer-events:none: não intercepta nada da página;
-//   - aria-hidden: não polui a árvore de acessibilidade (o `snap`).
+// Deliberate care, because it runs on real and hostile pages:
+//   - no innerHTML (pages with Trusted Types would refuse it);
+//   - CSS via adoptedStyleSheets (not blocked by `style-src`);
+//   - positioning via CSSOM (el.style.*), not via the style attribute;
+//   - shadow DOM + pointer-events:none: it intercepts nothing on the page;
+//   - aria-hidden: it does not pollute the accessibility tree (the `snap`).
 (() => {
   if (window.__axscope && window.__axscope.__v) return;
 
@@ -34,10 +34,10 @@
     }
     .cursor.press svg { transform: scale(.74); }
 
-    /* ---- ripple do clique ---- */
-    /* O clique é o único momento que pede atenção: o cursor afunda e um anel
-       curto confirma o ponto. Sem auréola em volta do ponteiro — o brilho roxo
-       que seguia o mouse saiu de cena. */
+    /* ---- click ripple ---- */
+    /* The click is the only moment that asks for attention: the cursor sinks
+       and a short ring confirms the point. No halo around the pointer — the
+       purple glow that followed the mouse left the scene. */
     .ripple {
       width: 20px; height: 20px; margin: -10px 0 0 -10px; z-index: 2;
       border-radius: 50%;
@@ -52,8 +52,9 @@
       100% { opacity: 0;  transform: scale(2.6); }
     }
 
-    /* Contorno puro: realça o alvo sem cobrir o conteúdo. Nada de fundo — o
-       truque de borda em gradiente exige interior opaco e pintava o miolo. */
+    /* Pure outline: it highlights the target without covering the content. No
+       background — the gradient-border trick requires an opaque interior and
+       painted the middle. */
     .spotlight {
       z-index: 0; border-radius: 10px;
       border: 2px solid rgba(129,140,248,.95);
@@ -109,7 +110,7 @@
     .hud .label:empty { display: none; }
     .hud .sep:has(+ .label:empty) { display: none; }
 
-    /* Respeita quem pediu menos movimento. */
+    /* Respects those who asked for less motion. */
     @media (prefers-reduced-motion: reduce) {
       .cursor, .spotlight, .hud { transition-duration: 1ms; }
       .cursor svg { transition-duration: 1ms; }
@@ -136,7 +137,7 @@
 
     host = document.createElement('div');
     host.setAttribute('data-axscope-root', '');
-    // Fora da árvore de acessibilidade: o overlay não pode poluir o `snap`.
+    // Outside the accessibility tree: the overlay must not pollute the `snap`.
     host.setAttribute('aria-hidden', 'true');
     host.style.cssText =
       'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;' +
@@ -148,7 +149,7 @@
       root = host.attachShadow({ mode: 'closed' });
     }
 
-    // CSS: declarative stylesheet (imune a `style-src`) com fallback para <style>.
+    // CSS: declarative stylesheet (immune to `style-src`) with a <style> fallback.
     let styled = false;
     try {
       const sheet = new CSSStyleSheet();
@@ -246,11 +247,11 @@
     rippleEl.style.left = `${Math.round(x)}px`;
     rippleEl.style.top = `${Math.round(y)}px`;
     rippleEl.classList.remove('on');
-    void rippleEl.offsetWidth; // reinicia a animação
+    void rippleEl.offsetWidth; // restarts the animation
     rippleEl.classList.add('on');
-    // O estado final não pode depender de a animação ter rodado: em aba de
-    // segundo plano o navegador congela a animação, e o elemento ficava parado
-    // no primeiro quadro — um ponto roxo preso no lugar do último clique.
+    // The final state cannot depend on the animation having run: in a
+    // background tab the browser freezes the animation, and the element stayed
+    // stuck on the first frame — a purple dot frozen in place of the last click.
     clearTimeout(rippleTimer);
     rippleTimer = setTimeout(() => rippleEl && rippleEl.classList.remove('on'), 520);
   }

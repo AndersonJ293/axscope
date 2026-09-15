@@ -1,7 +1,7 @@
-// Captura passiva de console, rede e diálogos, por sessão (aba).
+// Passive capture of console, network and dialogs, per session (tab).
 //
-// Fica em buffers circulares: o agente lê sob demanda com `console`/`net`, e os
-// erros ficam disponíveis mesmo depois de o evento ter passado.
+// It stays in circular buffers: the agent reads on demand with `console`/`net`,
+// and the errors stay available even after the event has passed.
 package browser
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// ConsoleEntry é uma linha de console ou uma exceção da página.
+// ConsoleEntry is a console line or a page exception.
 type ConsoleEntry struct {
 	Time  time.Time `json:"time"`
 	Level string    `json:"level"`
@@ -22,7 +22,7 @@ type ConsoleEntry struct {
 	Line  int       `json:"line,omitempty"`
 }
 
-// NetworkEntry é uma requisição observada.
+// NetworkEntry is an observed request.
 type NetworkEntry struct {
 	Time     time.Time `json:"time"`
 	Method   string    `json:"method"`
@@ -32,7 +32,7 @@ type NetworkEntry struct {
 	Failed   string    `json:"failed,omitempty"`
 }
 
-// DialogEntry é um diálogo nativo (alert/confirm/prompt/beforeunload).
+// DialogEntry is a native dialog (alert/confirm/prompt/beforeunload).
 type DialogEntry struct {
 	Time    time.Time `json:"time"`
 	Type    string    `json:"type"`
@@ -68,7 +68,7 @@ func appendCapped[T any](buf []T, item T, max int) []T {
 	return buf
 }
 
-// Console devolve as entradas de uma sessão, opcionalmente só de um nível.
+// Console returns a session's entries, optionally only from one level.
 func (o *Observe) Console(session, level string, limit int) []ConsoleEntry {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -86,7 +86,7 @@ func (o *Observe) Console(session, level string, limit int) []ConsoleEntry {
 	return out
 }
 
-// Network devolve requisições, opcionalmente filtrando por substring de URL.
+// Network returns requests, optionally filtering by URL substring.
 func (o *Observe) Network(session, filter string, limit int) []NetworkEntry {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -104,14 +104,14 @@ func (o *Observe) Network(session, filter string, limit int) []NetworkEntry {
 	return out
 }
 
-// Dialogs devolve os diálogos registrados numa sessão.
+// Dialogs returns the dialogs registered in a session.
 func (o *Observe) Dialogs(session string) []DialogEntry {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return append([]DialogEntry(nil), o.dialogs[session]...)
 }
 
-// ClearNetwork zera o buffer de rede de uma sessão (útil antes de um passo).
+// ClearNetwork zeroes a session's network buffer (useful before a step).
 func (o *Observe) ClearNetwork(session string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -136,7 +136,8 @@ func (o *Observe) addDialog(session string, e DialogEntry) {
 	o.dialogs[session] = appendCapped(o.dialogs[session], e, o.max)
 }
 
-// Wire registra os handlers de console, rede e exceções (uma vez por conexão).
+// Wire registers the console, network and exception handlers (once per
+// connection).
 func (o *Observe) Wire(c *cdp.Client) {
 	c.On("Runtime.consoleAPICalled", func(params json.RawMessage, sid string) {
 		var p struct {

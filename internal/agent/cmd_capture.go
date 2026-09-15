@@ -14,7 +14,7 @@ import (
 func (a *Agent) shot(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	path := req.String("path")
 	if path == "" {
-		// Sem caminho, vai para o temporário do sistema — nunca para o projeto.
+		// Without a path, it goes to the system temporary — never to the project.
 		f, err := os.CreateTemp("", "axscope-*.png")
 		if err != nil {
 			return protocol.Fail(err)
@@ -36,13 +36,13 @@ func (a *Agent) shot(ctx context.Context, sess *browser.Session, req protocol.Re
 	return ok(fmt.Sprintf("ok: %s (%d bytes)", path, len(data)))
 }
 
-// runScript executa um roteiro linha a linha, parando no primeiro erro.
+// runScript runs a script line by line, stopping at the first error.
 func (a *Agent) runScript(ctx context.Context, _ *browser.Session, req protocol.Request) protocol.Response {
 	content := req.String("content")
 	if content == "" {
 		path := req.String("path")
 		if path == "" || path == "-" {
-			return protocol.Fail(fmt.Errorf("roteiro vazio"))
+			return protocol.Fail(fmt.Errorf("empty script"))
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -69,7 +69,7 @@ func (a *Agent) runScript(ctx context.Context, _ *browser.Session, req protocol.
 		}
 		fmt.Fprintf(&b, "> %s\n", trimmed)
 		if sub.Cmd == "script" {
-			fmt.Fprintf(&b, "!! roteiro não pode chamar roteiro\n")
+			fmt.Fprintf(&b, "!! script cannot call script\n")
 			continue
 		}
 		res := a.dispatch(ctx, sub)
@@ -77,7 +77,7 @@ func (a *Agent) runScript(ctx context.Context, _ *browser.Session, req protocol.
 			fmt.Fprintf(&b, "%s\n", res.Text)
 		} else {
 			fmt.Fprintf(&b, "!! %s\n", res.Error)
-			break // para no primeiro erro: roteiro interrompido
+			break // stops at the first error: script interrupted
 		}
 	}
 	return ok(strings.TrimRight(b.String(), "\n"))

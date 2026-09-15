@@ -1,64 +1,65 @@
-// Linha de tabela achatada.
+// Flattened table row.
 //
-// Tabela é conteúdo, não ruído — mas o formato custava caro: uma linha de dados
-// saía como cinco (a linha e as quatro células), e numa tabela de 60 linhas isso
-// era 60% da leitura inteira. Aqui a linha vira uma só, desde que não se perca
-// nada no caminho.
+// A table is content, not noise — but the format was expensive: a data row came
+// out as five (the row and the four cells), and in a 60-row table that was 60% of
+// the whole reading. Here the row becomes one, as long as nothing is lost along
+// the way.
 package browser
 
 import "strings"
 
-// separadorCelula separa as células de uma linha de tabela achatada.
-const separadorCelula = " · "
+// cellSeparator separates the cells of a flattened table row.
+const cellSeparator = " · "
 
-// linhaDeRow tenta resumir uma linha de tabela numa linha só, devolvendo `false`
-// quando não dá — e aí a leitura sai como sempre saiu, uma linha por célula.
+// rowLine tries to summarize a table row into a single line, returning `false`
+// when it cannot — and then the reading comes out as it always did, one line per
+// cell.
 //
-// A conferência vem antes da coleta de propósito: juntar o texto marca os nós
-// como consumidos, e isso não tem volta.
-func (b *snapBuilder) linhaDeRow(nodeID string) (string, bool) {
-	var celulas []string
+// The check comes before the collection on purpose: joining the text marks the
+// nodes as consumed, and there is no going back from that.
+func (b *snapBuilder) rowLine(nodeID string) (string, bool) {
+	var cells []string
 	for _, cid := range b.children[nodeID] {
 		c := b.nodes[cid]
 		if c == nil || c.Ignored {
 			continue
 		}
-		if !celulasPapel[c.Role.str()] {
+		if !cellRoles[c.Role.str()] {
 			return "", false
 		}
-		if !b.podeAchatar(cid) {
+		if !b.canFlatten(cid) {
 			return "", false
 		}
-		celulas = append(celulas, cid)
+		cells = append(cells, cid)
 	}
-	if len(celulas) == 0 {
+	if len(cells) == 0 {
 		return "", false
 	}
 
 	var vals []string
-	for _, cid := range celulas {
+	for _, cid := range cells {
 		c := b.nodes[cid]
 		t := norm(c.Name.str())
 		if t == "" {
-			// A célula já passou por podeAchatar — não tem alvo dentro —, então
-			// a coleta não esbarra em rótulo de item.
-			t, _ = b.textoDeContainer(cid)
+			// The cell already went through canFlatten — it has no target
+			// inside —, so the collection does not bump into an item label.
+			t, _ = b.containerText(cid)
 		}
-		// O separador não pode vir de dentro: viraria uma célula a mais para
-		// quem lê.
-		if strings.Contains(t, separadorCelula) {
+		// The separator cannot come from inside: it would become one more cell
+		// for whoever reads.
+		if strings.Contains(t, cellSeparator) {
 			return "", false
 		}
 		vals = append(vals, t)
 	}
-	return strings.Join(vals, separadorCelula), true
+	return strings.Join(vals, cellSeparator), true
 }
 
-// podeAchatar diz se o nó pode virar texto dentro de outra linha sem perder
-// nada: sem alvo (senão a ref some), sem propriedade que a leitura mostra
-// (`[checked]`, `[level=2]`…), e sem papel que carregue estrutura própria —
-// imagem, lista e tabela aninhada continuam valendo linha.
-func (b *snapBuilder) podeAchatar(nodeID string) bool {
+// canFlatten says whether the node can become text inside another row without
+// losing anything: no target (otherwise the ref disappears), no property that
+// the reading shows (`[checked]`, `[level=2]`…), and no role that carries
+// structure of its own — image, list and nested table are still worth a row.
+func (b *snapBuilder) canFlatten(nodeID string) bool {
 	n := b.nodes[nodeID]
 	if n == nil || n.Ignored || skipRoles[n.Role.str()] {
 		return true
@@ -67,11 +68,11 @@ func (b *snapBuilder) podeAchatar(nodeID string) bool {
 	if b.eligibleRef(n) || b.props(n) != "" {
 		return false
 	}
-	if role != "StaticText" && role != "InlineTextBox" && !textuais[role] {
+	if role != "StaticText" && role != "InlineTextBox" && !textualRoles[role] {
 		return false
 	}
 	for _, c := range b.children[nodeID] {
-		if !b.podeAchatar(c) {
+		if !b.canFlatten(c) {
 			return false
 		}
 	}

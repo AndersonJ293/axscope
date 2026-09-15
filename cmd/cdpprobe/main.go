@@ -1,14 +1,14 @@
-// Sonda de diagnóstico de engines CDP.
+// CDP engine diagnostic probe.
 //
-// Responde, com medição e não com suposição:
-//  1. quais domínios CDP o endpoint implementa;
-//  2. se ele suporta várias páginas/targets independentes (abas headless);
-//  3. se há geometria (getBoxModel / getBoundingClientRect) — sem isso, ação
-//     por coordenada não existe;
-//  4. se a árvore de acessibilidade traz backendDOMNodeId e se dá para
-//     resolver de volta em nó do DOM (é o que nossas `ref` exigem).
+// It answers, with measurement and not guesswork:
+//  1. which CDP domains the endpoint implements;
+//  2. whether it supports several independent pages/targets (headless tabs);
+//  3. whether there is geometry (getBoxModel / getBoundingClientRect) — without
+//     it, action by coordinate does not exist;
+//  4. whether the accessibility tree carries backendDOMNodeId and whether it can
+//     be resolved back into a DOM node (which is what our `ref` require).
 //
-// Uso: go run ./cmd/cdpprobe [ws://host:porta/]
+// Usage: go run ./cmd/cdpprobe [ws://host:port/]
 package main
 
 import (
@@ -35,13 +35,13 @@ func main() {
 	}
 	defer c.Close()
 
-	section("1. domínios CDP")
+	section("1. CDP domains")
 	probe(ctx, c, "Browser.getVersion", "Browser.getVersion", nil, "")
 
-	section("2. abas (duas conexões = duas sessões)")
+	section("2. tabs (two connections = two sessions)")
 	c2, err := cdp.Dial(ctx, url, 10*time.Second)
 	if err != nil {
-		fmt.Println("segunda conexão falhou:", err)
+		fmt.Println("second connection failed:", err)
 	} else {
 		defer c2.Close()
 	}
@@ -51,49 +51,49 @@ func main() {
 		page2 = c2
 	}
 	t2, s2 := createPage(ctx, page2, "", "https://www.iana.org/help/example-domains")
-	fmt.Printf("conexão 1: target=%s session=%s\n", t1, s1)
-	fmt.Printf("conexão 2: target=%s session=%s\n", t2, s2)
+	fmt.Printf("connection 1: target=%s session=%s\n", t1, s1)
+	fmt.Printf("connection 2: target=%s session=%s\n", t2, s2)
 	time.Sleep(2 * time.Second)
 	title1 := evalString(ctx, c, s1, "document.title")
 	href1 := evalString(ctx, c, s1, "location.href")
 	title2 := evalString(ctx, page2, s2, "document.title")
 	href2 := evalString(ctx, page2, s2, "location.href")
-	fmt.Printf("sessão 1: %q  %s\n", title1, href1)
-	fmt.Printf("sessão 2: %q  %s\n", title2, href2)
+	fmt.Printf("session 1: %q  %s\n", title1, href1)
+	fmt.Printf("session 2: %q  %s\n", title2, href2)
 	if title1 != "" && title2 != "" && title1 != title2 {
-		fmt.Println("=> SIM: duas sessões independentes (títulos diferentes)")
+		fmt.Println("=> YES: two independent sessions (different titles)")
 	} else {
-		fmt.Println("=> NÃO: não consegui duas sessões independentes")
+		fmt.Println("=> NO: could not get two independent sessions")
 	}
 
-	section("3. geometria (base da ação por coordenada)")
+	section("3. geometry (the basis of action by coordinate)")
 	pageProbe := func(label, expr string) {
 		v := evalString(ctx, c, s1, expr)
 		fmt.Printf("%-28s %s\n", label, v)
 	}
 	pageProbe("innerWidth/Height", "JSON.stringify({w:innerWidth,h:innerHeight})")
-	pageProbe("getBoundingClientRect do <a>", `(() => {
+	pageProbe("getBoundingClientRect of <a>", `(() => {
 		const el = document.querySelector('a');
-		if (!el) return 'sem <a>';
+		if (!el) return 'no <a>';
 		const r = el.getBoundingClientRect();
 		return JSON.stringify({x:r.x,y:r.y,width:r.width,height:r.height});
 	})()`)
 
-	section("4. árvore de acessibilidade e refs")
+	section("4. accessibility tree and refs")
 	var doc struct {
 		Root struct {
 			NodeID int `json:"nodeId"`
 		} `json:"root"`
 	}
 	if err := c.SendJSON(ctx, "DOM.getDocument", map[string]any{"depth": 1}, s1, &doc); err != nil {
-		fmt.Println("DOM.getDocument ERRO:", err)
+		fmt.Println("DOM.getDocument ERROR:", err)
 	}
 	var q struct {
 		NodeID int `json:"nodeId"`
 	}
 	if err := c.SendJSON(ctx, "DOM.querySelector",
 		map[string]any{"nodeId": doc.Root.NodeID, "selector": "a"}, s1, &q); err != nil {
-		fmt.Println("DOM.querySelector ERRO:", err)
+		fmt.Println("DOM.querySelector ERROR:", err)
 	} else {
 		fmt.Printf("DOM.querySelector('a')     nodeId=%d\n", q.NodeID)
 		if q.NodeID != 0 {
@@ -104,7 +104,7 @@ func main() {
 			}
 			if err := c.SendJSON(ctx, "DOM.getBoxModel",
 				map[string]any{"nodeId": q.NodeID}, s1, &box); err != nil {
-				fmt.Println("DOM.getBoxModel ERRO:", err)
+				fmt.Println("DOM.getBoxModel ERROR:", err)
 			} else {
 				fmt.Printf("DOM.getBoxModel            %d coords\n", len(box.Model.Content))
 			}
@@ -131,7 +131,7 @@ func main() {
 			}
 			roles[n.Role.Value]++
 		}
-		fmt.Printf("AX: %d nós, %d com backendDOMNodeId\n", len(tree.Nodes), withBackend)
+		fmt.Printf("AX: %d nodes, %d with backendDOMNodeId\n", len(tree.Nodes), withBackend)
 		if firstBackend != 0 {
 			var res struct {
 				Object struct {
@@ -140,15 +140,15 @@ func main() {
 			}
 			if err := c.SendJSON(ctx, "DOM.resolveNode",
 				map[string]any{"backendNodeId": firstBackend}, s1, &res); err != nil {
-				fmt.Println("DOM.resolveNode ERRO:", err)
+				fmt.Println("DOM.resolveNode ERROR:", err)
 			} else if res.Object.ObjectID == "" {
-				fmt.Println("DOM.resolveNode            sem objectId => NÃO resolve a ref")
+				fmt.Println("DOM.resolveNode            no objectId => does NOT resolve the ref")
 			} else {
-				fmt.Println("DOM.resolveNode            OK => refs funcionam")
+				fmt.Println("DOM.resolveNode            OK => refs work")
 			}
 		}
 	} else {
-		fmt.Println("Accessibility.getFullAXTree ERRO:", err)
+		fmt.Println("Accessibility.getFullAXTree ERROR:", err)
 	}
 }
 
@@ -157,7 +157,7 @@ func section(title string) { fmt.Printf("\n===== %s =====\n", title) }
 func probe(ctx context.Context, c *cdp.Client, label, method string, params map[string]any, session string) {
 	raw, err := c.SendTimeout(ctx, method, params, session, 6*time.Second)
 	if err != nil {
-		fmt.Printf("%-30s ERRO  %v\n", label, err)
+		fmt.Printf("%-30s ERROR %v\n", label, err)
 		return
 	}
 	out := string(raw)
@@ -165,12 +165,12 @@ func probe(ctx context.Context, c *cdp.Client, label, method string, params map[
 		out = out[:160] + "…"
 	}
 	if out == "{}" || out == "" {
-		out = "(vazio)"
+		out = "(empty)"
 	}
 	fmt.Printf("%-30s OK    %s\n", label, out)
 }
 
-// createPage cria um target num contexto e devolve (targetId, sessionId).
+// createPage creates a target in a context and returns (targetId, sessionId).
 func createPage(ctx context.Context, c *cdp.Client, browserContextID, url string) (string, string) {
 	params := map[string]any{"url": "about:blank"}
 	if browserContextID != "" {
@@ -180,7 +180,7 @@ func createPage(ctx context.Context, c *cdp.Client, browserContextID, url string
 		TargetID string `json:"targetId"`
 	}
 	if err := c.SendJSON(ctx, "Target.createTarget", params, "", &res); err != nil {
-		fmt.Println("Target.createTarget ERRO:", err)
+		fmt.Println("Target.createTarget ERROR:", err)
 		return "", ""
 	}
 	var att struct {
@@ -188,7 +188,7 @@ func createPage(ctx context.Context, c *cdp.Client, browserContextID, url string
 	}
 	if err := c.SendJSON(ctx, "Target.attachToTarget",
 		map[string]any{"targetId": res.TargetID, "flatten": true}, "", &att); err != nil {
-		fmt.Println("Target.attachToTarget ERRO:", err)
+		fmt.Println("Target.attachToTarget ERROR:", err)
 		return res.TargetID, ""
 	}
 	for _, m := range []string{"Page.enable", "Runtime.enable", "DOM.enable", "Accessibility.enable"} {
@@ -200,12 +200,12 @@ func createPage(ctx context.Context, c *cdp.Client, browserContextID, url string
 	return res.TargetID, att.SessionID
 }
 
-// evalString imprime o valor de uma expressão. Usa o mesmo acesso a runtime do
-// driver, para não manter uma segunda avaliação só no diagnóstico.
+// evalString prints the value of an expression. It uses the same runtime access
+// as the driver, so as not to keep a second evaluation only for diagnostics.
 func evalString(ctx context.Context, c *cdp.Client, session, expr string) string {
 	raw, err := dom.Eval(ctx, c, session, expr)
 	if err != nil {
-		return "ERRO: " + err.Error()
+		return "ERROR: " + err.Error()
 	}
 	if len(raw) == 0 || string(raw) == "null" {
 		return "null"

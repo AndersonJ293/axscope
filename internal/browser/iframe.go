@@ -1,17 +1,18 @@
-// Iframes na leitura.
+// Iframes in the reading.
 //
-// A árvore de acessibilidade vem por frame: a do frame principal mostra o iframe
-// como uma linha só (`- Iframe`, sem ref e sem conteúdo), e o documento de
-// dentro é outra árvore. Sem juntar as duas, a leitura diz que existe um iframe
-// e não diz o que tem dentro — o agente não fica sabendo que há um botão ali.
+// The accessibility tree comes per frame: the main frame's shows the iframe as a
+// single line (`- Iframe`, with no ref and no content), and the inner document is
+// another tree. Without joining the two, the reading says an iframe exists and
+// does not say what is inside it — the agent never learns that there is a button
+// there.
 //
-// O CDP entrega cada árvore separada (`Accessibility.getFullAXTree` com
-// `frameId`) e diz qual elemento é o dono de cada frame (`DOM.getFrameOwner`).
-// Aqui as árvores viram uma só, penduradas no nó do iframe.
+// The CDP delivers each tree separately (`Accessibility.getFullAXTree` with
+// `frameId`) and says which element owns each frame (`DOM.getFrameOwner`). Here
+// the trees become one, hung on the iframe's node.
 //
-// Origem diferente (OOPIF) ainda fica de fora: essa árvore vive no processo do
-// outro site, e alcançá-la exige sessão CDP própria por frame — outro trabalho,
-// anotado em PENDENCIAS.md.
+// A different origin (OOPIF) is still left out: that tree lives in the other
+// site's process, and reaching it requires its own CDP session per frame —
+// another job, noted in PENDENCIAS.md.
 package browser
 
 import (
@@ -21,23 +22,23 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// frameInfo é o frame como o Page.getFrameTree descreve (só o que usamos).
+// frameInfo is the frame as Page.getFrameTree describes it (only what we use).
 type frameInfo struct {
 	ID       string `json:"id"`
 	URL      string `json:"url"`
 	ParentID string `json:"parentId"`
 }
 
-// arvoreDeFrames é o formato recursivo do Page.getFrameTree.
-type arvoreDeFrames struct {
-	Frame       frameInfo        `json:"frame"`
-	ChildFrames []arvoreDeFrames `json:"childFrames"`
+// frameTree is the recursive format of Page.getFrameTree.
+type frameTree struct {
+	Frame       frameInfo   `json:"frame"`
+	ChildFrames []frameTree `json:"childFrames"`
 }
 
-// temIframe diz se vale a pena ir buscar os frames. Sem iframe na árvore não há
-// o que juntar, e a maioria das páginas não tem — então o custo fica com quem
-// usa iframe.
-func temIframe(nodes []axNode) bool {
+// hasIframe says whether it is worth going to fetch the frames. Without an
+// iframe in the tree there is nothing to join, and most pages have none — so the
+// cost stays with whoever uses an iframe.
+func hasIframe(nodes []axNode) bool {
 	for i := range nodes {
 		if frameRoles[nodes[i].Role.str()] {
 			return true
@@ -46,22 +47,22 @@ func temIframe(nodes []axNode) bool {
 	return false
 }
 
-// juntarFrames devolve a árvore do frame principal com a de cada frame filho
-// pendurada no nó do iframe correspondente. Sem frame filho, devolve a mesma
-// coisa que recebeu.
-func juntarFrames(ctx context.Context, client *cdp.Client, session string, nodes []axNode) []axNode {
-	frames := framesFilhos(ctx, client, session)
+// joinFrames returns the main frame's tree with each child frame's hung on the
+// corresponding iframe node. With no child frame, it returns the same thing it
+// received.
+func joinFrames(ctx context.Context, client *cdp.Client, session string, nodes []axNode) []axNode {
+	frames := childFrames(ctx, client, session)
 	if len(frames) == 0 {
 		return nodes
 	}
 	out := append([]axNode(nil), nodes...)
 	for i, f := range frames {
-		dono, err := frameOwner(ctx, client, session, f.ID)
-		if err != nil || dono == 0 {
+		owner, err := frameOwner(ctx, client, session, f.ID)
+		if err != nil || owner == 0 {
 			continue
 		}
-		pai := noPorBackend(out, dono)
-		if pai == "" {
+		parent := nodeByBackend(out, owner)
+		if parent == "" {
 			continue
 		}
 		var t struct {
@@ -71,36 +72,36 @@ func juntarFrames(ctx context.Context, client *cdp.Client, session string, nodes
 			map[string]any{"frameId": f.ID}, session, &t); err != nil || len(t.Nodes) == 0 {
 			continue
 		}
-		out = append(out, enxertarFrame(t.Nodes, fmt.Sprintf("f%d:", i), pai)...)
+		out = append(out, graftFrame(t.Nodes, fmt.Sprintf("f%d:", i), parent)...)
 	}
 	return out
 }
 
-// framesFilhos lista os frames que não são o principal, do mais externo para o
-// mais interno. A ordem importa: um frame de dentro só tem onde se pendurar
-// depois que o de fora já entrou.
-func framesFilhos(ctx context.Context, client *cdp.Client, session string) []frameInfo {
+// childFrames lists the frames that are not the main one, from the outermost to
+// the innermost. The order matters: an inner frame only has somewhere to hang
+// after the outer one has already entered.
+func childFrames(ctx context.Context, client *cdp.Client, session string) []frameInfo {
 	var res struct {
-		FrameTree arvoreDeFrames `json:"frameTree"`
+		FrameTree frameTree `json:"frameTree"`
 	}
 	if err := client.SendJSON(ctx, "Page.getFrameTree", map[string]any{}, session, &res); err != nil {
 		return nil
 	}
 	var out []frameInfo
-	var anda func(a arvoreDeFrames, raiz bool)
-	anda = func(a arvoreDeFrames, raiz bool) {
-		if !raiz && a.Frame.ID != "" {
+	var visit func(a frameTree, root bool)
+	visit = func(a frameTree, root bool) {
+		if !root && a.Frame.ID != "" {
 			out = append(out, a.Frame)
 		}
 		for _, c := range a.ChildFrames {
-			anda(c, false)
+			visit(c, false)
 		}
 	}
-	anda(res.FrameTree, true)
+	visit(res.FrameTree, true)
 	return out
 }
 
-// frameOwner devolve o backendNodeId do elemento que hospeda o frame.
+// frameOwner returns the backendNodeId of the element that hosts the frame.
 func frameOwner(ctx context.Context, client *cdp.Client, session, frameID string) (int, error) {
 	var res struct {
 		BackendNodeID int `json:"backendNodeId"`
@@ -109,8 +110,8 @@ func frameOwner(ctx context.Context, client *cdp.Client, session, frameID string
 	return res.BackendNodeID, err
 }
 
-// noPorBackend acha, na árvore montada até agora, o nó do elemento.
-func noPorBackend(nodes []axNode, backend int) string {
+// nodeByBackend finds, in the tree built so far, the node of the element.
+func nodeByBackend(nodes []axNode, backend int) string {
 	for i := range nodes {
 		if nodes[i].BackendDOMNodeID == backend {
 			return nodes[i].NodeID
@@ -119,40 +120,40 @@ func noPorBackend(nodes []axNode, backend int) string {
 	return ""
 }
 
-// enxertarFrame prepara a árvore de um frame para entrar na do principal.
+// graftFrame prepares a frame's tree to enter the main one.
 //
-// A raiz do frame sai: no frame principal ela viraria só mais uma linha
-// (`RootWebArea` com o título do documento de dentro), e o que interessa é o
-// conteúdo. São os filhos dela que se penduram no nó do iframe.
+// The frame's root drops out: in the main frame it would become just another
+// line (`RootWebArea` with the inner document's title), and what matters is the
+// content. It is its children that hang on the iframe's node.
 //
-// O prefixo nos ids é obrigatório: cada árvore numera os nós a partir do próprio
-// root, então os ids de dois frames colidem no mesmo mapa — e a leitura de
-// dentro do iframe sairia misturada com a de fora.
-func enxertarFrame(nodes []axNode, prefixo, pai string) []axNode {
-	raiz := ""
+// The prefix on the ids is mandatory: each tree numbers its nodes starting from
+// its own root, so the ids of two frames collide in the same map — and the
+// reading from inside the iframe would come out mixed with the outside one.
+func graftFrame(nodes []axNode, prefix, parent string) []axNode {
+	root := ""
 	for i := range nodes {
 		if nodes[i].ParentID == "" {
-			raiz = nodes[i].NodeID
+			root = nodes[i].NodeID
 			break
 		}
 	}
 	out := make([]axNode, 0, len(nodes))
 	for _, n := range nodes {
-		if n.NodeID == raiz {
+		if n.NodeID == root {
 			continue
 		}
-		n.NodeID = prefixo + n.NodeID
+		n.NodeID = prefix + n.NodeID
 		switch n.ParentID {
-		case "", raiz:
-			n.ParentID = pai
+		case "", root:
+			n.ParentID = parent
 		default:
-			n.ParentID = prefixo + n.ParentID
+			n.ParentID = prefix + n.ParentID
 		}
-		filhos := make([]string, len(n.ChildIDs))
+		children := make([]string, len(n.ChildIDs))
 		for j, c := range n.ChildIDs {
-			filhos[j] = prefixo + c
+			children[j] = prefix + c
 		}
-		n.ChildIDs = filhos
+		n.ChildIDs = children
 		out = append(out, n)
 	}
 	return out

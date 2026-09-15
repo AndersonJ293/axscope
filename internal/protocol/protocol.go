@@ -1,5 +1,5 @@
-// Protocolo entre CLI/MCP e o daemon: um pedido e uma resposta JSON por linha
-// num socket unix.
+// Protocol between CLI/MCP and the daemon: one request and one JSON response
+// per line on a unix socket.
 package protocol
 
 import (
@@ -8,23 +8,23 @@ import (
 	"strings"
 )
 
-// Request é o que o cliente manda.
+// Request is what the client sends.
 type Request struct {
 	ID   int64          `json:"id,omitempty"`
 	Cmd  string         `json:"cmd"`
 	Args map[string]any `json:"args,omitempty"`
-	// Agent identifica quem está dirigindo (ex.: "Opencode"), para nomear o
-	// grupo de abas no navegador. Vem do cliente MCP ou de AXSCOPE_AGENT.
+	// Agent identifies who is driving (e.g. "Opencode"), to name the tab
+	// group in the browser. It comes from the MCP client or from AXSCOPE_AGENT.
 	Agent string `json:"agent,omitempty"`
 }
 
-// Image é um anexo opcional (ex.: screenshot) para clientes que aceitam imagem.
+// Image is an optional attachment (e.g. screenshot) for clients that accept images.
 type Image struct {
 	MimeType string `json:"mimeType"`
 	Base64   string `json:"base64"`
 }
 
-// Response é o que o daemon devolve.
+// Response is what the daemon returns.
 type Response struct {
 	OK    bool   `json:"ok"`
 	Text  string `json:"text,omitempty"`
@@ -32,15 +32,15 @@ type Response struct {
 	Image *Image `json:"image,omitempty"`
 }
 
-// Fail monta uma resposta de erro.
+// Fail builds an error response.
 func Fail(err error) Response {
 	if err == nil {
-		return Response{OK: false, Error: "erro desconhecido"}
+		return Response{OK: false, Error: "unknown error"}
 	}
 	return Response{OK: false, Error: err.Error()}
 }
 
-// String devolve um argumento como string.
+// String returns an argument as a string.
 func (r Request) String(key string) string {
 	if r.Args == nil {
 		return ""
@@ -56,7 +56,7 @@ func (r Request) String(key string) string {
 	return string(b)
 }
 
-// Bool devolve um argumento booleano com default.
+// Bool returns a boolean argument with a default.
 func (r Request) Bool(key string, def bool) bool {
 	if r.Args == nil {
 		return def
@@ -67,7 +67,7 @@ func (r Request) Bool(key string, def bool) bool {
 	return def
 }
 
-// Int devolve um argumento inteiro com default.
+// Int returns an integer argument with a default.
 func (r Request) Int(key string, def int) int {
 	if r.Args == nil {
 		return def
@@ -83,8 +83,8 @@ func (r Request) Int(key string, def int) int {
 			return int(n)
 		}
 	case string:
-		// Valor vindo de `k=v` ou posicional chega como string (CLI e MCP
-		// mandam texto). Sem isto, opção numérica era inerte.
+		// A value coming from `k=v` or positional arrives as a string (CLI and
+		// MCP send text). Without this, a numeric option was inert.
 		n, err := strconv.Atoi(strings.TrimSpace(v))
 		if err == nil {
 			return n

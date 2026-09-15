@@ -2,29 +2,29 @@ package protocol
 
 import "testing"
 
-// Regressão: valor que chega da CLI ou do MCP é texto, não número. Sem o caso
-// `string`, toda opção numérica (timeout do wait) era inerte: Request.Int
-// devolvia o padrão e ninguém percebia.
+// Regression: a value coming from the CLI or MCP is text, not a number.
+// Without the `string` case, every numeric option (wait timeout) was inert:
+// Request.Int returned the default and nobody noticed.
 func TestInt(t *testing.T) {
-	casos := []struct {
-		nome  string
-		args  map[string]any
-		def   int
-		quero int
+	cases := []struct {
+		name string
+		args map[string]any
+		def  int
+		want int
 	}{
-		{"string da CLI", map[string]any{"timeout": "5000"}, 0, 5000},
-		{"string com espaço", map[string]any{"timeout": " 700 "}, 0, 700},
-		{"string inválida cai no padrão", map[string]any{"timeout": "abc"}, 42, 42},
-		{"float do JSON", map[string]any{"timeout": float64(1500)}, 0, 1500},
-		{"int direto", map[string]any{"timeout": 3}, 0, 3},
-		{"ausente", map[string]any{}, 9, 9},
-		{"args nulo", nil, 9, 9},
+		{"CLI string", map[string]any{"timeout": "5000"}, 0, 5000},
+		{"string with space", map[string]any{"timeout": " 700 "}, 0, 700},
+		{"invalid string falls back to default", map[string]any{"timeout": "abc"}, 42, 42},
+		{"float from JSON", map[string]any{"timeout": float64(1500)}, 0, 1500},
+		{"direct int", map[string]any{"timeout": 3}, 0, 3},
+		{"absent", map[string]any{}, 9, 9},
+		{"nil args", nil, 9, 9},
 	}
-	for _, c := range casos {
-		t.Run(c.nome, func(t *testing.T) {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
 			r := Request{Cmd: "wait", Args: c.args}
-			if v := r.Int("timeout", c.def); v != c.quero {
-				t.Errorf("Int = %d, esperado %d", v, c.quero)
+			if v := r.Int("timeout", c.def); v != c.want {
+				t.Errorf("Int = %d, want %d", v, c.want)
 			}
 		})
 	}

@@ -1,4 +1,4 @@
-// Captura de tela: a página inteira ou só o que está à vista.
+// Screenshot: the whole page or only what is in view.
 package browser
 
 import (
@@ -9,7 +9,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// Screenshot captura a página e devolve os bytes PNG.
+// Screenshot captures the page and returns the PNG bytes.
 func Screenshot(ctx context.Context, client *cdp.Client, session string, fullPage bool) ([]byte, error) {
 	params := map[string]any{"format": "png", "fromSurface": true}
 	if fullPage {

@@ -1,8 +1,8 @@
-// Cliente mínimo de Chrome DevTools Protocol sobre WebSocket.
+// Minimal Chrome DevTools Protocol client over WebSocket.
 //
-// O protocolo é JSON-RPC com `id`. Com `flatten: true`, cada aba vira uma
-// "sessão" identificada por `sessionId`, então uma única conexão no nível do
-// browser cobre todas as abas.
+// The protocol is JSON-RPC with `id`. With `flatten: true`, each tab becomes a
+// "session" identified by `sessionId`, so a single connection at the browser
+// level covers all tabs.
 package cdp
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/coder/websocket"
 )
 
-// Error é um erro devolvido pelo browser (frame `error` do CDP).
+// Error is an error returned by the browser (CDP `error` frame).
 type Error struct {
 	Method string
 	Code   int
@@ -29,7 +29,7 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("cdp %s: %s", e.Method, e.Msg)
 }
 
-// Handler recebe os params de um evento CDP e a sessão de origem (se houver).
+// Handler receives the params of a CDP event and the originating session (if any).
 type Handler func(params json.RawMessage, sessionID string)
 
 type message struct {
@@ -54,7 +54,7 @@ type handlerEntry struct {
 	fn Handler
 }
 
-// Client é uma conexão CDP viva com o browser.
+// Client is a live CDP connection to the browser.
 type Client struct {
 	conn   *websocket.Conn
 	ctx    context.Context
@@ -71,23 +71,23 @@ type Client struct {
 	done     chan struct{}
 }
 
-// Dial conecta e começa a ler eventos.
+// Dial connects and starts reading events.
 func Dial(ctx context.Context, url string, timeout time.Duration) (*Client, error) {
 	dctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	conn, _, err := websocket.Dial(dctx, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("conectando em %s: %w", url, err)
+		return nil, fmt.Errorf("connecting to %s: %w", url, err)
 	}
 	return FromConn(conn), nil
 }
 
-// FromConn adota uma conexão já aberta (ex.: a extensão que se conectou ao
-// daemon) e começa a ler eventos. Assim o resto do driver não sabe — nem
-// precisa saber — de onde o CDP vem.
+// FromConn adopts an already-open connection (e.g., the extension that
+// connected to the daemon) and starts reading events. This way the rest of the
+// driver does not know — nor needs to know — where the CDP comes from.
 func FromConn(conn *websocket.Conn) *Client {
-	// Screenshots em base64 podem ser grandes.
+	// Screenshots in base64 can be large.
 	conn.SetReadLimit(256 << 20)
 
 	base, baseCancel := context.WithCancel(context.Background())
@@ -162,18 +162,18 @@ func (c *Client) fail(err error) {
 	close(c.done)
 }
 
-// Send envia um comando e espera o resultado.
+// Send sends a command and waits for the result.
 func (c *Client) Send(ctx context.Context, method string, params any, sessionID string) (json.RawMessage, error) {
 	return c.SendTimeout(ctx, method, params, sessionID, 30*time.Second)
 }
 
-// SendTimeout é Send com prazo explícito.
+// SendTimeout is Send with an explicit deadline.
 func (c *Client) SendTimeout(ctx context.Context, method string, params any, sessionID string, timeout time.Duration) (json.RawMessage, error) {
 	c.stateMu.Lock()
 	if c.closed {
 		err := c.closeErr
 		c.stateMu.Unlock()
-		return nil, fmt.Errorf("conexão CDP fechada: %w", err)
+		return nil, fmt.Errorf("CDP connection closed: %w", err)
 	}
 	id := c.nextID
 	c.nextID++
@@ -205,7 +205,7 @@ func (c *Client) SendTimeout(ctx context.Context, method string, params any, ses
 		c.stateMu.Lock()
 		delete(c.pending, id)
 		c.stateMu.Unlock()
-		return nil, fmt.Errorf("escrevendo %s: %w", method, writeErr)
+		return nil, fmt.Errorf("writing %s: %w", method, writeErr)
 	}
 
 	timer := time.NewTimer(timeout)
@@ -223,7 +223,7 @@ func (c *Client) SendTimeout(ctx context.Context, method string, params any, ses
 		c.stateMu.Lock()
 		delete(c.pending, id)
 		c.stateMu.Unlock()
-		return nil, fmt.Errorf("timeout de %s em %s", timeout, method)
+		return nil, fmt.Errorf("timeout of %s on %s", timeout, method)
 	case <-ctx.Done():
 		c.stateMu.Lock()
 		delete(c.pending, id)
@@ -234,7 +234,7 @@ func (c *Client) SendTimeout(ctx context.Context, method string, params any, ses
 	}
 }
 
-// SendJSON é como Send, mas desserializa o resultado em `out`.
+// SendJSON is like Send, but deserializes the result into `out`.
 func (c *Client) SendJSON(ctx context.Context, method string, params any, sessionID string, out any) error {
 	raw, err := c.Send(ctx, method, params, sessionID)
 	if err != nil {
@@ -246,7 +246,7 @@ func (c *Client) SendJSON(ctx context.Context, method string, params any, sessio
 	return json.Unmarshal(raw, out)
 }
 
-// On registra um handler para um evento. Use "*" para todos. Devolve o cancelador.
+// On registers a handler for an event. Use "*" for all. Returns the canceller.
 func (c *Client) On(method string, h Handler) func() {
 	c.stateMu.Lock()
 	c.nextHid++
@@ -267,7 +267,7 @@ func (c *Client) On(method string, h Handler) func() {
 	}
 }
 
-// Notify envia uma mensagem sem esperar resposta (uma notificação do CDP).
+// Notify sends a message without waiting for a response (a CDP notification).
 func (c *Client) Notify(ctx context.Context, method string, params any) error {
 	payload := map[string]any{"method": method}
 	if params != nil {
@@ -283,22 +283,22 @@ func (c *Client) Notify(ctx context.Context, method string, params any) error {
 	closed := c.closed
 	c.stateMu.Unlock()
 	if closed {
-		return fmt.Errorf("conexão CDP fechada")
+		return fmt.Errorf("CDP connection closed")
 	}
 	return c.conn.Write(ctx, websocket.MessageText, raw)
 }
 
-// Done fecha quando a conexão cai.
+// Done closes when the connection drops.
 func (c *Client) Done() <-chan struct{} { return c.done }
 
-// Err devolve o motivo do fechamento (nil se ainda vivo).
+// Err returns the reason for closure (nil if still alive).
 func (c *Client) Err() error {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	return c.closeErr
 }
 
-// Close encerra a conexão.
+// Close terminates the connection.
 func (c *Client) Close() {
 	c.stateMu.Lock()
 	already := c.closed
@@ -307,5 +307,5 @@ func (c *Client) Close() {
 		return
 	}
 	_ = c.conn.Close(websocket.StatusNormalClosure, "")
-	c.fail(fmt.Errorf("encerrado pelo cliente"))
+	c.fail(fmt.Errorf("closed by client"))
 }

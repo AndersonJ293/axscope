@@ -1,5 +1,5 @@
-// Navegação e convergência: ir para uma URL, histórico, recarregar e esperar a
-// página assentar — em vez de dormir um tempo fixo.
+// Navigation and convergence: go to a URL, history, reload and wait for the page
+// to settle — instead of sleeping a fixed time.
 package browser
 
 import (
@@ -41,7 +41,8 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 	var res struct {
 		TargetID string `json:"targetId"`
 	}
-	// background=true: a aba nova não vira a aba em foco nem levanta a janela.
+	// background=true: the new tab does not become the focused tab nor raise the
+	// window.
 	if err := s.client.SendJSON(ctx, "Target.createTarget",
 		map[string]any{"url": url, "background": true}, "", &res); err != nil {
 		return nil, err
@@ -53,10 +54,10 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	return nil, fmt.Errorf("aba nova não ficou pronta")
+	return nil, fmt.Errorf("new tab did not become ready")
 }
 
-// CloseTab fecha uma aba.
+// CloseTab closes a tab.
 
 func (s *Session) CloseTab(ctx context.Context, ref string) error {
 	tab, err := s.Find(ref)
@@ -68,7 +69,7 @@ func (s *Session) CloseTab(ctx context.Context, ref string) error {
 	return err
 }
 
-// Navigate vai para uma URL e espera convergir.
+// Navigate goes to a URL and waits for convergence.
 
 func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Duration) error {
 	var res struct {
@@ -78,14 +79,14 @@ func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Du
 		return err
 	}
 	if res.ErrorText != "" {
-		return fmt.Errorf("navegação falhou: %s", res.ErrorText)
+		return fmt.Errorf("navigation failed: %s", res.ErrorText)
 	}
 	_ = s.WaitForLoad(ctx, sid, timeout)
 	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
 
-// HistoryMove anda no histórico (-1 volta, +1 avança).
+// HistoryMove moves through the history (-1 back, +1 forward).
 
 func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeout time.Duration) error {
 	var hist struct {
@@ -99,7 +100,7 @@ func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeou
 	}
 	target := hist.CurrentIndex + delta
 	if target < 0 || target >= len(hist.Entries) {
-		return fmt.Errorf("sem histórico para %s", map[int]string{-1: "voltar", 1: "avançar"}[delta])
+		return fmt.Errorf("no history to %s", map[int]string{-1: "back", 1: "forward"}[delta])
 	}
 	if _, err := s.client.Send(ctx, "Page.navigateToHistoryEntry",
 		map[string]any{"entryId": hist.Entries[target].ID}, sid); err != nil {
@@ -110,7 +111,7 @@ func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeou
 	return nil
 }
 
-// Reload recarrega a página.
+// Reload reloads the page.
 
 func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration) error {
 	if _, err := s.client.Send(ctx, "Page.reload", map[string]any{}, sid); err != nil {
@@ -121,7 +122,7 @@ func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration)
 	return nil
 }
 
-// WaitForLoad espera o documento ficar completo.
+// WaitForLoad waits for the document to become complete.
 
 func (s *Session) WaitForLoad(ctx context.Context, sid string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
@@ -142,21 +143,21 @@ func (s *Session) WaitForLoad(ctx context.Context, sid string, timeout time.Dura
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
-	return fmt.Errorf("timeout esperando a página carregar")
+	return fmt.Errorf("timeout waiting for the page to load")
 }
 
-// settleCap é o teto da espera por sossego (ver Settle).
+// settleCap is the ceiling of the wait for quiet (see Settle).
 //
-// Navegação e ação têm bolsas diferentes (45s / 8s), mas nenhuma delas é uma
-// espera por sossego: é o tempo máximo para a página responder. Num app que
-// nunca fica quieto — polling, websocket, telemetria — "sossegar" nunca chega,
-// e usar a bolsa inteira aqui é só tempo perdido em toda ação.
+// Navigation and action have different budgets (45s / 8s), but neither of them
+// is a wait for quiet: it is the maximum time for the page to respond. In an app
+// that never stays still — polling, websocket, telemetry — "settling" never
+// comes, and using the whole budget here is just lost time on every action.
 
 const settleCap = 1500 * time.Millisecond
 
-// Settle espera a rede sossegar: sem requisições em voo por `idle`, ou até
-// settleCap. Quem precisa de mais usa `wait` (por texto), que é o critério
-// confiável.
+// Settle waits for the network to settle: no requests in flight for `idle`, or
+// up to settleCap. Whoever needs more uses `wait` (by text), which is the
+// reliable criterion.
 
 func (s *Session) Settle(ctx context.Context, sid string, idle time.Duration) {
 	deadline := time.Now().Add(settleCap)

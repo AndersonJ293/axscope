@@ -1,11 +1,11 @@
-// axscope — browser dirigido por agente.
+// axscope — agent-driven browser.
 //
-// Um único binário, três papéis:
+// A single binary, three roles:
 //
-//	axscope <comando>   → cliente: fala com o daemon (subindo-o se preciso)
-//	axscope serve       → o daemon (browser vivo, socket unix)
-//	axscope mcp         → servidor MCP sobre stdio, apontando para o mesmo daemon
-//	axscope install     → baixa o Chrome for Testing
+//	axscope <command>   → client: talks to the daemon (bringing it up if needed)
+//	axscope serve       → the daemon (live browser, unix socket)
+//	axscope mcp         → MCP server over stdio, pointing at the same daemon
+//	axscope install     → downloads Chrome for Testing
 package main
 
 import (
@@ -32,7 +32,7 @@ const version = "0.2.0"
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "erro:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
@@ -40,19 +40,20 @@ func main() {
 func run() error {
 	args := os.Args[1:]
 
-	// Flags globais de modo, aceitas antes do comando:
-	//   --ver  → janela de verdade (Chrome for Testing), sessão "ver"
-	//   --leve → sem janela (chrome-headless-shell), padrão
-	// A escolha vale para a sessão inteira: o daemon sobe o browser com ela.
+	// Global mode flags, accepted before the command:
+	//   --chrome   → a real window (Chrome for Testing), session "chrome"
+	//   --headless → no window (chrome-headless-shell), default
+	// The choice holds for the whole session: the daemon brings up the browser
+	// with it.
 	var mode string
 	filtered := make([]string, 0, len(args))
 	for _, a := range args {
 		switch a {
-		case "--ver", "--watch":
-			mode = "ver"
-		case "--leve", "--light":
-			mode = "leve"
-		case "--ext", "--brave", "--extensao":
+		case "--chrome":
+			mode = "chrome"
+		case "--headless":
+			mode = "headless"
+		case "--ext":
 			mode = "ext"
 		default:
 			filtered = append(filtered, a)
@@ -89,10 +90,10 @@ func run() error {
 		defer cancel()
 		return mcpsrv.Run(ctx)
 
-	case "install", "instalar":
+	case "install":
 		return runInstall(args[1:])
 
-	case "engines", "motores":
+	case "engines":
 		for _, e := range browser.DetectEngines() {
 			mark := " "
 			if e.Exists {
@@ -102,16 +103,16 @@ func run() error {
 		}
 		return nil
 
-	case "clean", "limpar":
+	case "clean":
 		return runClean(args[1:])
 
-	case "stop", "encerrar":
+	case "stop":
 		for _, a := range args[1:] {
 			if a == "--all" || a == "all" {
 				return runStopAll()
 			}
 		}
-		// Sem --all, cai no caminho normal (encerra só a sessão atual).
+		// Without --all, falls into the normal path (stops only the current session).
 	}
 
 	req, err := command.Parse(args)
@@ -119,8 +120,8 @@ func run() error {
 		return err
 	}
 
-	// `axscope script -` lê o roteiro do stdin e manda o conteúdo, para não depender
-	// do daemon enxergar o mesmo diretório.
+	// `axscope script -` reads the script from stdin and sends the content, so as
+	// not to depend on the daemon seeing the same directory.
 	if req.Cmd == "script" && req.String("path") == "-" {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
@@ -135,7 +136,7 @@ func run() error {
 		return err
 	}
 	if !resp.OK {
-		fmt.Fprintln(os.Stderr, "erro:", resp.Error)
+		fmt.Fprintln(os.Stderr, "error:", resp.Error)
 		os.Exit(2)
 	}
 	fmt.Println(resp.Text)
@@ -159,33 +160,33 @@ func envOr(key, def string) string {
 	return def
 }
 
-// applyMode ajusta o motor (e a sessão, para os modos coexistirem).
+// applyMode adjusts the engine (and the session, so the modes coexist).
 func applyMode(mode string) {
 	switch mode {
-	case "ver":
+	case "chrome":
 		_ = os.Setenv("AXSCOPE_ENGINE", browser.EngineChrome)
 		if os.Getenv("AXSCOPE_SESSION") == "" {
-			_ = os.Setenv("AXSCOPE_SESSION", "ver")
+			_ = os.Setenv("AXSCOPE_SESSION", "chrome")
 		}
 	case "ext":
 		_ = os.Setenv("AXSCOPE_ENGINE", browser.EngineExt)
 		if os.Getenv("AXSCOPE_SESSION") == "" {
 			_ = os.Setenv("AXSCOPE_SESSION", "ext")
 		}
-	case "leve":
+	case "headless":
 		_ = os.Setenv("AXSCOPE_ENGINE", browser.EngineShell)
 		if os.Getenv("AXSCOPE_SESSION") == "" {
-			_ = os.Setenv("AXSCOPE_SESSION", "leve")
+			_ = os.Setenv("AXSCOPE_SESSION", "headless")
 		}
 	}
 }
 
-// runStopAll encerra todos os daemons vivos (e os browsers que eles subiram).
+// runStopAll stops all live daemons (and the browsers they started).
 func runStopAll() error {
 	dir := filepath.Join(paths.StateDir(), "sessions")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		fmt.Println("nenhuma sessão ativa")
+		fmt.Println("no active sessions")
 		return nil
 	}
 	stopped := 0
@@ -200,28 +201,28 @@ func runStopAll() error {
 			continue
 		}
 		if _, err := daemonclient.SendTo(socketPath, protocol.Request{Cmd: "stop"}); err == nil {
-			fmt.Printf("encerrei a sessão %q\n", session)
+			fmt.Printf("stopped session %q\n", session)
 			stopped++
 		}
 	}
 	if stopped == 0 {
-		fmt.Println("nenhuma sessão ativa")
+		fmt.Println("no active sessions")
 	}
 	return nil
 }
 
-// runClean apaga o que é descartável. Sem --tudo, preserva perfil (logins) e os
-// browsers baixados, que são o que dá trabalho para refazer.
+// runClean deletes what is disposable. Without --all, it preserves the profile
+// (logins) and the downloaded browsers, which are what takes work to redo.
 func runClean(args []string) error {
-	tudo := false
+	all := false
 	for _, a := range args {
-		if a == "--tudo" || a == "tudo" {
-			tudo = true
+		if a == "--all" || a == "all" {
+			all = true
 		}
 	}
 
 	targets := []string{filepath.Join(paths.StateDir(), "logs")}
-	if tudo {
+	if all {
 		targets = append(targets,
 			filepath.Join(paths.StateDir(), "profiles"),
 			filepath.Join(paths.StateDir(), "browsers"),
@@ -235,29 +236,29 @@ func runClean(args []string) error {
 			continue
 		}
 		if err := os.RemoveAll(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "não consegui remover %s: %v\n", dir, err)
+			fmt.Fprintf(os.Stderr, "could not remove %s: %v\n", dir, err)
 			continue
 		}
 		freed += size
-		fmt.Printf("removi %-24s %s\n", filepath.Base(dir), human(size))
+		fmt.Printf("removed %-24s %s\n", filepath.Base(dir), human(size))
 	}
 
-	// Sessões cujo socket já não existe são lixo.
+	// Sessions whose socket no longer exists are garbage.
 	sessionsDir := filepath.Join(paths.StateDir(), "sessions")
 	if entries, err := os.ReadDir(sessionsDir); err == nil {
 		for _, e := range entries {
 			session := strings.TrimSuffix(e.Name(), ".json")
 			if _, err := os.Stat(paths.SocketPath(session)); err != nil {
 				_ = os.Remove(filepath.Join(sessionsDir, e.Name()))
-				fmt.Printf("removi sessão %q (sem daemon)\n", session)
+				fmt.Printf("removed session %q (no daemon)\n", session)
 			}
 		}
 	}
 
 	if freed == 0 {
-		fmt.Println("nada a limpar")
+		fmt.Println("nothing to clean")
 	} else {
-		fmt.Printf("liberado: %s\n", human(freed))
+		fmt.Printf("freed: %s\n", human(freed))
 	}
 	return nil
 }
@@ -289,11 +290,11 @@ func human(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// runInstall baixa os motores pedidos. `--engine` aceita chrome, shell ou all.
+// runInstall downloads the requested engines. `--engine` accepts chrome, shell or all.
 func runInstall(args []string) error {
 	engine := "chrome"
 	for i, a := range args {
-		if (a == "--engine" || a == "--motor") && i+1 < len(args) {
+		if a == "--engine" && i+1 < len(args) {
 			engine = args[i+1]
 		} else if a == "shell" || a == "headless" {
 			engine = "shell"
@@ -303,7 +304,7 @@ func runInstall(args []string) error {
 	switch engine {
 	case "shell", "headless", "chrome-headless-shell":
 		products = []string{"chrome-headless-shell"}
-	case "all", "todos":
+	case "all":
 		products = []string{"chrome", "chrome-headless-shell"}
 	default:
 		products = []string{"chrome"}

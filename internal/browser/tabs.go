@@ -1,4 +1,4 @@
-// Registro de abas: descoberta, anexação sob demanda e troca da aba ativa.
+// Tab registry: discovery, attachment on demand and switching the active tab.
 package browser
 
 import (
@@ -28,20 +28,21 @@ func (s *Session) remember(targetID, url, title string) *Tab {
 	}
 	s.tabs[targetID] = tab
 	s.order = append(s.order, targetID)
-	if s.podeAtivar(targetID) {
+	if s.canActivate(targetID) {
 		s.active = targetID
 	}
 	return tab
 }
 
-// podeAtivar decide se a aba pode virar ativa: só a que estava gravada, ou
-// qualquer uma quando não há preferência.
+// canActivate decides whether the tab can become active: only the one that was
+// stored, or any one when there is no preference.
 
-func (s *Session) podeAtivar(targetID string) bool {
+func (s *Session) canActivate(targetID string) bool {
 	return s.active == "" && (s.prefActive == "" || targetID == s.prefActive)
 }
 
-// SetActiveFile aponta onde a aba ativa é lembrada e carrega o que há lá.
+// SetActiveFile points to where the active tab is remembered and loads what is
+// there.
 
 func (s *Session) attachTarget(targetID, url, title string) {
 	s.mu.Lock()
@@ -50,7 +51,7 @@ func (s *Session) attachTarget(targetID, url, title string) {
 		tab = &Tab{TargetID: targetID, URL: url, Title: title, ready: make(chan struct{})}
 		s.tabs[targetID] = tab
 		s.order = append(s.order, targetID)
-		if s.podeAtivar(targetID) {
+		if s.canActivate(targetID) {
 			s.active = targetID
 		}
 	}
@@ -76,7 +77,7 @@ func (s *Session) attachTarget(targetID, url, title string) {
 	s.mu.Unlock()
 
 	if err != nil || res.SessionID == "" {
-		tab.initErr = fmt.Errorf("não consegui anexar à aba: %v", err)
+		tab.initErr = fmt.Errorf("could not attach to the tab: %v", err)
 		tab.finish()
 		return
 	}
@@ -136,8 +137,9 @@ func (s *Session) initTab(tab *Tab) error {
 		if s2 != sid {
 			return
 		}
-		// Precisa ser assíncrono: o handler roda no laço de leitura e
-		// handleDialog faz um Send (que espera resposta do próprio laço).
+		// It must be asynchronous: the handler runs on the read loop and
+		// handleDialog does a Send (which waits for a response from the loop
+		// itself).
 		go s.handleDialog(sid, params)
 	})
 	return nil
@@ -176,7 +178,7 @@ func (s *Session) removeBySession(sessionID string) {
 	}
 }
 
-// Tabs lista as abas na ordem em que apareceram.
+// Tabs lists the tabs in the order they appeared.
 
 func (s *Session) Tabs() []TabInfo {
 	s.mu.Lock()
@@ -199,7 +201,7 @@ func (s *Session) Tabs() []TabInfo {
 	return out
 }
 
-// activeTab devolve a aba ativa sem esperar anexação.
+// activeTab returns the active tab without waiting for attachment.
 
 func (s *Session) activeTab() (*Tab, error) {
 	s.mu.Lock()
@@ -216,12 +218,12 @@ func (s *Session) activeTab() (*Tab, error) {
 	s.active = id
 	tab := s.tabs[id]
 	if tab == nil {
-		return nil, fmt.Errorf("nenhuma aba aberta")
+		return nil, fmt.Errorf("no tab open")
 	}
 	return tab, nil
 }
 
-// attachIfNeeded anexa a aba se ela ainda não estiver anexada.
+// attachIfNeeded attaches the tab if it is not attached yet.
 
 func (s *Session) attachIfNeeded(tab *Tab) {
 	s.mu.Lock()
@@ -233,7 +235,7 @@ func (s *Session) attachIfNeeded(tab *Tab) {
 	}
 }
 
-// Active devolve a aba ativa já pronta, anexando só ela se preciso.
+// Active returns the active tab already ready, attaching only it if needed.
 
 func (s *Session) Active() (*Tab, error) {
 	tab, err := s.activeTab()
@@ -248,7 +250,7 @@ func (s *Session) Active() (*Tab, error) {
 	return tab, nil
 }
 
-// ActiveSID devolve o sessionId da aba ativa.
+// ActiveSID returns the sessionId of the active tab.
 
 func (s *Session) ActiveSID() (string, error) {
 	tab, err := s.Active()
@@ -258,7 +260,7 @@ func (s *Session) ActiveSID() (string, error) {
 	return tab.SessionID, nil
 }
 
-// Find localiza uma aba por targetId ou por índice 1-based.
+// Find locates a tab by targetId or by 1-based index.
 
 func (s *Session) Find(ref string) (*Tab, error) {
 	s.mu.Lock()
@@ -272,12 +274,13 @@ func (s *Session) Find(ref string) (*Tab, error) {
 	if _, err := fmt.Sscanf(ref, "%d", &index); err == nil && index >= 1 && index <= len(s.order) {
 		return s.tabs[s.order[index-1]], nil
 	}
-	return nil, fmt.Errorf("aba %q não existe (use `axscope tabs`)", ref)
+	return nil, fmt.Errorf("tab %q does not exist (use `axscope tabs`)", ref)
 }
 
-// Select troca a aba ativa. `activate` traz a janela para a frente — por padrão
-// NÃO fazemos isso: roubar foco a cada comando atrapalha quem está trabalhando
-// em outra janela. A aba ativa do driver independe do foco do sistema.
+// Select switches the active tab. `activate` brings the window forward — by
+// default we do NOT do that: stealing focus on every command gets in the way of
+// whoever is working in another window. The driver's active tab does not depend
+// on the system focus.
 
 func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, error) {
 	tab, err := s.Find(ref)
@@ -302,4 +305,5 @@ func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, 
 	return tab, nil
 }
 
-// NewTab abre uma aba e espera ela ficar pronta, sem trazer a janela para frente.
+// NewTab opens a tab and waits for it to be ready, without bringing the window
+// forward.

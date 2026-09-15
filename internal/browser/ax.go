@@ -1,5 +1,5 @@
-// O modelo da árvore de acessibilidade, como o CDP entrega, e as tabelas de
-// papel que dizem o que interessa e o que é cromo de página.
+// The accessibility tree model, as the CDP delivers it, and the role tables that
+// say what matters and what is page chrome.
 package browser
 
 import (
@@ -12,30 +12,33 @@ import (
 
 var noiseNameRe = regexp.MustCompile(`(?i)^(skip (to|navigation)|close jump menu)`)
 
-// scaffoldRoles são agrupadores puros: sem ref, sem texto próprio e sem filho
-// visível, a linha não diz nada e sai. É o caso do "Skip navigation menu".
+// scaffoldRoles are pure groupers: with no ref, no text of their own and no
+// visible child, the line says nothing and drops out. That is the case of
+// "Skip navigation menu".
 
 var scaffoldRoles = map[string]bool{
 	"generic": true, "group": true, "none": true, "": true,
 }
 
-// landmarkRoles são marcos da página. Vazio, só valem se tiverem nome: o nome é
-// a informação. Sem isso, um `<div role="banner" aria-label="Topo">` cujo filho
-// só repete "Topo" sumia inteiro — perdia-se que existe um banner ali.
+// landmarkRoles are page landmarks. Empty, they are only worth it when they
+// have a name: the name is the information. Without that, a
+// `<div role="banner" aria-label="Top">` whose child only repeats "Top" vanished
+// entirely — the fact that a banner exists there was lost.
 
 var landmarkRoles = map[string]bool{
 	"banner": true, "navigation": true, "main": true, "region": true,
 	"complementary": true, "contentinfo": true, "form": true, "search": true,
 }
 
-// anonRoles são invólucros anônimos: sem nome, sem texto próprio e sem alvo,
-// não valem linha — somem e os filhos sobem no lugar.
+// anonRoles are anonymous wrappers: with no name, no text of their own and no
+// target, they are not worth a line — they vanish and the children rise in their
+// place.
 
 var anonRoles = map[string]bool{
 	"": true, "none": true, "generic": true, "paragraph": true,
 }
 
-// interactiveRoles são os papéis que rendem `ref` (o agente pode agir neles).
+// interactiveRoles are the roles that yield a `ref` (the agent can act on them).
 
 var interactiveRoles = map[string]bool{
 	"button": true, "link": true, "textbox": true, "searchbox": true,
@@ -46,25 +49,26 @@ var interactiveRoles = map[string]bool{
 	"menulist": true, "textfield": true, "popupbutton": true,
 }
 
-// frameRoles são os papéis do elemento que hospeda um documento à parte.
+// frameRoles are the roles of the element that hosts a separate document.
 var frameRoles = map[string]bool{"Iframe": true, "iframe": true}
 
-// skipRoles são papéis que nunca entram na leitura (ruído puro).
+// skipRoles are roles that never enter the reading (pure noise).
 
 var skipRoles = map[string]bool{
 	"ListMarker": true, "LineBreak": true, "none": true, "presentation": true,
 	"InlineTextBox": true,
 }
 
-// layoutRoles são containers de layout: atravessa sem emitir linha, mesmo que
-// tenham "nome" (é o caso dos LayoutTableCell de tabelas de layout).
+// layoutRoles are layout containers: they pass through without emitting a line,
+// even if they have a "name" (that is the case of the LayoutTableCell of layout
+// tables).
 
 var layoutRoles = map[string]bool{
 	"LayoutTable": true, "LayoutTableRow": true, "LayoutTableCell": true,
 	"LayoutTableColumn": true, "Row": true,
 }
 
-// structuralRoles são containers/papéis que ajudam a ler a página.
+// structuralRoles are containers/roles that help read the page.
 
 var structuralRoles = map[string]bool{
 	"heading": true, "img": true, "image": true, "list": true, "listitem": true,
@@ -79,21 +83,22 @@ var structuralRoles = map[string]bool{
 	"toolbar": true, "radiogroup": true,
 }
 
-// textuais são papéis que somem para dentro de uma linha de tabela: só carregam
-// texto. Role que não está aqui mantém a linha expandida — achatar é o que pode
-// esconder coisa, então o desconhecido não é achatado.
-var textuais = map[string]bool{
+// textualRoles are roles that vanish into a table row: they only carry text. A
+// role not listed here keeps the row expanded — flattening is what can hide
+// something, so the unknown is not flattened.
+var textualRoles = map[string]bool{
 	"": true, "none": true, "generic": true, "paragraph": true,
 	"strong": true, "emphasis": true, "code": true, "term": true,
 	"definition": true, "blockquote": true, "note": true,
-	// A célula entra porque é ela o invólucro do texto dentro da linha: sem
-	// isso a linha nunca poderia ser achatada — a conferência é feita na célula.
+	// The cell enters because it is the wrapper of the text inside the row:
+	// without that the row could never be flattened — the check is done at the
+	// cell.
 	"cell": true, "gridcell": true, "columnheader": true, "rowheader": true,
 }
 
-// celulasPapel são os papéis que a linha de tabela precisa ter como filhos para
-// caber numa linha só.
-var celulasPapel = map[string]bool{
+// cellRoles are the roles the table row needs to have as children to fit in a
+// single line.
+var cellRoles = map[string]bool{
 	"cell": true, "gridcell": true, "columnheader": true, "rowheader": true,
 }
 
@@ -211,4 +216,4 @@ func axRawString(raw json.RawMessage) string {
 	return strings.Trim(string(raw), `"`)
 }
 
-// norm colapsa espaços/quebras e corta espaços das pontas.
+// norm collapses spaces/newlines and trims leading/trailing spaces.

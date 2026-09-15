@@ -1,5 +1,5 @@
-// Ações de entrada: clique, hover, preenchimento, tecla, seleção e captura.
-// Nada de coordenada como primeira opção.
+// Input actions: click, hover, fill, key, select and check.
+// No coordinates as the first option.
 package browser
 
 import (
@@ -21,7 +21,7 @@ func visualDelay() time.Duration {
 	return 0
 }
 
-// cursorDelayMs lê AXSCOPE_CURSOR_DELAY (ms). Default 160.
+// cursorDelayMs reads AXSCOPE_CURSOR_DELAY (ms). Default 160.
 func cursorDelayMs() int {
 	raw := envInt("AXSCOPE_CURSOR_DELAY", 160)
 	if raw < 0 {
@@ -30,25 +30,29 @@ func cursorDelayMs() int {
 	return raw
 }
 
-// Click clica no alvo com mouse real (e cursor visível).
+// Click clicks the target with a real mouse (and a visible cursor).
 //
-// Antes de clicar, confere se o clique vai chegar — e recusa quando não vai:
+// Before clicking, it checks whether the click will land — and refuses when it
+// will not:
 //
-//   - o alvo não aceita ação (desabilitado, `aria-disabled`, `pointer-events:
-//     none`) — o `ok` de antes era mentira, medido na missão 15 do laboratório;
-//   - o alvo está coberto por outra camada. O clique é entregue e quem o recebe
-//     é outra coisa, e a página não reclama: a ação responderia ok do mesmo
-//     jeito. Medido no laboratório v2 — com o modal aberto, clicar num botão do
-//     feed devolveu ok, o contador não mudou, e ainda por cima o clique caiu no
-//     modal (com o efeito colateral que a página quisesse dar a ele).
+//   - the target does not accept the action (disabled, `aria-disabled`,
+//     `pointer-events: none`) — the `ok` from before was a lie, measured in
+//     mission 15 of the lab;
+//   - the target is covered by another layer. The click is delivered and whoever
+//     receives it is something else, and the page does not complain: the action
+//     would answer ok just the same. Measured in lab v2 — with the modal open,
+//     clicking a button of the feed returned ok, the counter did not change, and
+//     on top of that the click fell on the modal (with whatever side effect the
+//     page wanted to give it).
 //
-// Recusar é melhor do que agir às cegas: a ação não acontece, mas o motivo
-// chega a quem pediu — e a saída para forçar existe (`pos=x,y`).
+// Refusing is better than acting blindly: the action does not happen, but the
+// reason reaches whoever asked — and the way to force it exists (`pos=x,y`).
 //
-// Depois de clicar, confere se o evento passou pelo alvo. A conferência de antes
-// enxerga camadas, mas não sabe para onde o navegador reentrega o evento; a
-// escuta sabe. Se não passou, o aviso volta junto com o ok — o clique foi
-// enviado, e quem lê precisa saber que ele não chegou.
+// After clicking, it checks whether the event passed through the target. The
+// check before sees layers, but it does not know where the browser re-delivers
+// the event; the listener does. If it did not pass, the warning comes back
+// together with the ok — the click was sent, and whoever reads needs to know it
+// did not land.
 func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) (string, error) {
 	if button == "" {
 		button = "left"
@@ -56,12 +60,12 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	if count <= 0 {
 		count = 1
 	}
-	cx, cy := t.ondeAgir()
+	cx, cy := t.actionPoint()
 
-	if motivo := recusaDeClique(ctx, client, session, t.ObjectID, cx, cy); motivo != "" {
-		return "", fmt.Errorf("%s", motivo)
+	if reason := clickRefusal(ctx, client, session, t.ObjectID, cx, cy); reason != "" {
+		return "", fmt.Errorf("%s", reason)
 	}
-	preparaClique(ctx, client, session, t.ObjectID)
+	prepareClick(ctx, client, session, t.ObjectID)
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.Press(ctx, client, session, cx, cy, button)
@@ -95,46 +99,49 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	}
 	time.Sleep(30 * time.Millisecond)
 
-	if !cliqueChegou(ctx, client, session, t.ObjectID) {
-		return "o clique não chegou ao alvo — alguma camada na frente deve ter interceptado", nil
+	if !clickReached(ctx, client, session, t.ObjectID) {
+		return "the click did not reach the target — some layer in front must have intercepted it", nil
 	}
 	return "", nil
 }
 
-// preparaClique arma uma escuta no alvo para saber se o evento passa por ele.
+// prepareClick arms a listener on the target to know whether the event passes
+// through it.
 //
-// É a conferência que não depende de heurística: `elementFromPoint` enxerga
-// camadas, mas não sabe para onde o navegador reentrega o evento (shadow host,
-// iframe). A escuta sabe — ela dispara se o alvo estiver no caminho do evento,
-// seja como alvo, seja como ancestral dele (aí o evento sobe até ele).
-func preparaClique(ctx context.Context, client *cdp.Client, session, objectID string) {
+// It is the check that does not depend on heuristics: `elementFromPoint` sees
+// layers, but it does not know where the browser re-delivers the event (shadow
+// host, iframe). The listener knows — it fires if the target is in the event's
+// path, whether as the target or as an ancestor of it (then the event bubbles up
+// to it).
+func prepareClick(ctx context.Context, client *cdp.Client, session, objectID string) {
 	_, _ = client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
 			if (!this.addEventListener) return false;
-			if (this.__buCliqueFn) this.removeEventListener('click', this.__buCliqueFn, true);
-			this.__buClique = 0;
-			this.__buCliqueFn = () => { this.__buClique++; };
-			this.addEventListener('click', this.__buCliqueFn, { capture: true });
+			if (this.__buClickFn) this.removeEventListener('click', this.__buClickFn, true);
+			this.__buClick = 0;
+			this.__buClickFn = () => { this.__buClick++; };
+			this.addEventListener('click', this.__buClickFn, { capture: true });
 			return true;
 		}`,
 		"returnByValue": true,
 	}, session)
 }
 
-// cliqueChegou devolve quantos cliques o alvo viu desde preparaClique, e desarma
-// a escuta. Zero depois de clicar é o que interessa: o evento não passou por ele.
-func cliqueChegou(ctx context.Context, client *cdp.Client, session, objectID string) bool {
+// clickReached returns how many clicks the target saw since prepareClick, and
+// disarms the listener. Zero after clicking is what matters: the event did not
+// pass through it.
+func clickReached(ctx context.Context, client *cdp.Client, session, objectID string) bool {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
-			const vistos = this.__buClique || 0;
-			delete this.__buClique;
-			if (this.__buCliqueFn) {
-				this.removeEventListener('click', this.__buCliqueFn, true);
-				delete this.__buCliqueFn;
+			const seen = this.__buClick || 0;
+			delete this.__buClick;
+			if (this.__buClickFn) {
+				this.removeEventListener('click', this.__buClickFn, true);
+				delete this.__buClickFn;
 			}
-			return vistos;
+			return seen;
 		}`,
 		"returnByValue": true,
 	}, session)
@@ -152,58 +159,61 @@ func cliqueChegou(ctx context.Context, client *cdp.Client, session, objectID str
 	return res.Result.Value > 0
 }
 
-// jsEstaNoPonto define `estaNoPonto(el, x, y)`: é o elemento que está no ponto?
+// jsIsAtPoint defines `isAtPoint(el, x, y)`: is it the element at the point?
 //
-// A mesma pergunta serve ao clique (antes de clicar) e à rolagem (para saber se
-// alcançou), e fica num lugar só: as duas respostas discordarem é pior do que
-// não perguntar. Foi assim que a rolagem passou a dizer "já está visível" para um
-// alvo recortado pela lista virtualizada — e o clique, logo depois, o recusou.
+// The same question serves the click (before clicking) and the scroll (to know
+// whether it reached), and it lives in a single place: the two answers
+// disagreeing is worse than not asking. That was how the scroll came to say
+// "already visible" for a target clipped by the virtualized list — and the
+// click, right after, refused it.
 //
-// Ancestral no DOM claro não conta: o evento borbulha para cima e não desce, e o
-// que aparece recortado fica fora do ponto. O shadow host acima conta, porque aí
-// o navegador reentrega o evento ao conteúdo da sombra.
-const jsEstaNoPonto = `
-	const estaNoPonto = (el, x, y) => {
-		const sob = el.ownerDocument.elementFromPoint(x, y);
-		if (!sob) return false;
-		if (sob === el) return true;
-		if (el.contains && el.contains(sob)) return true;
-		let n = el, cruzouSombra = false;
+// A clear DOM ancestor does not count: the event bubbles up and does not go
+// down, and what appears clipped stays outside the point. The shadow host above
+// counts, because there the browser re-delivers the event to the shadow content.
+const jsIsAtPoint = `
+	const isAtPoint = (el, x, y) => {
+		const over = el.ownerDocument.elementFromPoint(x, y);
+		if (!over) return false;
+		if (over === el) return true;
+		if (el.contains && el.contains(over)) return true;
+		let n = el, crossedShadow = false;
 		while (n) {
-			if (n === sob) return cruzouSombra;
+			if (n === over) return crossedShadow;
 			if (n.parentNode) { n = n.parentNode; continue; }
-			const raiz = n.getRootNode ? n.getRootNode() : null;
-			if (raiz && raiz.host) { n = raiz.host; cruzouSombra = true; continue; }
+			const root = n.getRootNode ? n.getRootNode() : null;
+			if (root && root.host) { n = root.host; crossedShadow = true; continue; }
 			return false;
 		}
 		return false;
 	};`
 
-// jsRecusaDeAcao define `recusaAcao(el)`: o alvo recusa clique, e por quê?
+// jsActionRefusal defines `actionRefusal(el)`: does the target refuse the click,
+// and why?
 //
-// Uma definição só, usada pela conferência antes de clicar e pela espera por
-// "habilitado": as duas discordarem seria pior do que não perguntar.
-const jsRecusaDeAcao = `
-	const recusaAcao = (el) => {
+// A single definition, used by the check before clicking and by the wait for
+// "enabled": the two disagreeing would be worse than not asking.
+const jsActionRefusal = `
+	const actionRefusal = (el) => {
 		if (el.matches && el.matches(':disabled')) {
-			return 'o alvo está desabilitado — espere ele habilitar antes de clicar';
+			return 'the target is disabled — wait for it to become enabled before clicking';
 		}
 		if (el.getAttribute && el.getAttribute('aria-disabled') === 'true') {
-			return 'o alvo está com aria-disabled — espere ele habilitar antes de clicar';
+			return 'the target has aria-disabled — wait for it to become enabled before clicking';
 		}
 		if (getComputedStyle(el).pointerEvents === 'none') {
-			return 'o alvo está com pointer-events: none — o ponteiro não chega nele';
+			return 'the target has pointer-events: none — the pointer cannot reach it';
 		}
 		return '';
 	};`
 
-// Enabled diz se o alvo aceita ação — o mesmo critério que o clique usa antes
-// de clicar, para quem precisa esperar por isso em vez de adivinhar um tempo.
+// Enabled says whether the target accepts the action — the same criterion that
+// the click uses before clicking, for whoever needs to wait for it instead of
+// guessing a time.
 func Enabled(ctx context.Context, client *cdp.Client, session, objectID string) bool {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
-		"functionDeclaration": `function () {` + jsRecusaDeAcao + `
-			return recusaAcao(this) === '';
+		"functionDeclaration": `function () {` + jsActionRefusal + `
+			return actionRefusal(this) === '';
 		}`,
 		"returnByValue": true,
 	}, session)
@@ -221,37 +231,38 @@ func Enabled(ctx context.Context, client *cdp.Client, session, objectID string) 
 	return res.Result.Value
 }
 
-// recusaDeClique devolve por que o clique não deve ser enviado — ou "" se o
-// caminho está livre. A frase já vem com a saída, porque quem lê é o agente.
+// clickRefusal returns why the click should not be sent — or "" if the path is
+// clear. The sentence already comes with the way out, because whoever reads is
+// the agent.
 //
-// O ponto conferido é o mesmo que será clicado. Dentro de um iframe as
-// coordenadas da página não valem, então lá vale o centro medido no documento do
-// próprio alvo — que é o mesmo ponto relativo que o navegador acerta lá dentro.
-func recusaDeClique(ctx context.Context, client *cdp.Client, session, objectID string, x, y float64) string {
+// The point checked is the same one that will be clicked. Inside an iframe the
+// page coordinates do not hold, so there the center measured in the target's own
+// document holds — which is the same relative point the browser hits in there.
+func clickRefusal(ctx context.Context, client *cdp.Client, session, objectID string, x, y float64) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
-		"functionDeclaration": `function (px, py) {` + jsEstaNoPonto + jsRecusaDeAcao + `
-			const descreve = (el) => {
-				const dono = (el.closest && el.closest('[id], [class]')) || el;
-				const cls = typeof dono.className === 'string' && dono.className.trim()
-					? '.' + dono.className.trim().split(/\s+/).join('.') : '';
-				return (dono.tagName || '?').toLowerCase() + (dono.id ? '#' + dono.id : '') + cls;
+		"functionDeclaration": `function (px, py) {` + jsIsAtPoint + jsActionRefusal + `
+			const describe = (el) => {
+				const owner = (el.closest && el.closest('[id], [class]')) || el;
+				const cls = typeof owner.className === 'string' && owner.className.trim()
+					? '.' + owner.className.trim().split(/\s+/).join('.') : '';
+				return (owner.tagName || '?').toLowerCase() + (owner.id ? '#' + owner.id : '') + cls;
 			};
-			const recusa = recusaAcao(this);
-			if (recusa) return recusa;
-			let emFrame = false;
-			try { emFrame = window.top !== window; } catch (e) { emFrame = true; }
+			const refusal = actionRefusal(this);
+			if (refusal) return refusal;
+			let inFrame = false;
+			try { inFrame = window.top !== window; } catch (e) { inFrame = true; }
 			let cx = px, cy = py;
-			if (emFrame) {
+			if (inFrame) {
 				const r = this.getBoundingClientRect();
 				cx = r.left + r.width / 2;
 				cy = r.top + r.height / 2;
 			}
-			if (estaNoPonto(this, cx, cy)) return '';
-			const sob = this.ownerDocument.elementFromPoint(cx, cy);
-			if (!sob) return 'o ponto do clique está fora da tela';
-			return 'o alvo está coberto por ' + descreve(sob) +
-				' — para clicar no ponto assim mesmo, use pos=x,y';
+			if (isAtPoint(this, cx, cy)) return '';
+			const over = this.ownerDocument.elementFromPoint(cx, cy);
+			if (!over) return 'the click point is off screen';
+			return 'the target is covered by ' + describe(over) +
+				' — to click the point anyway, use pos=x,y';
 		}`,
 		"arguments": []any{
 			map[string]any{"value": x},
@@ -273,18 +284,19 @@ func recusaDeClique(ctx context.Context, client *cdp.Client, session, objectID s
 	return res.Result.Value
 }
 
-// Hover passa o mouse por cima do alvo, entrando de fora para dentro.
+// Hover moves the mouse over the target, entering from outside in.
 //
-// Entrar de fora importa: mover o ponteiro para onde ele já está não gera
-// `pointerenter`. Sem isso, um alvo com lógica de enter — botão que foge, menu
-// que abre no hover, tooltip — via o gesto chegar e a ferramenta responder ok,
-// sem a página ver nada. Medido no botão fujão do laboratório: quatro hovers
-// seguidos produziram três fugas, e a quarta só veio depois de tirar o mouse.
+// Entering from outside matters: moving the pointer to where it already is does
+// not generate `pointerenter`. Without that, a target with enter logic — a
+// button that runs away, a menu that opens on hover, a tooltip — saw the gesture
+// arrive and the tool answer ok, without the page seeing anything. Measured on
+// the lab's runaway button: four hovers in a row produced three escapes, and the
+// fourth only came after moving the mouse away.
 func Hover(ctx context.Context, client *cdp.Client, session string, t *Target, p Presenter) error {
-	cx, cy := t.ondeAgir()
+	cx, cy := t.actionPoint()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 
-	fx, fy := pontoFora(ctx, client, session, t.Rect)
+	fx, fy := outsidePoint(ctx, client, session, t.Rect)
 	_ = p.MoveCursor(ctx, client, session, fx, fy)
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseMoved", "x": fx, "y": fy,
@@ -302,11 +314,12 @@ func Hover(ctx context.Context, client *cdp.Client, session string, t *Target, p
 	return err
 }
 
-// pontoFora devolve um ponto no viewport fora da caixa do alvo, para o ponteiro
-// ter de onde entrar. Prefere os lados: na linha do meio do alvo costuma haver
-// espaço livre, enquanto acima/abaixo pode cair dentro de um vizinho.
-func pontoFora(ctx context.Context, client *cdp.Client, session string, r dom.Rect) (float64, float64) {
-	const folga = 6
+// outsidePoint returns a point in the viewport outside the target's box, so the
+// pointer has somewhere to enter from. It prefers the sides: on the target's
+// middle line there is usually free space, while above/below may fall inside a
+// neighbor.
+func outsidePoint(ctx context.Context, client *cdp.Client, session string, r dom.Rect) (float64, float64) {
+	const margin = 6
 	cx := r.X + r.Width/2
 	cy := r.Y + r.Height/2
 
@@ -325,32 +338,32 @@ func pontoFora(ctx context.Context, client *cdp.Client, session string, r dom.Re
 	if err == nil {
 		_ = json.Unmarshal(raw, &dims)
 	}
-	largura, altura := dims.Result.Value.W, dims.Result.Value.H
-	if largura == 0 {
-		largura, altura = 1280, 720
+	width, height := dims.Result.Value.W, dims.Result.Value.H
+	if width == 0 {
+		width, height = 1280, 720
 	}
 
-	if x := r.X - folga; x >= 0 {
+	if x := r.X - margin; x >= 0 {
 		return x, cy
 	}
-	if x := r.X + r.Width + folga; x <= largura {
+	if x := r.X + r.Width + margin; x <= width {
 		return x, cy
 	}
-	if y := r.Y - folga; y >= 0 {
+	if y := r.Y - margin; y >= 0 {
 		return cx, y
 	}
-	if y := r.Y + r.Height + folga; y <= altura {
+	if y := r.Y + r.Height + margin; y <= height {
 		return cx, y
 	}
 	return 0, 0
 }
 
-// Fill substitui o conteúdo do campo (foco + seleção + insertText).
+// Fill replaces the field's content (focus + selection + insertText).
 func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
-	if ok, motivo := classificaCampo(descreveCampo(ctx, client, session, t.ObjectID)); !ok {
-		return "", fmt.Errorf("%s", motivo)
+	if ok, reason := classifyField(describeField(ctx, client, session, t.ObjectID)); !ok {
+		return "", fmt.Errorf("%s", reason)
 	}
-	cx, cy := t.ondeAgir()
+	cx, cy := t.actionPoint()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
 
@@ -375,18 +388,18 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d / 2)
 	}
-	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": normalizarQuebras(text)}, session); err != nil {
+	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": normalizeNewlines(text)}, session); err != nil {
 		return "", err
 	}
-	return avisoDePreenchimento(text, valorDoCampo(ctx, client, session, t.ObjectID)), nil
+	return fillWarning(text, fieldValue(ctx, client, session, t.ObjectID)), nil
 }
 
-// Type digita caractere a caractere (dispara handlers de teclado).
+// Type types character by character (it fires keyboard handlers).
 func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
-	if ok, motivo := classificaCampo(descreveCampo(ctx, client, session, t.ObjectID)); !ok {
-		return "", fmt.Errorf("%s", motivo)
+	if ok, reason := classifyField(describeField(ctx, client, session, t.ObjectID)); !ok {
+		return "", fmt.Errorf("%s", reason)
 	}
-	cx, cy := t.ondeAgir()
+	cx, cy := t.actionPoint()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
 
@@ -397,9 +410,9 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	}, session); err != nil {
 		return "", err
 	}
-	for _, r := range normalizarQuebras(text) {
-		if tecla := teclaPara(r); tecla != "" {
-			if err := Press(ctx, client, session, tecla); err != nil {
+	for _, r := range normalizeNewlines(text) {
+		if key := keyFor(r); key != "" {
+			if err := Press(ctx, client, session, key); err != nil {
 				return "", err
 			}
 			time.Sleep(8 * time.Millisecond)
@@ -418,16 +431,16 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		}
 		time.Sleep(8 * time.Millisecond)
 	}
-	return avisoDePreenchimento(text, valorDoCampo(ctx, client, session, t.ObjectID)), nil
+	return fillWarning(text, fieldValue(ctx, client, session, t.ObjectID)), nil
 }
 
-// textoDaTecla é o que a tecla insere, quando insere.
+// keyText is what the key inserts, when it inserts.
 //
-// O CDP só insere com `text` no keyDown: mandar Enter sem ele dispara o handler
-// e não quebra a linha — medido no laboratório v3, "primeira" + Enter +
-// "segunda" virava "primeirasegunda". As teclas nomeadas que produzem espaço em
-// branco precisam do mesmo cuidado que as imprimíveis.
-func textoDaTecla(key string) string {
+// The CDP only inserts with `text` in keyDown: sending Enter without it fires
+// the handler and does not break the line — measured in lab v3, "first" + Enter
+// + "second" became "firstsecond". The named keys that produce whitespace need
+// the same care as the printable ones.
+func keyText(key string) string {
 	switch key {
 	case "Enter":
 		return "\r"
@@ -437,7 +450,7 @@ func textoDaTecla(key string) string {
 	return ""
 }
 
-// Press envia uma tecla/atalho (ex.: "Enter", "Control+A").
+// Press sends a key/shortcut (e.g. "Enter", "Control+A").
 func Press(ctx context.Context, client *cdp.Client, session, combo string) error {
 	parts := strings.Split(combo, "+")
 	modifiers := 0
@@ -456,7 +469,7 @@ func Press(ctx context.Context, client *cdp.Client, session, combo string) error
 	key := strings.TrimSpace(parts[len(parts)-1])
 	info := keyInfo(key)
 	if info.code == "" {
-		return fmt.Errorf("tecla desconhecida: %q", key)
+		return fmt.Errorf("unknown key: %q", key)
 	}
 	base := map[string]any{
 		"key": info.key, "code": info.code,
@@ -468,9 +481,9 @@ func Press(ctx context.Context, client *cdp.Client, session, combo string) error
 	for k, v := range base {
 		down[k] = v
 	}
-	// Caractere imprimível precisa de `text` para inserir — e as teclas que
-	// inserem espaço em branco também (Enter vira "\r", Tab vira "\t").
-	if t := textoDaTecla(key); t != "" {
+	// A printable character needs `text` to insert — and the keys that insert
+	// whitespace too (Enter becomes "\r", Tab becomes "\t").
+	if t := keyText(key); t != "" {
 		down["text"] = t
 	} else if len(key) == 1 && modifiers == 0 {
 		down["text"] = key
@@ -526,7 +539,7 @@ func keyInfo(name string) keyDef {
 	return keyDef{}
 }
 
-// Select escolhe uma opção num <select> nativo (por valor ou rótulo).
+// Select chooses an option in a native <select> (by value or label).
 func Select(ctx context.Context, client *cdp.Client, session string, t *Target, want string) error {
 	if _, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": t.ObjectID,
@@ -538,7 +551,7 @@ func Select(ctx context.Context, client *cdp.Client, session string, t *Target, 
 					chosen = opt; break;
 				}
 			}
-			if (!chosen) throw new Error('opção não encontrada: ' + want);
+			if (!chosen) throw new Error('option not found: ' + want);
 			chosen.selected = true;
 			this.dispatchEvent(new Event('input', { bubbles: true }));
 			this.dispatchEvent(new Event('change', { bubbles: true }));
@@ -552,8 +565,9 @@ func Select(ctx context.Context, client *cdp.Client, session string, t *Target, 
 	return nil
 }
 
-// SetChecked garante o estado de um checkbox/radio (clica se precisar). Devolve
-// `true` quando clicou e o aviso quando o clique não chegou ao alvo.
+// SetChecked guarantees the state of a checkbox/radio (it clicks if needed). It
+// returns `true` when it clicked and the warning when the click did not reach
+// the target.
 func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
@@ -574,6 +588,6 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 	if res.Result.Value == want {
 		return false, "", nil
 	}
-	aviso, err := Click(ctx, client, session, t, "left", 1, p)
-	return true, aviso, err
+	warning, err := Click(ctx, client, session, t, "left", 1, p)
+	return true, warning, err
 }

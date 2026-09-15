@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// squeeze reduz linhas em branco repetidas.
+// squeeze reduces repeated blank lines.
 func squeeze(s string) string {
 	lines := strings.Split(s, "\n")
 	out := make([]string, 0, len(lines))
@@ -25,7 +25,7 @@ func squeeze(s string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
-// splitTokens divide uma linha respeitando aspas simples e duplas.
+// splitTokens splits a line respecting single and double quotes.
 func splitTokens(line string) ([]string, error) {
 	var tokens []string
 	var cur strings.Builder
@@ -53,7 +53,7 @@ func splitTokens(line string) ([]string, error) {
 		}
 	}
 	if quote != 0 {
-		return nil, fmt.Errorf("aspas não fechadas")
+		return nil, fmt.Errorf("unterminated quotes")
 	}
 	if has || cur.Len() > 0 {
 		tokens = append(tokens, cur.String())

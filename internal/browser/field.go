@@ -1,10 +1,10 @@
-// Campo de texto: quem aceita o que se quer escrever, e o que conferir depois.
+// Text field: who accepts what one wants to write, and what to check afterward.
 //
-// Medido no laboratório v2: `fill` num `<select>` respondia ok e o valor
-// continuava o de antes; `fill` num `<label>` respondia ok sem ter onde
-// escrever. Texto que não entra é pior do que erro — o agente segue como se
-// tivesse preenchido, e só descobre o contrário ao conferir o resultado. Por
-// isso a recusa diz o comando que faz o que se queria.
+// Measured in lab v2: `fill` on a `<select>` answered ok and the value stayed
+// the previous one; `fill` on a `<label>` answered ok without having anywhere to
+// write. Text that does not go in is worse than an error — the agent goes on as
+// if it had filled, and only discovers the opposite when checking the result.
+// That is why the refusal states the command that does what was wanted.
 package browser
 
 import (
@@ -15,27 +15,27 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// campoDescritor é o que a página diz do alvo antes de receber texto.
-type campoDescritor struct {
+// fieldDescriptor is what the page says about the target before receiving text.
+type fieldDescriptor struct {
 	Tag      string `json:"tag"`
-	Type     string `json:"tipo"`
-	Editable bool   `json:"editavel"`
-	Role     string `json:"papel"`
+	Type     string `json:"type"`
+	Editable bool   `json:"editable"`
+	Role     string `json:"role"`
 }
 
-// descreveCampo pergunta à página o que é o alvo. Falha em silêncio: sem
-// descrição, o campo é tratado como aceito — quem barra o errado é o aviso do
-// fim, não um palpite nosso.
-func descreveCampo(ctx context.Context, client *cdp.Client, session, objectID string) campoDescritor {
-	var d campoDescritor
+// describeField asks the page what the target is. It fails silently: without a
+// description, the field is treated as accepted — what blocks the wrong one is
+// the warning at the end, not a guess of ours.
+func describeField(ctx context.Context, client *cdp.Client, session, objectID string) fieldDescriptor {
+	var d fieldDescriptor
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
 			return {
 				tag: this.tagName || '',
-				tipo: (this.getAttribute && this.getAttribute('type')) || '',
-				editavel: !!this.isContentEditable,
-				papel: (this.getAttribute && this.getAttribute('role')) || ''
+				type: (this.getAttribute && this.getAttribute('type')) || '',
+				editable: !!this.isContentEditable,
+				role: (this.getAttribute && this.getAttribute('role')) || ''
 			};
 		}`,
 		"returnByValue": true,
@@ -45,72 +45,73 @@ func descreveCampo(ctx context.Context, client *cdp.Client, session, objectID st
 	}
 	var res struct {
 		Result struct {
-			Value campoDescritor `json:"value"`
+			Value fieldDescriptor `json:"value"`
 		} `json:"result"`
 	}
 	_ = json.Unmarshal(raw, &res)
 	return res.Result.Value
 }
 
-// classificaCampo diz se o alvo aceita texto digitado — e, quando não aceita, o
-// comando que faz o que se queria.
-func classificaCampo(d campoDescritor) (bool, string) {
+// classifyField says whether the target accepts typed text — and, when it does
+// not, the command that does what was wanted.
+func classifyField(d fieldDescriptor) (bool, string) {
 	tag := strings.ToLower(d.Tag)
-	tipo := strings.ToLower(d.Type)
+	kind := strings.ToLower(d.Type)
 	switch {
 	case tag == "textarea" || d.Editable:
 		return true, ""
 	case tag == "select":
-		return false, "é um <select> — para escolher a opção use `axscope select <alvo> <valor>`"
+		return false, "it is a <select> — to choose the option use `axscope select <target> <value>`"
 	case tag == "input":
-		switch tipo {
+		switch kind {
 		case "checkbox", "radio":
-			return false, "é uma caixa de marcar — use `axscope check <alvo>` (ou `uncheck`)"
+			return false, "it is a checkbox — use `axscope check <target>` (or `uncheck`)"
 		case "file":
-			return false, "recebe arquivo — use `axscope upload <arquivo> alvo=<alvo>`"
+			return false, "it receives a file — use `axscope upload <file> target=<target>`"
 		case "submit", "button", "reset", "image":
-			return false, "é um botão — use `axscope click <alvo>`"
+			return false, "it is a button — use `axscope click <target>`"
 		}
 		return true, ""
 	case d.Role == "textbox" || d.Role == "searchbox":
 		return true, ""
 	default:
-		return false, "não é campo de texto (é <" + tag + ">) — texto vai em input, textarea ou contenteditable"
+		return false, "not a text field (it is <" + tag + ">) — text goes into input, textarea or contenteditable"
 	}
 }
 
-// avisoDePreenchimento diz quando o texto não entrou.
+// fillWarning says when the text did not go in.
 //
-// Campo com máscara muda o valor de propósito (o telefone vira "(77) 9 9999…"),
-// então diferença não é sinal de nada. Continuar vazio é: nada entrou.
-func avisoDePreenchimento(enviado, valor string) string {
-	if enviado != "" && strings.TrimSpace(valor) == "" {
-		return "o campo continua vazio — o texto não entrou"
+// A masked field changes the value on purpose (the phone becomes "(77) 9 9999…"),
+// so a difference is a sign of nothing. Staying empty is: nothing went in.
+func fillWarning(sent, value string) string {
+	if sent != "" && strings.TrimSpace(value) == "" {
+		return "the field is still empty — the text did not go in"
 	}
 	return ""
 }
 
-// normalizarQuebras troca CRLF por LF: o texto vem de onde vier (Windows, um
-// arquivo, o agente), e o campo não tem o que fazer com o `\r` sobrando.
-func normalizarQuebras(texto string) string {
-	return strings.ReplaceAll(texto, "\r\n", "\n")
+// normalizeNewlines swaps CRLF for LF: the text comes from wherever it comes
+// from (Windows, a file, the agent), and the field has nothing to do with the
+// leftover `\r`.
+func normalizeNewlines(text string) string {
+	return strings.ReplaceAll(text, "\r\n", "\n")
 }
 
-// teclaPara devolve a tecla nomeada que representa o caractere — ou "", quando o
-// caractere vai como texto mesmo.
+// keyFor returns the named key that represents the character — or "", when the
+// character goes as text itself.
 //
-// É só a quebra de linha, e ela importa: mandar `\n` como texto não insere nada,
-// então o caractere sumia em silêncio na digitação caractere a caractere —
-// medido no laboratório v3, `alfa\nbeta` virava `alfabeta`.
-func teclaPara(r rune) string {
+// It is only the line break, and it matters: sending `\n` as text inserts
+// nothing, so the character vanished silently when typing character by character
+// — measured in lab v3, `alfa\nbeta` became `alfabeta`.
+func keyFor(r rune) string {
 	if r == '\n' || r == '\r' {
 		return "Enter"
 	}
 	return ""
 }
 
-// valorDoCampo lê o que o campo tem depois do preenchimento.
-func valorDoCampo(ctx context.Context, client *cdp.Client, session, objectID string) string {
+// fieldValue reads what the field has after filling.
+func fieldValue(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {

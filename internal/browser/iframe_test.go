@@ -2,41 +2,41 @@ package browser
 
 import "testing"
 
-// Regressão (missão 13): a leitura mostrava o iframe como uma linha só — o
-// documento de dentro é outra árvore de acessibilidade, e sem juntar as duas o
-// agente não ficava sabendo que existe um botão ali.
-func TestEnxertarFrame_PoeOConteudoDentroDoIframe(t *testing.T) {
-	pai := []axNode{
+// Regression (mission 13): the reading showed the iframe as a single line — the
+// inner document is another accessibility tree, and without joining the two the
+// agent never learned that a button exists there.
+func TestGraftFrame_PutsContentInsideIframe(t *testing.T) {
+	parent := []axNode{
 		ax("root", "", "RootWebArea", "", 0),
 		ax("frame", "root", "Iframe", "", 42),
 	}
-	// A árvore do frame, como o CDP entrega: numerada a partir do próprio root e
-	// com o nome do documento dela.
-	filho := []axNode{
-		ax("root", "", "RootWebArea", "Documento de dentro", 0),
+	// The frame's tree, as the CDP delivers it: numbered from its own root and
+	// with its document's name.
+	child := []axNode{
+		ax("root", "", "RootWebArea", "Inner document", 0),
 		ax("h", "root", "heading", "Iframe zone", 0),
-		ax("b", "root", "button", "Clique dentro", 43),
+		ax("b", "root", "button", "Click inside", 43),
 	}
 
-	juntos := append(pai, enxertarFrame(filho, "f0:", "frame")...)
-	snap := montarTexto(juntos, SnapshotOptions{})
+	joined := append(parent, graftFrame(child, "f0:", "frame")...)
+	snap := buildText(joined, SnapshotOptions{})
 
-	// A raiz do frame não vira linha: `RootWebArea "Documento de dentro"` seria
-	// ruído dentro do iframe, e o que interessa é o conteúdo.
-	esperado := `- Iframe
+	// The frame root does not become a line: `RootWebArea "Inner document"`
+	// would be noise inside the iframe, and what matters is the content.
+	expected := `- Iframe
   - heading "Iframe zone"
-  - button "Clique dentro" [ref=e1]`
-	if snap.Text != esperado {
-		t.Errorf("texto divergiu:\n--- obtido ---\n%s\n--- esperado ---\n%s", snap.Text, esperado)
+  - button "Click inside" [ref=e1]`
+	if snap.Text != expected {
+		t.Errorf("text diverged:\n--- got ---\n%s\n--- expected ---\n%s", snap.Text, expected)
 	}
 }
 
-// O custo de ir buscar as árvores dos frames fica com quem tem iframe.
-func TestTemIframe(t *testing.T) {
-	if temIframe([]axNode{ax("a", "", "button", "x", 1)}) {
-		t.Error("sem iframe na árvore, não devia ir buscar frames")
+// The cost of going to fetch the frame trees stays with whoever has an iframe.
+func TestHasIframe(t *testing.T) {
+	if hasIframe([]axNode{ax("a", "", "button", "x", 1)}) {
+		t.Error("with no iframe in the tree, it should not go fetch frames")
 	}
-	if !temIframe([]axNode{ax("a", "", "Iframe", "", 1)}) {
-		t.Error("com iframe, tem de juntar")
+	if !hasIframe([]axNode{ax("a", "", "Iframe", "", 1)}) {
+		t.Error("with an iframe, it has to join")
 	}
 }

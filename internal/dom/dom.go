@@ -1,6 +1,6 @@
-// Acesso a DOM e runtime da página: um lugar só para avaliar JavaScript, medir
-// elementos e rolar. All que fala com o Runtime/DOM em nome do domínio passa
-// por aqui, para não haver três cópias da mesma avaliação.
+// DOM and page runtime access: a single place to evaluate JavaScript, measure
+// elements and scroll. Everything that talks to Runtime/DOM on behalf of the
+// domain goes through here, so there aren't three copies of the same evaluation.
 package dom
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// Rect é um retângulo em coordenadas de viewport (CSS px).
+// Rect is a rectangle in viewport coordinates (CSS px).
 type Rect struct {
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
@@ -19,12 +19,12 @@ type Rect struct {
 	Height float64 `json:"height"`
 }
 
-// Eval avalia `expr` e devolve o valor bruto (returnByValue).
+// Eval evaluates `expr` and returns the raw value (returnByValue).
 func Eval(ctx context.Context, c *cdp.Client, session, expr string) (json.RawMessage, error) {
 	return evaluate(ctx, c, session, expr, false)
 }
 
-// EvalAwait é Eval esperando promessas.
+// EvalAwait is Eval waiting for promises.
 func EvalAwait(ctx context.Context, c *cdp.Client, session, expr string) (json.RawMessage, error) {
 	return evaluate(ctx, c, session, expr, true)
 }
@@ -58,14 +58,14 @@ func evaluate(ctx context.Context, c *cdp.Client, session, expr string, await bo
 			detail = res.ExceptionDetails.Exception.Description
 		}
 		if detail == "" {
-			detail = "erro ao avaliar na página"
+			detail = "error while evaluating on the page"
 		}
 		return nil, fmt.Errorf("%s", detail)
 	}
 	return res.Result.Value, nil
 }
 
-// EvalString é Eval desserializando o valor em string.
+// EvalString is Eval deserializing the value into a string.
 func EvalString(ctx context.Context, c *cdp.Client, session, expr string) (string, error) {
 	raw, err := Eval(ctx, c, session, expr)
 	if err != nil {
@@ -81,7 +81,7 @@ func EvalString(ctx context.Context, c *cdp.Client, session, expr string) (strin
 	return s, nil
 }
 
-// EvalObject avalia `expr` e devolve o objectId do elemento (vazio se null).
+// EvalObject evaluates `expr` and returns the element's objectId (empty if null).
 func EvalObject(ctx context.Context, c *cdp.Client, session, expr string) (string, error) {
 	raw, err := c.Send(ctx, "Runtime.evaluate", map[string]any{
 		"expression":    expr,
@@ -108,7 +108,7 @@ func EvalObject(ctx context.Context, c *cdp.Client, session, expr string) (strin
 	return res.Result.ObjectID, nil
 }
 
-// BoxOf devolve o retângulo do elemento em px de viewport.
+// BoxOf returns the element's rectangle in viewport px.
 func BoxOf(ctx context.Context, c *cdp.Client, session, objectID string) (Rect, error) {
 	raw, err := c.Send(ctx, "DOM.getBoxModel", map[string]any{"objectId": objectID}, session)
 	if err == nil {
@@ -143,7 +143,7 @@ func BoxOf(ctx context.Context, c *cdp.Client, session, objectID string) (Rect, 
 		}
 	}
 
-	// Fallback: getBoundingClientRect no contexto do elemento.
+	// Fallback: getBoundingClientRect in the element's context.
 	raw, err = c.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
@@ -164,12 +164,12 @@ func BoxOf(ctx context.Context, c *cdp.Client, session, objectID string) (Rect, 
 		return Rect{}, err
 	}
 	if res.Result.Value.Width == 0 && res.Result.Value.Height == 0 {
-		return Rect{}, fmt.Errorf("elemento sem tamanho")
+		return Rect{}, fmt.Errorf("element has no size")
 	}
 	return res.Result.Value, nil
 }
 
-// ScrollTo garante o elemento visível no viewport, sem animação própria.
+// ScrollTo makes sure the element is visible in the viewport, with no animation of its own.
 func ScrollTo(ctx context.Context, c *cdp.Client, session, objectID string) error {
 	_, err := c.Send(ctx, "DOM.scrollIntoViewIfNeeded",
 		map[string]any{"objectId": objectID}, session)

@@ -1,9 +1,9 @@
-// Encontra, sobe e conecta ao Chromium.
+// Finds, starts and connects to Chromium.
 //
-// Duas formas de entrar:
-//  1. Launch: sobe um Chrome for Testing (ou o do sistema) com perfil próprio e
-//     persistente, headed por padrão, e lê a URL CDP do stderr.
-//  2. Attach: conecta a um Chromium já aberto com --remote-debugging-port.
+// Two ways in:
+//  1. Launch: starts a Chrome for Testing (or the system one) with its own
+//     persistent profile, headed by default, and reads the CDP URL from stderr.
+//  2. Attach: connects to a Chromium already open with --remote-debugging-port.
 package browser
 
 import (
@@ -28,15 +28,15 @@ import (
 
 var devToolsRe = regexp.MustCompile(`DevTools listening on (ws://\S+)`)
 
-// Engines suportados.
+// Supported engines.
 const (
-	// EngineChrome é o Chrome for Testing: janela de verdade, cursor visível.
+	// EngineChrome is Chrome for Testing: a real window, a visible cursor.
 	EngineChrome = "chrome"
-	// EngineShell é o chrome-headless-shell: o mesmo motor e o mesmo CDP,
-	// sem janela — mais leve, mas sem cursor renderizado.
+	// EngineShell is chrome-headless-shell: the same engine and the same CDP,
+	// without a window — lighter, but with no rendered cursor.
 	EngineShell = "shell"
-	// EngineExt dirige o navegador do usuário (Brave) pela extensão, via
-	// chrome.debugger: perfil real, com os logins já feitos.
+	// EngineExt drives the user's browser (Brave) through the extension, via
+	// chrome.debugger: a real profile, with the logins already made.
 	EngineExt = "ext"
 )
 
@@ -51,7 +51,7 @@ var systemCandidates = []string{
 	"microsoft-edge",
 }
 
-// LaunchOptions descreve como subir o browser.
+// LaunchOptions describes how to start the browser.
 type LaunchOptions struct {
 	Session    string
 	Engine     string
@@ -59,11 +59,11 @@ type LaunchOptions struct {
 	Executable string
 	WindowSize string
 	ExtraArgs  []string
-	// Porta fixa de debug; 0 escolhe uma livre (lida do stderr).
+	// Fixed debug port; 0 chooses a free one (read from stderr).
 	Port int
 }
 
-// Handle é um browser pronto para uso.
+// Handle is a browser ready for use.
 type Handle struct {
 	Client     *cdp.Client
 	WSURL      string
@@ -80,7 +80,8 @@ func engineProduct(engine string) string {
 	return "chrome"
 }
 
-// ResolveExecutable acha o Chromium: flag, env, baixado por `axscope install`, sistema.
+// ResolveExecutable finds Chromium: flag, env, downloaded by `axscope install`,
+// system.
 func ResolveExecutable(engine, explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
@@ -98,24 +99,24 @@ func ResolveExecutable(engine, explicit string) (string, error) {
 		}
 	}
 	if engine == EngineShell {
-		return "", fmt.Errorf("chrome-headless-shell não instalado: rode `axscope install --engine shell`")
+		return "", fmt.Errorf("chrome-headless-shell not installed: run `axscope install --engine shell`")
 	}
 	for _, name := range systemCandidates {
 		if p, err := exec.LookPath(name); err == nil {
 			return p, nil
 		}
 	}
-	return "", fmt.Errorf("nenhum Chromium encontrado: rode `axscope install` ou defina AXSCOPE_CHROME")
+	return "", fmt.Errorf("no Chromium found: run `axscope install` or set AXSCOPE_CHROME")
 }
 
-// Engine é um motor disponível no sistema.
+// Engine is an engine available on the system.
 type Engine struct {
 	Product string
 	Path    string
 	Exists  bool
 }
 
-// DetectEngines lista os motores instalados (baixados e do sistema).
+// DetectEngines lists the installed engines (downloaded and system).
 func DetectEngines() []Engine {
 	var out []Engine
 	for _, product := range []string{"chrome", "chrome-headless-shell"} {
@@ -164,15 +165,16 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 		"--window-size=" + size,
 		"--window-position=60,60",
 	}
-	// chrome-headless-shell já é headless: não recebe --headless=new.
+	// chrome-headless-shell is already headless: it does not get --headless=new.
 	if opts.Headless && opts.Engine != EngineShell {
 		args = append(args, "--headless=new")
 	}
 	if opts.Headless || opts.Engine == EngineShell {
 		args = append(args, "--disable-gpu")
 	}
-	// A árvore de acessibilidade é ligada sob demanda pelo domínio Accessibility.
-	// Forçá-la no arranque custa memória em todo processo; só ligamos se pedido.
+	// The accessibility tree is turned on on demand by the Accessibility
+	// domain. Forcing it at startup costs memory in every process; we only turn
+	// it on if requested.
 	if envBool("AXSCOPE_FORCE_AX", false) {
 		args = append(args, "--force-renderer-accessibility")
 	}
@@ -180,8 +182,8 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 	return args
 }
 
-// ensureProfilePrefs deixa o arranque determinístico: sem restaurar as abas de
-// rodadas anteriores, que só poluem a janela de quem está olhando.
+// ensureProfilePrefs makes startup deterministic: without restoring the tabs of
+// previous runs, which only pollute the window of whoever is watching.
 func ensureProfilePrefs(profile string) {
 	prefsPath := filepath.Join(profile, "Default", "Preferences")
 	if err := os.MkdirAll(filepath.Dir(prefsPath), 0o755); err != nil {
@@ -190,7 +192,7 @@ func ensureProfilePrefs(profile string) {
 	prefs := map[string]any{}
 	if data, err := os.ReadFile(prefsPath); err == nil {
 		if err := json.Unmarshal(data, &prefs); err != nil {
-			return // não mexe em JSON que não entendemos
+			return // do not touch JSON we do not understand
 		}
 	}
 	prefs["profile"] = withKey(prefs["profile"], "exit_type", "Normal")
@@ -211,7 +213,7 @@ func withKey(v any, key string, val any) map[string]any {
 	return m
 }
 
-// Launch sobe o Chromium e devolve a conexão CDP pronta.
+// Launch starts Chromium and returns the ready CDP connection.
 func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
 	executable, err := ResolveExecutable(opts.Engine, opts.Executable)
 	if err != nil {
@@ -224,14 +226,15 @@ func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
 	ensureProfilePrefs(profile)
 
 	cmd := exec.Command(executable, buildArgs(opts, profile)...)
-	// Grupo próprio de processos: dá para encerrar o browser inteiro de uma vez.
+	// Its own process group: it is possible to terminate the whole browser at
+	// once.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("subindo %s: %w", executable, err)
+		return nil, fmt.Errorf("starting %s: %w", executable, err)
 	}
 
 	wsURL, err := waitForDevTools(stderr, cmd, 30*time.Second)
@@ -260,8 +263,9 @@ func waitForDevTools(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration)
 	var mu sync.Mutex
 	var tail strings.Builder
 
-	// O fim do stderr é o sinal de que o processo morreu: assim não precisamos
-	// chamar cmd.Wait() em paralelo com a leitura (o que fecharia o pipe).
+	// The end of stderr is the sign that the process died: this way we do not
+	// need to call cmd.Wait() in parallel with the reading (which would close
+	// the pipe).
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -282,7 +286,7 @@ func waitForDevTools(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration)
 			errCh <- err
 			return
 		}
-		errCh <- fmt.Errorf("stderr fechou sem anunciar o DevTools")
+		errCh <- fmt.Errorf("stderr closed without announcing DevTools")
 	}()
 
 	snapshotTail := func() string {
@@ -293,7 +297,7 @@ func waitForDevTools(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration)
 
 	select {
 	case url := <-urlCh:
-		go func() { _ = cmd.Wait() }() // reap quando o browser sair
+		go func() { _ = cmd.Wait() }() // reap when the browser exits
 		return url, nil
 	case err := <-errCh:
 		_ = cmd.Wait()
@@ -301,11 +305,11 @@ func waitForDevTools(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration)
 	case <-time.After(timeout):
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		_ = cmd.Wait()
-		return "", fmt.Errorf("Chrome não subiu em %s. stderr:\n%s", timeout, snapshotTail())
+		return "", fmt.Errorf("Chrome did not start within %s. stderr:\n%s", timeout, snapshotTail())
 	}
 }
 
-// Attach conecta a um Chromium já aberto (host:port ou ws://...).
+// Attach connects to an already open Chromium (host:port or ws://...).
 func Attach(ctx context.Context, target string) (*Handle, error) {
 	wsURL := target
 	if !strings.HasPrefix(target, "ws://") && !strings.HasPrefix(target, "wss://") {
@@ -320,11 +324,11 @@ func Attach(ctx context.Context, target string) (*Handle, error) {
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return nil, fmt.Errorf("lendo %s/json/version: %w", base, err)
+			return nil, fmt.Errorf("reading %s/json/version: %w", base, err)
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("%s/json/version devolveu %d", base, resp.StatusCode)
+			return nil, fmt.Errorf("%s/json/version returned %d", base, resp.StatusCode)
 		}
 		var info struct {
 			WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
@@ -333,7 +337,7 @@ func Attach(ctx context.Context, target string) (*Handle, error) {
 			return nil, err
 		}
 		if info.WebSocketDebuggerURL == "" {
-			return nil, fmt.Errorf("sem webSocketDebuggerUrl em %s", base)
+			return nil, fmt.Errorf("no webSocketDebuggerUrl at %s", base)
 		}
 		wsURL = info.WebSocketDebuggerURL
 	}
@@ -341,15 +345,15 @@ func Attach(ctx context.Context, target string) (*Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Handle{Client: client, WSURL: wsURL, Executable: "(anexado)", Attached: true}, nil
+	return &Handle{Client: client, WSURL: wsURL, Executable: "(attached)", Attached: true}, nil
 }
 
-// Exited informa se o processo do browser que subimos já morreu.
+// Exited reports whether the browser process we started has already died.
 func (h *Handle) Exited() bool {
 	return h.Cmd != nil && h.Cmd.ProcessState != nil && h.Cmd.ProcessState.Exited()
 }
 
-// Kill encerra o browser inteiro (só quando fomos nós que subimos).
+// Kill terminates the whole browser (only when we were the ones who started it).
 func (h *Handle) Kill() {
 	if h.Cmd == nil || h.Cmd.Process == nil {
 		return
@@ -357,7 +361,7 @@ func (h *Handle) Kill() {
 	_ = syscall.Kill(-h.Cmd.Process.Pid, syscall.SIGTERM)
 }
 
-// ProfilePath devolve o diretório de perfil padrão de uma sessão.
+// ProfilePath returns the default profile directory of a session.
 func ProfilePath(session string) string {
 	return filepath.Join(paths.StateDir(), "profiles", session)
 }

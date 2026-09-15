@@ -1,5 +1,5 @@
-// Sessão do browser: o modelo (abas, alvo ativo, observadores) e o ciclo de
-// vida da conexão.
+// Browser session: the model (tabs, active target, observers) and the connection
+// lifecycle.
 package browser
 
 import (
@@ -14,7 +14,7 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// Tab é uma aba (target de página) com sua sessão CDP.
+// Tab is a tab (a page target) with its CDP session.
 type Tab struct {
 	TargetID  string
 	SessionID string
@@ -22,19 +22,19 @@ type Tab struct {
 	Title     string
 	ready     chan struct{}
 	initErr   error
-	// tried marca que já tentamos anexar (com sucesso ou não), para não tentar
-	// de novo e fechar o canal duas vezes.
+	// tried marks that we already tried to attach (successfully or not), so as
+	// not to try again and close the channel twice.
 	tried bool
 	once  sync.Once
 }
 
-// finish fecha o canal de pronto exatamente uma vez.
+// finish closes the ready channel exactly once.
 
 func (t *Tab) finish() {
 	t.once.Do(func() { close(t.ready) })
 }
 
-// TabInfo é o que o agente vê em `tabs`.
+// TabInfo is what the agent sees in `tabs`.
 
 type TabInfo struct {
 	Index    int    `json:"index"`
@@ -44,27 +44,27 @@ type TabInfo struct {
 	URL      string `json:"url"`
 }
 
-// Session mantém as abas vivas e o estado de convergência.
+// Session keeps the tabs alive and the convergence state.
 
 type Session struct {
 	ctx     context.Context
 	client  *cdp.Client
 	Observe *Observe
-	// Presenter desenha a ação no navegador. O domínio não conhece a
-	// implementação — ela é injetada por quem constrói a sessão.
+	// Presenter draws the action in the browser. The domain does not know the
+	// implementation — it is injected by whoever builds the session.
 	Presenter Presenter
 
 	mu     sync.Mutex
 	tabs   map[string]*Tab
 	order  []string
 	active string
-	// activeFile é onde a aba ativa é lembrada, e prefActive é o que estava
-	// gravado. Reiniciar o daemon não pode trocar a aba ativa por baixo do
-	// agente — o primeiro comando depois iria para a aba errada.
+	// activeFile is where the active tab is remembered, and prefActive is what
+	// was stored. Restarting the daemon cannot swap the active tab under the
+	// agent — the first command after would go to the wrong tab.
 	activeFile string
 	prefActive string
-	// attaching evita anexar duas vezes ao mesmo target (corrida entre o
-	// targetCreated e o attach explícito do bootstrap).
+	// attaching avoids attaching twice to the same target (a race between
+	// targetCreated and the bootstrap's explicit attach).
 	attaching map[string]bool
 
 	inflight     map[string]map[string]struct{}
@@ -80,7 +80,7 @@ type targetInfo struct {
 	Title    string `json:"title"`
 }
 
-// NewSession liga a descoberta de targets e as abas existentes.
+// NewSession wires target discovery and the existing tabs.
 
 func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, presenter Presenter) (*Session, error) {
 	s := &Session{
@@ -103,9 +103,9 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 }
 
 func (s *Session) wireTargets() {
-	// Anexamos a partir de targetCreated (discover), e não de setAutoAttach:
-	// autoAttach + attach explícito criavam duas sessões para o mesmo target e
-	// o comando ia para a sessão errada (Page.enable travava).
+	// We attach from targetCreated (discover), and not from setAutoAttach:
+	// autoAttach + explicit attach created two sessions for the same target and
+	// the command went to the wrong session (Page.enable hung).
 	s.client.On("Target.targetCreated", func(params json.RawMessage, _ string) {
 		var p struct {
 			TargetInfo targetInfo `json:"targetInfo"`
@@ -113,8 +113,8 @@ func (s *Session) wireTargets() {
 		if json.Unmarshal(params, &p) != nil || p.TargetInfo.Type != "page" {
 			return
 		}
-		// Handler roda no laço de leitura: não pode bloquear num Send, e aqui
-		// só registramos — a anexação acontece sob demanda.
+		// The handler runs on the read loop: it cannot block on a Send, and
+		// here we only register — the attachment happens on demand.
 		s.remember(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title)
 	})
 
@@ -166,10 +166,10 @@ func (s *Session) bootstrap(ctx context.Context) error {
 	if err := s.client.SendJSON(ctx, "Target.getTargets", map[string]any{}, "", &got); err != nil {
 		return err
 	}
-	// Conhecemos todas as abas, mas só anexamos a que for realmente usada.
-	// No navegador do usuário isso pode ser dezenas de abas; anexar em todas
-	// seria invasivo (faixa de depuração em cada uma, overhead, conflito com
-	// o DevTools aberto).
+	// We know all the tabs, but we only attach to the one that is really used.
+	// In the user's browser that can be dozens of tabs; attaching to all of them
+	// would be invasive (a debugging bar on each one, overhead, conflict with
+	// the open DevTools).
 	for _, ti := range got.TargetInfos {
 		if ti.Type != "page" {
 			continue
@@ -177,8 +177,8 @@ func (s *Session) bootstrap(ctx context.Context) error {
 		s.remember(ti.TargetID, ti.URL, ti.Title)
 	}
 
-	// Engines como chrome-headless-shell não nascem com uma página: é preciso
-	// criá-la. Sem isso o daemon fica vivo e sem aba nenhuma.
+	// Engines like chrome-headless-shell are not born with a page: it must be
+	// created. Without that the daemon stays alive with no tab at all.
 	if len(s.Tabs()) == 0 {
 		var created struct {
 			TargetID string `json:"targetId"`
@@ -189,14 +189,14 @@ func (s *Session) bootstrap(ctx context.Context) error {
 		}
 	}
 
-	// Anexa a aba ativa (a primeira da lista: a que o usuário está vendo).
+	// Attach the active tab (the first in the list: the one the user is seeing).
 	if _, err := s.Active(); err != nil {
-		return nil // sem aba ainda; o comando seguinte reporta
+		return nil // no tab yet; the next command reports it
 	}
 	return nil
 }
 
-// remember registra uma aba sem anexar a ela.
+// remember registers a tab without attaching to it.
 
 func (s *Session) SetActiveFile(path string) {
 	s.mu.Lock()
@@ -211,14 +211,15 @@ func (s *Session) SetActiveFile(path string) {
 		return
 	}
 	s.prefActive = id
-	// O bootstrap já escolheu uma aba antes desta chamada; a preferência vem
-	// depois e manda — desde que a aba ainda exista.
+	// The bootstrap already chose a tab before this call; the preference comes
+	// afterward and rules — as long as the tab still exists.
 	if _, ok := s.tabs[id]; ok {
 		s.active = id
 	}
 }
 
-// saveActive grava a aba ativa (fora do lock: erro de disco não trava o resto).
+// saveActive stores the active tab (outside the lock: a disk error does not
+// block the rest).
 
 func (s *Session) saveActive() {
 	s.mu.Lock()
@@ -230,8 +231,8 @@ func (s *Session) saveActive() {
 	_ = os.WriteFile(path, []byte(id), 0o644)
 }
 
-// attachTarget anexa a uma aba registrada, uma única vez. Bloqueia num Send:
-// nunca chame do laço de leitura sem goroutine.
+// attachTarget attaches to a registered tab, a single time. It blocks on a Send:
+// never call it from the read loop without a goroutine.
 
 func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	var p struct {
@@ -256,7 +257,7 @@ func (s *Session) handleDialog(sid string, params json.RawMessage) {
 		map[string]any{"accept": accept}, sid)
 }
 
-// UpdateHUD mostra abas + rótulo da última ação no overlay.
+// UpdateHUD shows tabs + the last action's label in the overlay.
 
 func (s *Session) UpdateHUD(ctx context.Context, label string) {
 	tab, err := s.Active()

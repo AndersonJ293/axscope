@@ -14,7 +14,7 @@ import (
 func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope %s <alvo>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("usage: axscope %s <target>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -41,18 +41,18 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	if count == 2 {
 		action = "dblclick"
 	}
-	aviso, err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter)
+	notice, err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter)
 	if err != nil {
-		return protocol.Fail(falhaDeAcao(action, target, err))
+		return protocol.Fail(actionFailure(action, target, err))
 	}
-	return ok(a.finish(ctx, sess, sid, comAviso(action+" "+target, aviso), before))
+	return ok(a.finish(ctx, sess, sid, withNotice(action+" "+target, notice), before))
 }
 
 func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	fromSpec := req.String("from")
 	toSpec := req.String("to")
 	if fromSpec == "" || toSpec == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope drag <de> <para>"))
+		return protocol.Fail(fmt.Errorf("usage: axscope drag <from> <to>"))
 	}
 	from, sid, err := a.resolve(ctx, sess, fromSpec)
 	if err != nil {
@@ -63,54 +63,54 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 		return protocol.Fail(err)
 	}
 	at := ""
-	if req.Bool("topo", false) {
+	if req.Bool("top", false) {
 		at = "top"
-	} else if req.Bool("base", false) {
+	} else if req.Bool("bottom", false) {
 		at = "bottom"
 	}
 	before := a.errCount(sess, sid)
-	tipo, mudou, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
+	kind, changed, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
 		DropAt: at,
-		Type:   req.String("tipo"),
+		Type:   req.String("type"),
 	}, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	label := fmt.Sprintf("drag %s -> %s [%s]", fromSpec, toSpec, tipo)
-	if !mudou {
-		// Gesto que não pega pode ter terminado em clique real no alvo.
-		label += " (não vi mudança de posição — pode não ter pegado)"
+	label := fmt.Sprintf("drag %s -> %s [%s]", fromSpec, toSpec, kind)
+	if !changed {
+		// A gesture that does not catch may have ended as a real click on the target.
+		label += " (saw no position change — it may not have caught)"
 	}
 	return ok(a.finish(ctx, sess, sid, label, before))
 }
 
 func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
-	// O argumento se chama `value`, e não `text`, porque `text=` é um seletor de
-	// alvo: com o nome `text` o parser engolia `text=Rótulo` como par chave=valor
-	// e o alvo virava o conteúdo. Eram justamente os dois comandos em que mais se
-	// quer mirar por texto.
+	// The argument is called `value`, not `text`, because `text=` is a target
+	// selector: with the name `text` the parser swallowed `text=Label` as a
+	// key=value pair and the target became the content. They were precisely the
+	// two commands in which one most wants to aim by text.
 	text := req.String("value")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope %s <alvo> <valor>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("usage: axscope %s <target> <value>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
 		return protocol.Fail(err)
 	}
 	before := a.errCount(sess, sid)
-	var aviso string
+	var notice string
 	if req.Cmd == "fill" {
-		aviso, err = browser.Fill(ctx, a.client(), sid, t, text, sess.Presenter)
+		notice, err = browser.Fill(ctx, a.client(), sid, t, text, sess.Presenter)
 	} else {
-		aviso, err = browser.Type(ctx, a.client(), sid, t, text, sess.Presenter)
+		notice, err = browser.Type(ctx, a.client(), sid, t, text, sess.Presenter)
 	}
 	if err != nil {
-		return protocol.Fail(falhaDeAcao(req.Cmd, target, err))
+		return protocol.Fail(actionFailure(req.Cmd, target, err))
 	}
 	label := fmt.Sprintf("%s %s = %s", req.Cmd, target, strconv.Quote(text))
-	if aviso != "" {
-		label += " (" + aviso + ")"
+	if notice != "" {
+		label += " (" + notice + ")"
 	}
 	return ok(a.finish(ctx, sess, sid, label, before))
 }
@@ -118,7 +118,7 @@ func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protoco
 func (a *Agent) press(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	key := req.String("key")
 	if key == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope press <tecla>"))
+		return protocol.Fail(fmt.Errorf("usage: axscope press <key>"))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
@@ -135,7 +135,7 @@ func (a *Agent) selectOption(ctx context.Context, sess *browser.Session, req pro
 	target := req.String("target")
 	value := req.String("value")
 	if target == "" || value == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope select <alvo> <valor>"))
+		return protocol.Fail(fmt.Errorf("usage: axscope select <target> <value>"))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -151,7 +151,7 @@ func (a *Agent) selectOption(ctx context.Context, sess *browser.Session, req pro
 func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
 	if target == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope %s <alvo>", req.Cmd))
+		return protocol.Fail(fmt.Errorf("usage: axscope %s <target>", req.Cmd))
 	}
 	t, sid, err := a.resolve(ctx, sess, target)
 	if err != nil {
@@ -159,82 +159,83 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	}
 	before := a.errCount(sess, sid)
 	want := req.Cmd == "check"
-	clicked, aviso, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
+	clicked, notice, err := browser.SetChecked(ctx, a.client(), sid, t, want, sess.Presenter)
 	if err != nil {
-		return protocol.Fail(falhaDeAcao(req.Cmd, target, err))
+		return protocol.Fail(actionFailure(req.Cmd, target, err))
 	}
 	label := req.Cmd + " " + target
 	if !clicked {
-		label += " (já estava)"
+		label += " (was already)"
 	}
-	return ok(a.finish(ctx, sess, sid, comAviso(label, aviso), before))
+	return ok(a.finish(ctx, sess, sid, withNotice(label, notice), before))
 }
 
-// comAviso acrescenta ao rótulo o que a ação não conseguiu — o clique que foi
-// enviado e não chegou ao alvo.
-func comAviso(label, aviso string) string {
-	if aviso == "" {
+// withNotice adds to the label what the action could not do — the click that was
+// sent and did not reach the target.
+func withNotice(label, notice string) string {
+	if notice == "" {
 		return label
 	}
-	return label + " (" + aviso + ")"
+	return label + " (" + notice + ")"
 }
 
-// falhaDeAcao embrulha o motivo pelo qual a ação não foi enviada.
+// actionFailure wraps the reason the action was not sent.
 //
-// A recusa precisa dizer o que fazer — foi para isso que ela substituiu o `ok`
-// silencioso: quem lê a resposta fica sabendo o próximo passo (esperar
-// habilitar, tirar o que cobre, ou clicar pelo ponto com `pos=x,y`).
-func falhaDeAcao(acao, alvo string, err error) error {
-	return fmt.Errorf("%s em %s não foi enviado: %w", acao, alvo, err)
+// The refusal has to say what to do — that is why it replaced the silent `ok`:
+// whoever reads the response learns the next step (wait for it to enable, remove
+// what covers it, or click by point with `pos=x,y`).
+func actionFailure(action, target string, err error) error {
+	return fmt.Errorf("%s on %s was not sent: %w", action, target, err)
 }
 
-// scroll rola. Sem alvo, rola o que estiver sob o centro da tela; com
-// `alvo=<ref|texto|css>`, rola o container daquele alvo.
+// scroll scrolls. Without a target, it scrolls whatever is under the center of
+// the screen; with `target=<ref|text|css>`, it scrolls the container of that
+// target.
 //
-// O alvo existe porque "rolar" tem dois donos possíveis: a página e uma caixa
-// que rola dentro dela. A lista de infinite scroll do laboratório mostrou a
-// diferença — rolar a página não carrega o próximo lote, e o alvo é a única
-// forma de dizer qual caixa rolar.
+// The target exists because "scroll" has two possible owners: the page and a box
+// that scrolls inside it. The lab's infinite scroll list showed the difference —
+// scrolling the page does not load the next batch, and the target is the only
+// way to say which box to scroll.
 func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	raw := req.String("dy")
 	if raw == "" {
-		return protocol.Fail(fmt.Errorf("uso: axscope scroll <dy> [alvo=<ref|texto|css>] (dy positivo desce)"))
+		return protocol.Fail(fmt.Errorf("usage: axscope scroll <dy> [target=<ref|text|css>] (positive dy goes down)"))
 	}
 	dy, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
-		return protocol.Fail(fmt.Errorf("dy inválido: %q", raw))
+		return protocol.Fail(fmt.Errorf("invalid dy: %q", raw))
 	}
 	sid, err := a.activeSID(sess)
 	if err != nil {
 		return protocol.Fail(err)
 	}
 
-	if alvo := req.String("alvo"); alvo != "" {
-		t, _, err := a.resolve(ctx, sess, alvo)
+	if target := req.String("target"); target != "" {
+		t, _, err := a.resolve(ctx, sess, target)
 		if err != nil {
 			return protocol.Fail(err)
 		}
-		onde, err := browser.ScrollTarget(ctx, a.client(), sid, t.ObjectID, 0, dy)
+		where, err := browser.ScrollTarget(ctx, a.client(), sid, t.ObjectID, 0, dy)
 		if err != nil {
 			return protocol.Fail(err)
 		}
 		sess.Settle(ctx, sid, actionIdle)
-		label := fmt.Sprintf("scroll %.0f em %s — agora em %s", dy, alvo, onde)
+		label := fmt.Sprintf("scroll %.0f in %s — now at %s", dy, target, where)
 		sess.UpdateHUD(ctx, label)
 		return ok("ok: " + label)
 	}
 
-	onde, err := browser.Scroll(ctx, a.client(), sid, 0, dy, req.Bool("pagina", false))
+	where, err := browser.Scroll(ctx, a.client(), sid, 0, dy, req.Bool("page", false))
 	if err != nil {
 		return protocol.Fail(err)
 	}
 	sess.Settle(ctx, sid, actionIdle)
-	label := fmt.Sprintf("scroll %.0f — agora em %s", dy, onde)
+	label := fmt.Sprintf("scroll %.0f — now at %s", dy, where)
 	sess.UpdateHUD(ctx, label)
 	return ok("ok: " + label)
 }
 
-// finish resume o resultado de uma ação e anexa avisos de console.
+// finish summarizes the result of an action and attaches console warnings.
 func (a *Agent) finish(ctx context.Context, sess *browser.Session, sid, label string, errCountBefore int) string {
 	sess.Settle(ctx, sid, actionIdle)
 	sess.UpdateHUD(ctx, label)

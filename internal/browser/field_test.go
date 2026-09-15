@@ -5,88 +5,88 @@ import (
 	"testing"
 )
 
-// Regressão (laboratório v2): `fill` num `<select>` respondia ok e o valor
-// continuava o de antes; `fill` num `<label>` respondia ok sem ter onde
-// escrever. A recusa precisa dizer o comando que faz o que se queria.
-func TestClassificaCampo(t *testing.T) {
-	casos := []struct {
-		nome     string
-		campo    campoDescritor
-		aceita   bool
-		contemNa string
+// Regression (lab v2): `fill` on a `<select>` answered ok and the value stayed
+// the previous one; `fill` on a `<label>` answered ok without having anywhere to
+// write. The refusal must state the command that does what was wanted.
+func TestClassifyField(t *testing.T) {
+	cases := []struct {
+		name        string
+		field       fieldDescriptor
+		accepts     bool
+		mustContain string
 	}{
-		{"input de texto", campoDescritor{Tag: "INPUT", Type: "text"}, true, ""},
-		{"input sem type", campoDescritor{Tag: "INPUT"}, true, ""},
-		{"input number", campoDescritor{Tag: "INPUT", Type: "number"}, true, ""},
-		{"textarea", campoDescritor{Tag: "TEXTAREA"}, true, ""},
-		{"contenteditable", campoDescritor{Tag: "DIV", Editable: true}, true, ""},
-		{"role textbox", campoDescritor{Tag: "DIV", Role: "textbox"}, true, ""},
-		{"select", campoDescritor{Tag: "SELECT"}, false, "axscope select"},
-		{"checkbox", campoDescritor{Tag: "INPUT", Type: "checkbox"}, false, "axscope check"},
-		{"radio", campoDescritor{Tag: "INPUT", Type: "radio"}, false, "axscope check"},
-		{"file", campoDescritor{Tag: "INPUT", Type: "file"}, false, "axscope upload"},
-		{"botão", campoDescritor{Tag: "INPUT", Type: "submit"}, false, "axscope click"},
-		{"label", campoDescritor{Tag: "LABEL"}, false, "não é campo de texto"},
-		{"div", campoDescritor{Tag: "DIV"}, false, "não é campo de texto"},
+		{"text input", fieldDescriptor{Tag: "INPUT", Type: "text"}, true, ""},
+		{"input without type", fieldDescriptor{Tag: "INPUT"}, true, ""},
+		{"number input", fieldDescriptor{Tag: "INPUT", Type: "number"}, true, ""},
+		{"textarea", fieldDescriptor{Tag: "TEXTAREA"}, true, ""},
+		{"contenteditable", fieldDescriptor{Tag: "DIV", Editable: true}, true, ""},
+		{"role textbox", fieldDescriptor{Tag: "DIV", Role: "textbox"}, true, ""},
+		{"select", fieldDescriptor{Tag: "SELECT"}, false, "axscope select"},
+		{"checkbox", fieldDescriptor{Tag: "INPUT", Type: "checkbox"}, false, "axscope check"},
+		{"radio", fieldDescriptor{Tag: "INPUT", Type: "radio"}, false, "axscope check"},
+		{"file", fieldDescriptor{Tag: "INPUT", Type: "file"}, false, "axscope upload"},
+		{"button", fieldDescriptor{Tag: "INPUT", Type: "submit"}, false, "axscope click"},
+		{"label", fieldDescriptor{Tag: "LABEL"}, false, "not a text field"},
+		{"div", fieldDescriptor{Tag: "DIV"}, false, "not a text field"},
 	}
-	for _, c := range casos {
-		aceita, motivo := classificaCampo(c.campo)
-		if aceita != c.aceita {
-			t.Errorf("%s: aceita = %v, esperado %v (motivo %q)", c.nome, aceita, c.aceita, motivo)
+	for _, c := range cases {
+		accepts, reason := classifyField(c.field)
+		if accepts != c.accepts {
+			t.Errorf("%s: accepts = %v, expected %v (reason %q)", c.name, accepts, c.accepts, reason)
 		}
-		if !aceita && !strings.Contains(motivo, c.contemNa) {
-			t.Errorf("%s: motivo %q não menciona %q", c.nome, motivo, c.contemNa)
-		}
-	}
-}
-
-// Regressão (laboratório v3): `press Enter` disparava o handler e não quebrava a
-// linha — o CDP só insere com `text` no keyDown, e o Enter ficava sem. "primeira"
-// + Enter + "segunda" virava "primeirasegunda".
-func TestTextoDaTecla(t *testing.T) {
-	if got := textoDaTecla("Enter"); got != "\r" {
-		t.Errorf("Enter tem de inserir a quebra, e insere %q", got)
-	}
-	if got := textoDaTecla("Tab"); got != "\t" {
-		t.Errorf("Tab tem de inserir a tabulação, e insere %q", got)
-	}
-	for _, tecla := range []string{"Escape", "Backspace", "ArrowDown", "a"} {
-		if got := textoDaTecla(tecla); got != "" {
-			t.Errorf("%q não insere nada, mas insere %q", tecla, got)
+		if !accepts && !strings.Contains(reason, c.mustContain) {
+			t.Errorf("%s: reason %q does not mention %q", c.name, reason, c.mustContain)
 		}
 	}
 }
 
-// Regressão (laboratório v3): digitar uma quebra de linha não inseria nada — o
-// `type` mandava o caractere como texto, e texto com `\n` não entra no campo.
-// "alfa\nbeta" virava "alfabeta", em silêncio.
-func TestTeclaParaEQuebras(t *testing.T) {
+// Regression (lab v3): `press Enter` fired the handler and did not break the
+// line — the CDP only inserts with `text` in keyDown, and Enter was left out.
+// "first" + Enter + "second" became "firstsecond".
+func TestKeyText(t *testing.T) {
+	if got := keyText("Enter"); got != "\r" {
+		t.Errorf("Enter must insert the line break, and it inserts %q", got)
+	}
+	if got := keyText("Tab"); got != "\t" {
+		t.Errorf("Tab must insert the tab, and it inserts %q", got)
+	}
+	for _, key := range []string{"Escape", "Backspace", "ArrowDown", "a"} {
+		if got := keyText(key); got != "" {
+			t.Errorf("%q inserts nothing, but it inserts %q", key, got)
+		}
+	}
+}
+
+// Regression (lab v3): typing a line break inserted nothing — `type` sent the
+// character as text, and text with `\n` does not enter the field. "alfa\nbeta"
+// became "alfabeta", silently.
+func TestKeyForAndLineBreaks(t *testing.T) {
 	for _, r := range []rune{'\n', '\r'} {
-		if tecla := teclaPara(r); tecla != "Enter" {
-			t.Errorf("quebra de linha (%q) tem de virar Enter, virou %q", r, tecla)
+		if key := keyFor(r); key != "Enter" {
+			t.Errorf("line break (%q) must become Enter, it became %q", r, key)
 		}
 	}
 	for _, r := range []rune{'a', 'ç', ' ', '\t'} {
-		if tecla := teclaPara(r); tecla != "" {
-			t.Errorf("%q não é tecla nomeada, virou %q", r, tecla)
+		if key := keyFor(r); key != "" {
+			t.Errorf("%q is not a named key, it became %q", r, key)
 		}
 	}
 
-	if got := normalizarQuebras("a\r\nb\rc"); got != "a\nb\rc" {
-		t.Errorf("normalizarQuebras = %q", got)
+	if got := normalizeNewlines("a\r\nb\rc"); got != "a\nb\rc" {
+		t.Errorf("normalizeNewlines = %q", got)
 	}
 }
 
-// Máscara muda o valor de propósito (o telefone vira "(77) 9 9999-1111"), então
-// diferença não é sinal de nada. Continuar vazio é.
-func TestAvisoDePreenchimento(t *testing.T) {
-	if got := avisoDePreenchimento("(77) 99999-1111", "(77) 9 9999-1111"); got != "" {
-		t.Errorf("máscara não é falha: %q", got)
+// A mask changes the value on purpose (the phone becomes "(77) 9 9999-1111"), so
+// a difference is a sign of nothing. Staying empty is.
+func TestFillWarning(t *testing.T) {
+	if got := fillWarning("(77) 99999-1111", "(77) 9 9999-1111"); got != "" {
+		t.Errorf("a mask is not a failure: %q", got)
 	}
-	if got := avisoDePreenchimento("texto", "   "); got == "" {
-		t.Error("campo vazio depois de preencher precisa avisar")
+	if got := fillWarning("text", "   "); got == "" {
+		t.Error("an empty field after filling needs to warn")
 	}
-	if got := avisoDePreenchimento("", ""); got != "" {
-		t.Errorf("sem texto pedido não há o que avisar: %q", got)
+	if got := fillWarning("", ""); got != "" {
+		t.Errorf("with no text asked there is nothing to warn about: %q", got)
 	}
 }

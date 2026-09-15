@@ -1,8 +1,8 @@
-// Servidor MCP sobre stdio, falando com o mesmo daemon da CLI — assim MCP e CLI
-// compartilham um único browser e um único conjunto de refs.
+// MCP server over stdio, talking to the same daemon as the CLI — so MCP and CLI
+// share a single browser and a single set of refs.
 //
-// JSON-RPC 2.0 por linha (transporte stdio do MCP), implementado à mão para não
-// carregar dependência nenhuma.
+// JSON-RPC 2.0 per line (the MCP stdio transport), implemented by hand to pull
+// in no dependency.
 package mcpsrv
 
 import (
@@ -39,7 +39,7 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
-// Run atende o protocolo MCP no stdin/stdout até o EOF.
+// Run serves the MCP protocol on stdin/stdout until EOF.
 func Run(ctx context.Context) error {
 	reader := bufio.NewReaderSize(os.Stdin, 8<<20)
 	writer := bufio.NewWriter(os.Stdout)
@@ -69,15 +69,15 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 	if err := json.Unmarshal([]byte(trimmed), &req); err != nil {
 		return
 	}
-	// Notificações (sem id) não geram resposta.
+	// Notifications (without id) do not generate a response.
 	if len(req.ID) == 0 {
 		return
 	}
 
 	switch req.Method {
 	case "initialize":
-		// O nome do cliente MCP (opencode, claude, cursor…) vira o nome do grupo
-		// de abas no navegador. Sem configurar nada.
+		// The MCP client name (opencode, claude, cursor…) becomes the tab group
+		// name in the browser. Without configuring anything.
 		var params struct {
 			ClientInfo struct {
 				Name string `json:"name"`
@@ -105,7 +105,7 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 			Arguments map[string]any `json:"arguments"`
 		}
 		if err := json.Unmarshal(req.Params, &params); err != nil {
-			write(writer, errResponse(req.ID, -32602, "parâmetros inválidos"))
+			write(writer, errResponse(req.ID, -32602, "invalid params"))
 			return
 		}
 		result := callTool(ctx, params.Name, params.Arguments)
@@ -118,7 +118,7 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"prompts": []any{}}})
 
 	default:
-		write(writer, errResponse(req.ID, -32601, "método não suportado: "+req.Method))
+		write(writer, errResponse(req.ID, -32601, "unsupported method: "+req.Method))
 	}
 }
 
@@ -128,10 +128,10 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 	}
 	resp, err := daemonclient.Send(protocol.Request{Cmd: name, Args: args})
 	if err != nil {
-		return toolText("erro: "+err.Error(), true)
+		return toolText("error: "+err.Error(), true)
 	}
 	if !resp.OK {
-		return toolText("erro: "+resp.Error, true)
+		return toolText("error: "+resp.Error, true)
 	}
 	if b64 := resp.Image; b64 != nil {
 		return map[string]any{"content": []map[string]any{
@@ -155,15 +155,16 @@ type toolDef struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// curatedMCP é o conjunto enxuto exposto por padrão: alta frequência, e o resto
-// via `script`. Schema de ferramenta custa contexto em toda requisição, então
-// menos ferramentas é melhor — `AXSCOPE_MCP_TOOLS=all` abre tudo.
+// curatedMCP is the lean set exposed by default: high frequency, and the rest
+// via `script`. A tool schema costs context on every request, so fewer tools is
+// better — `AXSCOPE_MCP_TOOLS=all` opens everything.
 //
-// `select`, `check`, `uncheck`, `type` e `upload` estão aqui porque as próprias
-// mensagens de recusa apontam para eles: quando o `fill` encontra um `<select>` a
-// resposta diz "use `axscope select`". Dizer isso e não expor o comando é mandar o
-// agente usar o que ele não pode chamar — medido no laboratório v3, e o agente
-// teve de recorrer ao `eval`. O custo de contexto é menor que a contradição.
+// `select`, `check`, `uncheck`, `type` and `upload` are here because the refusal
+// messages themselves point to them: when `fill` finds a `<select>` the response
+// says "use `axscope select`". Saying that and not exposing the command is
+// telling the agent to use what it cannot call — measured in lab v3, and the
+// agent had to resort to `eval`. The context cost is smaller than the
+// contradiction.
 var curatedMCP = map[string]bool{
 	"open":     true,
 	"snap":     true,
@@ -190,7 +191,7 @@ var curatedMCP = map[string]bool{
 	"eval":     true,
 }
 
-// tools deriva as ferramentas da tabela de comandos, para CLI e MCP não divergirem.
+// tools derives the tools from the command table, so CLI and MCP do not diverge.
 func tools() []toolDef {
 	all := os.Getenv("AXSCOPE_MCP_TOOLS") == "all"
 	out := make([]toolDef, 0, len(command.Specs))
@@ -238,7 +239,7 @@ func write(writer *bufio.Writer, resp rpcResponse) {
 	_, _ = writer.Write(append(data, '\n'))
 }
 
-// displayName transforma o nome do cliente MCP num rótulo legível:
+// displayName turns the MCP client name into a readable label:
 // "opencode" -> "Opencode", "claude-desktop" -> "Claude Desktop".
 func displayName(raw string) string {
 	raw = strings.TrimSpace(raw)

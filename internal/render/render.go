@@ -1,5 +1,5 @@
-// Apresentação no navegador: cursor, ripple, HUD e destaque, injetados na
-// página pelo script embutido. Implementa browser.Presenter.
+// Browser presentation: cursor, ripple, HUD and spotlight, injected into the
+// page by the embedded script. Implements browser.Presenter.
 package render
 
 import (
@@ -16,17 +16,17 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// source é o script de apresentação, embutido no binário.
+// source is the presentation script, embedded in the binary.
 //
 //go:embed render.inject.js
 var source string
 
-// Presenter desenha no viewport da página.
+// Presenter draws on the page viewport.
 type Presenter struct{}
 
 var _ browser.Presenter = Presenter{}
 
-// Install registra o script para toda navegação futura e o instala agora.
+// Install registers the script for all future navigations and installs it now.
 func (Presenter) Install(ctx context.Context, c *cdp.Client, session string) error {
 	if _, err := c.Send(ctx, "Page.addScriptToEvaluateOnNewDocument",
 		map[string]any{"source": source}, session); err != nil {
@@ -48,19 +48,19 @@ func args(values ...any) string {
 	return strings.Join(parts, ", ")
 }
 
-// call chama um método de window.__axscope com guarda de existência.
+// call calls a window.__axscope method with an existence guard.
 func call(ctx context.Context, c *cdp.Client, session, method string, values ...any) error {
 	expr := fmt.Sprintf("(window.__axscope ? window.__axscope.%s(%s) : null)", method, args(values...))
 	_, err := dom.Eval(ctx, c, session, expr)
 	return err
 }
 
-// MoveCursor move o cursor renderizado até (x, y) no viewport.
+// MoveCursor moves the rendered cursor to (x, y) in the viewport.
 func (Presenter) MoveCursor(ctx context.Context, c *cdp.Client, session string, x, y float64) error {
 	return call(ctx, c, session, "cursor", x, y)
 }
 
-// Press anima cursor + ripple no ponto (o que a pessoa vê).
+// Press animates cursor + ripple at the point (what the person sees).
 func (Presenter) Press(ctx context.Context, c *cdp.Client, session string, x, y float64, kind string) error {
 	if kind == "" {
 		kind = "left"
@@ -68,14 +68,14 @@ func (Presenter) Press(ctx context.Context, c *cdp.Client, session string, x, y 
 	return call(ctx, c, session, "press", x, y, kind)
 }
 
-// Spotlight realça o retângulo do alvo; nil limpa.
+// Spotlight highlights the target rectangle; nil clears it.
 //
-// Desligado por padrão. O contorno no alvo poluía mais do que ajudava: ficava
-// aceso depois da ação e, quando a página rolava, apontava para o nada. Quem
-// quiser de volta liga com AXSCOPE_DESTAQUE=1.
+// Off by default. The outline on the target polluted more than it helped: it
+// stayed lit after the action and, when the page scrolled, pointed at nothing.
+// Anyone who wants it back turns it on with AXSCOPE_SPOTLIGHT=1.
 func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, rect *dom.Rect) error {
-	ligado, _ := strconv.Atoi(os.Getenv("AXSCOPE_DESTAQUE"))
-	if ligado <= 0 {
+	enabled, _ := strconv.Atoi(os.Getenv("AXSCOPE_SPOTLIGHT"))
+	if enabled <= 0 {
 		return nil
 	}
 	if rect == nil {
@@ -84,7 +84,7 @@ func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, r
 	return call(ctx, c, session, "spotlight", rect)
 }
 
-// SetHUD atualiza o HUD (abas + última ação).
+// SetHUD updates the HUD (tabs + last action).
 func (Presenter) SetHUD(ctx context.Context, c *cdp.Client, session, tabs, label string) error {
 	return call(ctx, c, session, "hud", map[string]string{"tabs": tabs, "label": label})
 }

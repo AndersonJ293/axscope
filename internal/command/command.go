@@ -1,11 +1,11 @@
-// Parser de comandos compartilhado por CLI, daemon (roteiro) e MCP.
+// Command parser shared by the CLI, the daemon (script) and MCP.
 //
-// Gramática simples e sem ambiguidade:
+// Simple, unambiguous grammar:
 //
-//	<comando> [posicional] [chave=valor] [--flag]
+//	<command> [positional] [key=value] [--flag]
 //
-// O primeiro posicional mapeia para o primeiro nome do spec, e assim por diante.
-// Flags são booleanas; valores usam chave=valor ou posicional.
+// The first positional maps to the first name in the spec, and so on.
+// Flags are boolean; values use key=value or positional.
 package command
 
 import (
@@ -15,92 +15,57 @@ import (
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
-// Spec descreve um comando.
+// Spec describes a command.
 type Spec struct {
 	Cmd        string
 	Positional []string
-	// Optional lista posicionais que podem ser omitidos (têm padrão).
+	// Optional lists positionals that can be omitted (they have a default).
 	Optional []string
 	Flags    []string
 	Help     string
 }
 
-// Specs é a tabela canônica. A ordem não importa.
+// Specs is the canonical table. Order does not matter.
 var Specs = []Spec{
-	{Cmd: "ping", Help: "verifica se o daemon responde"},
-	{Cmd: "status", Help: "URL, título, abas e estado do overlay"},
-	{Cmd: "install", Flags: []string{"engine"}, Help: "baixa motores (--engine chrome|shell|all)"},
-	{Cmd: "engines", Help: "lista os motores instalados"},
-	{Cmd: "clean", Flags: []string{"tudo"}, Help: "apaga logs e sessões mortas (--tudo inclui perfis e browsers)"},
-	{Cmd: "stop", Help: "encerra o daemon (e o browser, se fomos nós que subimos)"},
+	{Cmd: "ping", Help: "checks whether the daemon responds"},
+	{Cmd: "status", Help: "URL, title, tabs and overlay state"},
+	{Cmd: "install", Flags: []string{"engine"}, Help: "downloads engines (--engine chrome|shell|all)"},
+	{Cmd: "engines", Help: "lists installed engines"},
+	{Cmd: "clean", Flags: []string{"all"}, Help: "deletes logs and dead sessions (--all includes profiles and browsers)"},
+	{Cmd: "stop", Help: "shuts down the daemon (and the browser, if we started it)"},
 
-	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new"}, Help: "abre/navega (--new abre em aba nova)"},
-	{Cmd: "snap", Flags: []string{"refs", "tudo"}, Help: "lê a tela em texto (--refs só alvos; --tudo inclui rodapé e atalhos)"},
-	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double"}, Help: "clica no alvo (ref/css=/text=)"},
-	{Cmd: "hover", Positional: []string{"target"}, Help: "passa o mouse no alvo"},
-	{Cmd: "drag", Positional: []string{"from", "to"}, Flags: []string{"topo", "base", "tipo"}, Help: "arrasta <de> até <para> (--topo/--base onde soltar; tipo=ponteiro|html5 força a família)"},
-	{Cmd: "upload", Positional: []string{"arquivo", "alvo"}, Optional: []string{"alvo"}, Help: "envia um arquivo (sem alvo vai no primeiro <input type=file>; alvo= numa dropzone)"},
-	{Cmd: "fill", Positional: []string{"target", "value"}, Help: "substitui o conteúdo do campo"},
-	{Cmd: "type", Positional: []string{"target", "value"}, Help: "digita caractere a caractere"},
-	{Cmd: "press", Positional: []string{"key"}, Help: "envia tecla/atalho (Enter, Control+A)"},
-	{Cmd: "select", Positional: []string{"target", "value"}, Help: "escolhe opção de <select>"},
-	{Cmd: "check", Positional: []string{"target"}, Help: "marca checkbox/radio"},
-	{Cmd: "uncheck", Positional: []string{"target"}, Help: "desmarca checkbox/radio"},
-	{Cmd: "scroll", Positional: []string{"dy", "alvo"}, Optional: []string{"alvo"}, Flags: []string{"pagina"}, Help: "rola (dy positivo desce; alvo= rola o container; --pagina força o documento)"},
-	{Cmd: "wait", Positional: []string{"text", "timeout", "dentro"}, Optional: []string{"timeout", "dentro"}, Flags: []string{"habilitado", "visivel", "sumiu"}, Help: "espera o texto aparecer (dentro= limita o container; --habilitado/--visivel/--sumiu esperam esse estado do alvo, e aí o primeiro argumento é o alvo)"},
-	{Cmd: "waitgone", Positional: []string{"text", "timeout", "dentro"}, Optional: []string{"timeout", "dentro"}, Help: "espera o texto sumir (timeout em ms; dentro= limita o container)"},
-	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Help: "lê o texto principal da página"},
-	{Cmd: "eval", Positional: []string{"js"}, Help: "avalia JavaScript na página"},
-	{Cmd: "tabs", Help: "lista as abas"},
-	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "troca para a aba (índice ou targetId; --focus traz a janela à frente)"},
-	{Cmd: "newtab", Positional: []string{"url"}, Optional: []string{"url"}, Help: "abre aba nova"},
-	{Cmd: "closetab", Positional: []string{"ref"}, Help: "fecha a aba"},
-	{Cmd: "back", Help: "volta no histórico"},
-	{Cmd: "forward", Help: "avança no histórico"},
-	{Cmd: "reload", Help: "recarrega a página"},
-	{Cmd: "console", Flags: []string{"all"}, Help: "erros/avisos do console"},
-	{Cmd: "net", Positional: []string{"filter"}, Optional: []string{"filter"}, Help: "requisições de rede"},
-	{Cmd: "shot", Positional: []string{"path"}, Optional: []string{"path"}, Flags: []string{"full"}, Help: "captura PNG (sem caminho vai para /tmp)"},
-	{Cmd: "dialog", Positional: []string{"action"}, Help: "accept|dismiss o próximo diálogo"},
-	{Cmd: "script", Positional: []string{"path"}, Help: "executa um roteiro (arquivo ou - para stdin)"},
-}
-
-var aliasToCmd = map[string]string{
-	"estado":     "status",
-	"abrir":      "open",
-	"tela":       "snap",
-	"clicar":     "click",
-	"passar":     "hover",
-	"arrastar":   "drag",
-	"enviar":     "upload",
-	"digitar":    "fill",
-	"preencher":  "fill",
-	"teclar":     "type",
-	"tecla":      "press",
-	"escolher":   "select",
-	"marcar":     "check",
-	"desmarcar":  "uncheck",
-	"rolar":      "scroll",
-	"esperar":    "wait",
-	"sumir":      "waitgone",
-	"ler":        "read",
-	"abas":       "tabs",
-	"nova":       "newtab",
-	"fecharaba":  "closetab",
-	"voltar":     "back",
-	"avancar":    "forward",
-	"recarregar": "reload",
-	"rede":       "net",
-	"captura":    "shot",
-	"roteiro":    "script",
-	"encerrar":   "stop",
-	"instalar":   "install",
+	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new"}, Help: "opens/navigates (--new opens in a new tab)"},
+	{Cmd: "snap", Flags: []string{"refs", "all"}, Help: "reads the screen as text (--refs targets only; --all includes footer and shortcuts)"},
+	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double"}, Help: "clicks the target (ref/css=/text=)"},
+	{Cmd: "hover", Positional: []string{"target"}, Help: "hovers over the target"},
+	{Cmd: "drag", Positional: []string{"from", "to"}, Flags: []string{"top", "bottom", "type"}, Help: "drags <from> to <to> (--top/--bottom where to drop; type=pointer|html5 forces the family)"},
+	{Cmd: "upload", Positional: []string{"file", "target"}, Optional: []string{"target"}, Help: "sends a file (without target it goes to the first <input type=file>; target= on a dropzone)"},
+	{Cmd: "fill", Positional: []string{"target", "value"}, Help: "replaces the field's content"},
+	{Cmd: "type", Positional: []string{"target", "value"}, Help: "types character by character"},
+	{Cmd: "press", Positional: []string{"key"}, Help: "sends a key/shortcut (Enter, Control+A)"},
+	{Cmd: "select", Positional: []string{"target", "value"}, Help: "chooses an option of <select>"},
+	{Cmd: "check", Positional: []string{"target"}, Help: "checks checkbox/radio"},
+	{Cmd: "uncheck", Positional: []string{"target"}, Help: "unchecks checkbox/radio"},
+	{Cmd: "scroll", Positional: []string{"dy", "target"}, Optional: []string{"target"}, Flags: []string{"page"}, Help: "scrolls (positive dy goes down; target= scrolls the container; --page forces the document)"},
+	{Cmd: "wait", Positional: []string{"text", "timeout", "within"}, Optional: []string{"timeout", "within"}, Flags: []string{"enabled", "visible", "gone"}, Help: "waits for the text to appear (within= limits the container; --enabled/--visible/--gone wait for that state of the target, and then the first argument is the target)"},
+	{Cmd: "waitgone", Positional: []string{"text", "timeout", "within"}, Optional: []string{"timeout", "within"}, Help: "waits for the text to disappear (timeout in ms; within= limits the container)"},
+	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Help: "reads the page's main text"},
+	{Cmd: "eval", Positional: []string{"js"}, Help: "evaluates JavaScript on the page"},
+	{Cmd: "tabs", Help: "lists the tabs"},
+	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "switches to the tab (index or targetId; --focus brings the window to the front)"},
+	{Cmd: "newtab", Positional: []string{"url"}, Optional: []string{"url"}, Help: "opens a new tab"},
+	{Cmd: "closetab", Positional: []string{"ref"}, Help: "closes the tab"},
+	{Cmd: "back", Help: "goes back in history"},
+	{Cmd: "forward", Help: "goes forward in history"},
+	{Cmd: "reload", Help: "reloads the page"},
+	{Cmd: "console", Flags: []string{"all"}, Help: "console errors/warnings"},
+	{Cmd: "net", Positional: []string{"filter"}, Optional: []string{"filter"}, Help: "network requests"},
+	{Cmd: "shot", Positional: []string{"path"}, Optional: []string{"path"}, Flags: []string{"full"}, Help: "captures PNG (without a path it goes to /tmp)"},
+	{Cmd: "dialog", Positional: []string{"action"}, Help: "accept|dismiss the next dialog"},
+	{Cmd: "script", Positional: []string{"path"}, Help: "runs a script (file or - for stdin)"},
 }
 
 func lookup(cmd string) (Spec, bool) {
-	if canonical, ok := aliasToCmd[cmd]; ok {
-		cmd = canonical
-	}
 	for _, s := range Specs {
 		if s.Cmd == cmd {
 			return s, true
@@ -109,14 +74,14 @@ func lookup(cmd string) (Spec, bool) {
 	return Spec{}, false
 }
 
-// Parse transforma tokens em um pedido. Aceita aliases em português.
+// Parse turns tokens into a request.
 func Parse(tokens []string) (protocol.Request, error) {
 	if len(tokens) == 0 {
-		return protocol.Request{}, fmt.Errorf("nenhum comando")
+		return protocol.Request{}, fmt.Errorf("no command")
 	}
 	spec, ok := lookup(tokens[0])
 	if !ok {
-		return protocol.Request{}, fmt.Errorf("comando desconhecido: %q (veja `axscope help`)", tokens[0])
+		return protocol.Request{}, fmt.Errorf("unknown command: %q (see `axscope help`)", tokens[0])
 	}
 	req := protocol.Request{Cmd: spec.Cmd, Args: map[string]any{}}
 
@@ -134,18 +99,18 @@ func Parse(tokens []string) (protocol.Request, error) {
 		case strings.HasPrefix(token, "--"):
 			name := strings.TrimPrefix(token, "--")
 			if !known[name] {
-				return protocol.Request{}, fmt.Errorf("comando %q não tem a flag --%s", spec.Cmd, name)
+				return protocol.Request{}, fmt.Errorf("command %q has no --%s flag", spec.Cmd, name)
 			}
 			req.Args[name] = true
-		// `k=v` só vale quando `k` é um argumento conhecido — assim um valor
-		// livre (JS, texto com "=") cai como posicional, não como par.
+		// `k=v` only counts when `k` is a known argument — that way a free value
+		// (JS, text with "=") lands as positional, not as a key=value pair.
 		case strings.Contains(token, "=") && !strings.HasPrefix(token, "=") &&
 			known[strings.SplitN(token, "=", 2)[0]]:
 			parts := strings.SplitN(token, "=", 2)
 			req.Args[parts[0]] = parts[1]
 		default:
 			if len(positional) == 0 {
-				return protocol.Request{}, fmt.Errorf("sobra argumento em %q: %q", spec.Cmd, token)
+				return protocol.Request{}, fmt.Errorf("extra argument in %q: %q", spec.Cmd, token)
 			}
 			req.Args[positional[0]] = token
 			positional = positional[1:]
@@ -154,12 +119,12 @@ func Parse(tokens []string) (protocol.Request, error) {
 	return req, nil
 }
 
-// Help devolve o texto de ajuda.
+// Help returns the help text.
 func Help() string {
 	var b strings.Builder
-	b.WriteString("axscope — browser dirigido por agente\n\n")
-	b.WriteString("uso: axscope <comando> [args] [chave=valor] [--flag]\n")
-	b.WriteString("flags globais: (padrão) extensão no Brave | --ver (Chrome dedicado) | --leve (sem janela)\n\n")
+	b.WriteString("axscope — agent-driven browser\n\n")
+	b.WriteString("usage: axscope <command> [args] [key=value] [--flag]\n")
+	b.WriteString("global flags: (default) extension in Brave | --chrome (dedicated Chrome) | --headless (windowless)\n\n")
 	for _, s := range Specs {
 		line := "  " + s.Cmd
 		for _, p := range s.Positional {

@@ -1,7 +1,8 @@
-// Baixa o Chrome for Testing (e o headless-shell) e guarda o caminho do executável.
+// Downloads Chrome for Testing (and the headless-shell) and stores the path of
+// the executable.
 //
-// Usa o endpoint oficial da Chrome for Testing, que é versionado e permite
-// fixar a versão — nada de "latest" que muda debaixo do pé.
+// Uses the official Chrome for Testing endpoint, which is versioned and lets us
+// pin the version — no "latest" that changes under our feet.
 package installer
 
 import (
@@ -33,13 +34,13 @@ type cftManifest struct {
 	} `json:"channels"`
 }
 
-// Options controlam o que baixar.
+// Options control what to download.
 type Options struct {
 	// Channel: Stable, Beta, Dev, Canary.
 	Channel string
-	// Product: chrome ou chrome-headless-shell.
+	// Product: chrome or chrome-headless-shell.
 	Product string
-	// Version fixa; vazio usa o último do canal.
+	// Fixed version; empty uses the latest of the channel.
 	Version string
 }
 
@@ -61,10 +62,10 @@ func platformKey() (string, error) {
 		}
 		return "win64", nil
 	}
-	return "", fmt.Errorf("sistema não suportado: %s/%s", runtime.GOOS, runtime.GOARCH)
+	return "", fmt.Errorf("unsupported system: %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
-// Install baixa e extrai, devolvendo o caminho do executável.
+// Install downloads and extracts, returning the executable path.
 func Install(ctx context.Context, opts Options) (string, error) {
 	if opts.Channel == "" {
 		opts.Channel = "Stable"
@@ -87,28 +88,28 @@ func Install(ctx context.Context, opts Options) (string, error) {
 		if err := markInstalled(opts.Product, exe); err != nil {
 			return "", err
 		}
-		fmt.Printf("já instalado: %s\n", exe)
+		fmt.Printf("already installed: %s\n", exe)
 		return exe, nil
 	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return "", err
 	}
 
-	fmt.Printf("baixando %s %s (%s)...\n", opts.Product, version, platform)
+	fmt.Printf("downloading %s %s (%s)...\n", opts.Product, version, platform)
 	zipPath := filepath.Join(os.TempDir(), fmt.Sprintf("axscope-%s-%s.zip", opts.Product, version))
 	if err := download(ctx, url, zipPath); err != nil {
 		return "", err
 	}
 	defer os.Remove(zipPath)
 
-	fmt.Printf("extraindo em %s\n", dest)
+	fmt.Printf("extracting to %s\n", dest)
 	if err := unzip(zipPath, dest); err != nil {
 		return "", err
 	}
 
 	exe, ok := findExecutable(dest, opts.Product)
 	if !ok {
-		return "", fmt.Errorf("executável não encontrado depois de extrair em %s", dest)
+		return "", fmt.Errorf("executable not found after extracting to %s", dest)
 	}
 	if err := os.Chmod(exe, 0o755); err != nil {
 		return "", err
@@ -116,15 +117,15 @@ func Install(ctx context.Context, opts Options) (string, error) {
 	if err := os.MkdirAll(paths.BrowsersDir(), 0o755); err != nil {
 		return "", err
 	}
-	// Marca o caminho do produto instalado (chrome ou chrome-headless-shell).
+	// Marks the path of the installed product (chrome or chrome-headless-shell).
 	if err := markInstalled(opts.Product, exe); err != nil {
 		return "", err
 	}
-	fmt.Printf("pronto: %s\n", exe)
+	fmt.Printf("ready: %s\n", exe)
 	return exe, nil
 }
 
-// markInstalled grava o marcador que o launcher lê para achar o binário.
+// markInstalled writes the marker that the launcher reads to find the binary.
 func markInstalled(product, exe string) error {
 	if err := os.MkdirAll(paths.BrowsersDir(), 0o755); err != nil {
 		return err
@@ -149,14 +150,14 @@ func resolveDownload(ctx context.Context, opts Options, platform string) (string
 	}
 	channel, ok := manifest.Channels[opts.Channel]
 	if !ok {
-		return "", "", fmt.Errorf("canal %q não existe", opts.Channel)
+		return "", "", fmt.Errorf("channel %q does not exist", opts.Channel)
 	}
 	for _, d := range channel.Downloads[opts.Product] {
 		if d.Platform == platform {
 			return d.URL, channel.Version, nil
 		}
 	}
-	return "", "", fmt.Errorf("sem download de %s para %s no canal %s", opts.Product, platform, opts.Channel)
+	return "", "", fmt.Errorf("no download of %s for %s in channel %s", opts.Product, platform, opts.Channel)
 }
 
 func download(ctx context.Context, url, dest string) error {
@@ -170,7 +171,7 @@ func download(ctx context.Context, url, dest string) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download devolveu %d", resp.StatusCode)
+		return fmt.Errorf("download returned %d", resp.StatusCode)
 	}
 	out, err := os.Create(dest)
 	if err != nil {
@@ -178,7 +179,7 @@ func download(ctx context.Context, url, dest string) error {
 	}
 	defer out.Close()
 
-	// Sem barra de progresso: imprime marcos para não poluir o agente.
+	// No progress bar: it prints milestones so as not to pollute the agent.
 	total := resp.ContentLength
 	var written int64
 	buf := make([]byte, 1<<20)
@@ -217,7 +218,7 @@ func unzip(src, dest string) error {
 	for _, f := range r.File {
 		target := filepath.Join(dest, f.Name)
 		if !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) {
-			return fmt.Errorf("caminho suspeito no zip: %s", f.Name)
+			return fmt.Errorf("suspicious path in zip: %s", f.Name)
 		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
@@ -248,7 +249,7 @@ func unzip(src, dest string) error {
 	return nil
 }
 
-// findExecutable procura o binário dentro do diretório extraído.
+// findExecutable looks for the binary inside the extracted directory.
 func findExecutable(dir, product string) (string, bool) {
 	var wanted []string
 	switch runtime.GOOS {

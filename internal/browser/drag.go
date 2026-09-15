@@ -1,5 +1,5 @@
-// Arraste: as duas famílias que convivem na web (HTML5 e por ponteiro), a
-// detecção de qual usar e a checagem de que algo mudou de fato.
+// Drag: the two families that coexist on the web (HTML5 and pointer), the
+// detection of which to use and the check that something actually changed.
 package browser
 
 import (
@@ -12,25 +12,26 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// DragOptions ajusta o arraste.
+// DragOptions tunes the drag.
 type DragOptions struct {
-	// DropAt diz onde soltar sobre o alvo: "" (centro), "top" (25% do topo) ou
-	// "bottom" (75%). Importa quando o alvo decide antes/depois pela posição.
+	// DropAt says where to drop onto the target: "" (center), "top" (25% from
+	// the top) or "bottom" (75%). It matters when the target decides
+	// before/after by position.
 	DropAt string
-	// Type força a família do arraste: "html5" ou "ponteiro". Vazio detecta.
+	// Type forces the drag family: "html5" or "pointer". Empty detects.
 	Type string
-	// Steps é quantos passos de mouse no caminho do arraste por ponteiro.
+	// Steps is how many mouse steps along the pointer drag path.
 	Steps int
 }
 
-// paraLinha troca o alvo pela "linha" que o contém — o item de lista ou de
-// tabela mais próximo.
+// toRow swaps the target for the "row" that contains it — the nearest list or
+// table item.
 //
-// Descoberto no reorder do LinkedIn: mirar o parágrafo (≈20px, centralizado na
-// linha de 48px) ou a linha inteira muda o ponto de soltura — e a biblioteca
-// insere no índice da linha sob o ponteiro. Três tentativas erraram a posição
-// por causa disso; mirando a linha, acertou de primeira.
-func paraLinha(ctx context.Context, client *cdp.Client, session string, t *Target) {
+// Discovered in the LinkedIn reorder: aiming at the paragraph (≈20px, centered
+// on the 48px row) or the whole row changes the drop point — and the library
+// inserts at the index of the row under the pointer. Three attempts missed the
+// position because of that; aiming at the row, it hit on the first try.
+func toRow(ctx context.Context, client *cdp.Client, session string, t *Target) {
 	if t == nil || t.ObjectID == "" {
 		return
 	}
@@ -60,16 +61,16 @@ func paraLinha(ctx context.Context, client *cdp.Client, session string, t *Targe
 	t.Rect = rect
 }
 
-// assinaturaDe resume onde o elemento está (índice entre os irmãos + posição),
-// para saber se o arraste mudou alguma coisa de fato.
-func assinaturaDe(ctx context.Context, client *cdp.Client, session, objectID string) string {
+// signatureOf summarizes where the element is (index among its siblings +
+// position), to know whether the drag actually changed anything.
+func signatureOf(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
 			if (!this || !this.parentElement) return '';
-			const irmaos = [...this.parentElement.children];
+			const siblings = [...this.parentElement.children];
 			const r = this.getBoundingClientRect();
-			return irmaos.indexOf(this) + '@' + Math.round(r.left) + ',' + Math.round(r.top) + '/' + irmaos.length;
+			return siblings.indexOf(this) + '@' + Math.round(r.left) + ',' + Math.round(r.top) + '/' + siblings.length;
 		}`,
 		"returnByValue": true,
 	}, session)
@@ -87,61 +88,62 @@ func assinaturaDe(ctx context.Context, client *cdp.Client, session, objectID str
 	return res.Result.Value
 }
 
-// Drag arrasta `from` até `to`.
+// Drag drags `from` to `to`.
 //
-// Duas famílias de arraste convivem na web e não se falam:
+// Two drag families coexist on the web and do not talk to each other:
 //
-//   - HTML5 (`draggable`, dragstart/dragover/drop): mouse injetado NÃO inicia o
-//     gesto — o Chrome só cria o dragstart a partir de entrada real do usuário.
-//     Aqui o arraste é montado na página, com DataTransfer de verdade.
-//   - por ponteiro (pointerdown/move/up movendo o elemento, ex.: dnd-kit): é o
-//     inverso — o que funciona é mouse de verdade, e evento sintético é ignorado.
+//   - HTML5 (`draggable`, dragstart/dragover/drop): an injected mouse does NOT
+//     start the gesture — Chrome only creates the dragstart from real user
+//     input. Here the drag is built on the page, with a real DataTransfer.
+//   - pointer (pointerdown/move/up moving the element, e.g. dnd-kit): it is the
+//     opposite — what works is a real mouse, and a synthetic event is ignored.
 //
-// A origem com `draggable="true"` (nela ou num ancestral) diz de qual família se
-// trata. `tipo=ponteiro|html5` força, se a detecção errar.
+// The origin with `draggable="true"` (on it or on an ancestor) says which family
+// it is. `type=pointer|html5` forces it, if the detection misses.
 func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) (string, bool, error) {
-	// A linha, não o texto: é ela que define o ponto de soltura.
-	paraLinha(ctx, client, session, from)
-	paraLinha(ctx, client, session, to)
+	// The row, not the text: it is what defines the drop point.
+	toRow(ctx, client, session, from)
+	toRow(ctx, client, session, to)
 
-	// Guarda onde a origem estava, para poder dizer se algo mudou de verdade —
-	// gesto que não pega costuma terminar em clique, sem aviso nenhum.
-	antes := assinaturaDe(ctx, client, session, from.ObjectID)
+	// It stores where the origin was, to be able to say whether something
+	// actually changed — a gesture that does not take usually ends in a click,
+	// with no warning at all.
+	before := signatureOf(ctx, client, session, from.ObjectID)
 
-	tipo := opts.Type
-	if tipo == "" {
-		tipo = dragKind(ctx, client, session, from.ObjectID)
+	kind := opts.Type
+	if kind == "" {
+		kind = dragKind(ctx, client, session, from.ObjectID)
 	}
 	var err error
-	if tipo == "ponteiro" {
+	if kind == "pointer" {
 		err = dragPointer(ctx, client, session, from, to, opts, p)
 	} else {
-		tipo = "html5"
+		kind = "html5"
 		err = dragHTML5(ctx, client, session, from, to, opts, p)
 	}
 	if err != nil {
-		return tipo, false, err
+		return kind, false, err
 	}
 
-	mudou := true
-	if antes != "" {
-		if depois := assinaturaDe(ctx, client, session, from.ObjectID); depois != "" {
-			mudou = antes != depois
+	changed := true
+	if before != "" {
+		if after := signatureOf(ctx, client, session, from.ObjectID); after != "" {
+			changed = before != after
 		}
 	}
-	return tipo, mudou, nil
+	return kind, changed, nil
 }
 
-// dragKind diz de que família é o arraste: "html5" ou "ponteiro".
+// dragKind says which family the drag is: "html5" or "pointer".
 //
-// O sinal é o atributo explícito `draggable="true"` — a propriedade `draggable`
-// sozinha não serve, porque imagem e link já são arrastáveis por padrão e
-// marcariam como HTML5 qualquer clique sobre eles.
+// The signal is the explicit `draggable="true"` attribute — the `draggable`
+// property alone does not serve, because image and link are already draggable by
+// default and would mark as HTML5 any click on them.
 func dragKind(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
-			return this.closest && this.closest('[draggable="true"]') ? 'html5' : 'ponteiro';
+			return this.closest && this.closest('[draggable="true"]') ? 'html5' : 'pointer';
 		}`,
 		"returnByValue": true,
 	}, session)
@@ -153,21 +155,22 @@ func dragKind(ctx context.Context, client *cdp.Client, session, objectID string)
 			Value string `json:"value"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(raw, &res) == nil && res.Result.Value == "ponteiro" {
-		return "ponteiro"
+	if json.Unmarshal(raw, &res) == nil && res.Result.Value == "pointer" {
+		return "pointer"
 	}
 	return "html5"
 }
 
-// dragHTML5 monta o arraste na página. É o caminho da família HTML5, que ignora
-// mouse injetado: emitimos dragstart/dragenter/dragover/drop/dragend com um
-// DataTransfer real, sobre o elemento que está sob o ponto de soltura (o evento
-// sobe, então quem escuta no container também recebe).
+// dragHTML5 builds the drag on the page. It is the HTML5 family path, which
+// ignores an injected mouse: we emit dragstart/dragenter/dragover/drop/dragend
+// with a real DataTransfer, over the element under the drop point (the event
+// bubbles, so whoever listens on the container also receives it).
 func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
-	fx, fy := from.ondeAgir()
+	fx, fy := from.actionPoint()
 	tx, ty := dropPoint(to, opts.DropAt)
 
-	// O cursor passeia até o destino: quem olha precisa ver o arraste acontecer.
+	// The cursor travels to the destination: whoever watches needs to see the
+	// drag happen.
 	_ = p.Spotlight(ctx, client, session, &from.Rect)
 	_ = p.MoveCursor(ctx, client, session, fx, fy)
 	if d := visualDelay(); d > 0 {
@@ -179,16 +182,16 @@ func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to
 		time.Sleep(d)
 	}
 
-	onde := opts.DropAt
-	if onde == "" {
-		onde = "center"
+	where := opts.DropAt
+	if where == "" {
+		where = "center"
 	}
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            from.ObjectID,
 		"functionDeclaration": dragScript,
 		"arguments": []any{
 			map[string]any{"objectId": to.ObjectID},
-			map[string]any{"value": onde},
+			map[string]any{"value": where},
 		},
 		"returnByValue": true,
 	}, session)
@@ -210,20 +213,20 @@ func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to
 		return fmt.Errorf("%s", res.ExceptionDetails.Text)
 	}
 	if res.Result.Value != "ok" {
-		return fmt.Errorf("arraste não montou: %s", res.Result.Value)
+		return fmt.Errorf("drag did not mount: %s", res.Result.Value)
 	}
 	time.Sleep(40 * time.Millisecond)
 	return nil
 }
 
-// dragPointer arrasta com mouse de verdade: é o que a família por ponteiro
-// entende (pointerdown/move/up). Se a página ignorar o gesto, sobra um clique —
-// por isso este caminho só é usado quando a origem NÃO é `draggable`.
+// dragPointer drags with a real mouse: it is what the pointer family understands
+// (pointerdown/move/up). If the page ignores the gesture, a click is left over —
+// that is why this path is only used when the origin is NOT `draggable`.
 func dragPointer(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
 	if opts.Steps <= 0 {
 		opts.Steps = 16
 	}
-	fx, fy := from.ondeAgir()
+	fx, fy := from.actionPoint()
 	tx, ty := dropPoint(to, opts.DropAt)
 
 	_ = p.Spotlight(ctx, client, session, &from.Rect)
@@ -241,8 +244,8 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 	}, session); err != nil {
 		return err
 	}
-	// Uma pausa antes de andar: biblioteca de ponteiro costuma armar o gesto no
-	// pointerdown e só passar a acompanhar o movimento no quadro seguinte.
+	// A pause before moving: a pointer library usually arms the gesture on
+	// pointerdown and only starts tracking the movement on the next frame.
 	time.Sleep(40 * time.Millisecond)
 
 	for i := 1; i <= opts.Steps; i++ {
@@ -268,41 +271,41 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 	return nil
 }
 
-// dragScript emite a sequência de arraste sobre os elementos reais.
-const dragScript = `function (alvo, onde) {
-	const fonte = this;
-	if (!fonte || !alvo) return 'sem origem ou destino';
-	const ponto = (el) => {
+// dragScript emits the drag sequence over the real elements.
+const dragScript = `function (target, where) {
+	const source = this;
+	if (!source || !target) return 'no source or destination';
+	const point = (el) => {
 		const b = el.getBoundingClientRect();
 		let y = b.top + b.height / 2;
-		if (onde === 'top') y = b.top + b.height * 0.25;
-		else if (onde === 'bottom') y = b.top + b.height * 0.75;
+		if (where === 'top') y = b.top + b.height * 0.25;
+		else if (where === 'bottom') y = b.top + b.height * 0.75;
 		return { x: b.left + b.width / 2, y: y };
 	};
-	const pf = ponto(fonte);
-	const pd = ponto(alvo);
+	const ps = point(source);
+	const pt = point(target);
 	const dt = new DataTransfer();
-	const dispara = (tipo, el, p) => el.dispatchEvent(new DragEvent(tipo, {
+	const fire = (type, el, p) => el.dispatchEvent(new DragEvent(type, {
 		bubbles: true, cancelable: true, composed: true, dataTransfer: dt,
 		clientX: p.x, clientY: p.y, screenX: p.x, screenY: p.y,
 	}));
-	dispara('dragstart', fonte, pf);
-	const sob = document.elementFromPoint(pd.x, pd.y) || alvo;
-	dispara('dragenter', sob, pd);
-	dispara('dragover', sob, pd);
-	dispara('drop', sob, pd);
-	dispara('dragend', fonte, pd);
+	fire('dragstart', source, ps);
+	const over = document.elementFromPoint(pt.x, pt.y) || target;
+	fire('dragenter', over, pt);
+	fire('dragover', over, pt);
+	fire('drop', over, pt);
+	fire('dragend', source, pt);
 	return 'ok';
 }`
 
-// dropPoint devolve onde soltar sobre o alvo.
+// dropPoint returns where to drop onto the target.
 func dropPoint(t *Target, at string) (float64, float64) {
 	switch at {
-	case "top", "topo":
+	case "top":
 		return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height*0.25
-	case "bottom", "base":
+	case "bottom":
 		return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height*0.75
 	default:
-		return t.ondeAgir()
+		return t.actionPoint()
 	}
 }
