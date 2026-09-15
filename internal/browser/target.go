@@ -36,11 +36,14 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	var objectID string
 	var backendID int
+	// Expressão que produziu o nó, para poder resolver de novo se a rolagem
+	// invalidar o que foi resolvido (lista virtualizada recria as linhas).
+	var expr string
 
 	switch {
 	case strings.HasPrefix(spec, "css="):
 		sel := strings.TrimPrefix(spec, "css=")
-		expr := fmt.Sprintf("document.querySelector(%s)", strconv.Quote(sel))
+		expr = fmt.Sprintf("document.querySelector(%s)", strconv.Quote(sel))
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, fmt.Errorf("seletor inválido %q: %w", sel, err)
@@ -52,7 +55,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 
 	case strings.HasPrefix(spec, "text="):
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
-		expr := fmt.Sprintf(`(() => {
+		expr = fmt.Sprintf(`(() => {
 			const want = %s;
 			const nodes = document.querySelectorAll('a,button,input,select,textarea,summary,[role],[tabindex],[aria-label],[contenteditable="true"],[draggable="true"],label,li,td,th,h1,h2,h3,p,span,div');
 			// "Acionável" desempata: o texto mora no <span>, mas quem aceita ação
@@ -120,7 +123,7 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		if errX != nil || errY != nil {
 			return nil, fmt.Errorf("posição mal formada %q — use pos=x,y", spec)
 		}
-		expr := fmt.Sprintf("document.elementFromPoint(%v, %v)", x, y)
+		expr = fmt.Sprintf("document.elementFromPoint(%v, %v)", x, y)
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, err
@@ -160,9 +163,19 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	}
 
 	rect, err := dom.BoxOf(ctx, client, session, objectID)
+	if err != nil && expr != "" {
+		// A rolagem pode ter invalidado o nó: lista virtualizada recria as
+		// linhas conforme rola, e o elemento resolvido antes vira órfão (sem
+		// caixa). Resolve de novo pela mesma expressão e mede outra vez.
+		if id, errEval := dom.EvalObject(ctx, client, session, expr); errEval == nil && id != "" && id != objectID {
+			objectID = id
+			rect, err = dom.BoxOf(ctx, client, session, objectID)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("alvo %q sem área visível: %w", spec, err)
 	}
+	t.ObjectID = objectID
 	t.Rect = rect
 	return t, nil
 }
@@ -234,6 +247,7 @@ const scrollScript = `function (intervalo) {
 			// nos passos acima.
 			rolavel.scrollTo({ top: de + delta * (i / passos), behavior: 'instant' });
 			if (i < passos) { setTimeout(passo, intervalo); return; }
+			if (document.hidden) rolavel.dispatchEvent(new Event('scroll'));
 			pronto(visivel() ? 'ok' : 'nao');
 		};
 		passo();

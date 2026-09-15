@@ -215,6 +215,13 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 // depende de quem está sob o ponteiro (numa página com caixa de rolagem no meio
 // do caminho, ela rola o container errado) e o ack dela pelo chrome.debugger às
 // vezes não volta — medido: 30s de timeout sem rolar nada.
+//
+// Depois de rolar, avisa a página com um evento de scroll quando a aba está
+// oculta: nessa condição o navegador segura a entrega (ela depende do ciclo de
+// quadros, que não roda escondido) e quem redesenha no scroll — lista
+// virtualizada, carregamento preguiçoso — nunca fica sabendo que rolou. Foi
+// assim que a lista virtualizada do laboratório ficou com o DOM parado em outro
+// ponto enquanto a posição já era a certa.
 func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64) error {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
 		"expression":    fmt.Sprintf("(%s)(%v, %v)", scrollPassos, dx, dy),
@@ -288,6 +295,10 @@ const scrollDoAlvo = `function (dx, dy) {
 				behavior: 'instant',
 			});
 			if (i < passos) { setTimeout(passo, 35); return; }
+			if (document.hidden) {
+				rolavel.dispatchEvent(new Event('scroll'));
+				if (rolavel === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
+			}
 			pronto('ok');
 		};
 		passo();
@@ -321,6 +332,10 @@ const scrollPassos = `function (dx, dy) {
 				behavior: 'instant',
 			});
 			if (i < passos) { setTimeout(passo, 35); return; }
+			if (document.hidden) {
+				rolavel.dispatchEvent(new Event('scroll'));
+				if (rolavel === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
+			}
 			pronto('ok');
 		};
 		passo();
