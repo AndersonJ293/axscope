@@ -83,6 +83,15 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	meta := lerMetaDaPagina(ctx, client, session)
 	snap.Title, snap.URL = meta.Title, meta.URL
 	snap.Pagina, snap.Rolagens, snap.RolagensTotal = meta.Pagina, meta.Rolagens, meta.Total
+
+	// Alvos que a árvore não marca (div com handler de clique) entram como uma
+	// seção no fim: sem eles, o agente tem de adivinhar seletor para metade dos
+	// botões de um app real.
+	clicaveis, total := lerClicaveis(ctx, client, session)
+	if secao := secaoDeClicaveis(clicaveis, total); secao != "" {
+		snap.Text += "\n" + secao
+		snap.Count += strings.Count(secao, "\n") + 1
+	}
 	return snap, nil
 }
 

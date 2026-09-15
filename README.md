@@ -83,6 +83,8 @@ bu click e1                        # age pela ref do último snap
 bu fill e5 "dono@exemplo.com"
 bu press Enter
 bu wait "Painel"                   # converge, não dorme
+bu wait "Pronto" dentro=css=#lista # o texto, mas só dentro do container
+bu wait css=#enviar --habilitado   # espera o estado, não o texto
 bu tabs                            # abas abertas (a ativa vem com *)
 bu shot /tmp/evidencia.png         # captura (com cursor e destaque)
 bu script cenario.txt              # roteiro em lote
@@ -113,6 +115,20 @@ O cabeçalho da leitura diz onde se está, inclusive dentro de uma área que rol
 A árvore de acessibilidade não carrega rolagem, então isso vem do DOM. As maiores
 áreas vêm primeiro, e o seletor curto (`#id`, `tag.classe`) serve direto para
 `css=`.
+
+O fim da leitura lista os **clicáveis que a árvore não marca** — `div` com handler
+e `cursor: pointer`, o caso da conversa que não vira alvo:
+
+```
+-- clicáveis sem papel na árvore (a leitura não os marca; aqui o seletor):
+  div[data-id="ana"] — "Ana Souza — Oi Ana! Tenho interesse"
+```
+
+O critério é estreito de propósito: só container **sem alvo dentro**. Um card que
+embala botões já tem alvos, e listá-lo seria ruído — a mesma página dava 249
+candidatos por `cursor: pointer` puro contra 3 por este critério. O seletor vem
+conferido contra a própria página, e prefere o atributo de dado à classe: a
+classe de estado (`active`) muda, e um seletor que a carrega quebra sozinho.
 
 ### Roteiro
 
