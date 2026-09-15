@@ -107,13 +107,17 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 		"--metrics-recording-only",
 		"--no-pings",
 		"--force-color-profile=srgb",
-		"--force-renderer-accessibility",
 		"--hide-crash-restore-bubble",
 		"--window-size=" + size,
 		"--window-position=60,60",
 	}
 	if opts.Headless {
 		args = append(args, "--headless=new", "--disable-gpu")
+	}
+	// A árvore de acessibilidade é ligada sob demanda pelo domínio Accessibility.
+	// Forçá-la no arranque custa memória em todo processo; só ligamos se pedido.
+	if envBool("BROWSER_USE_FORCE_AX", false) {
+		args = append(args, "--force-renderer-accessibility")
 	}
 	args = append(args, opts.ExtraArgs...)
 	return args
