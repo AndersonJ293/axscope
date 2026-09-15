@@ -207,6 +207,8 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 
 	// Invólucro anônimo (sem nome, sem texto próprio, sem alvo): não vira linha
 	// — some, e os filhos sobem no lugar.
+	// Invólucro anônimo (sem nome, sem texto próprio, sem alvo): não vira linha
+	// — some, e os filhos sobem no lugar.
 	if name == "" && !hadText && ref == "" && anonRoles[role] {
 		for _, c := range b.children[nodeID] {
 			b.walk(c, depth, parentName)

@@ -45,7 +45,7 @@ var Specs = []Spec{
 	{Cmd: "select", Positional: []string{"target", "value"}, Help: "escolhe opção de <select>"},
 	{Cmd: "check", Positional: []string{"target"}, Help: "marca checkbox/radio"},
 	{Cmd: "uncheck", Positional: []string{"target"}, Help: "desmarca checkbox/radio"},
-	{Cmd: "scroll", Positional: []string{"dy", "alvo"}, Optional: []string{"alvo"}, Help: "rola o viewport (dy positivo desce; alvo= rola o container do alvo)"},
+	{Cmd: "scroll", Positional: []string{"dy", "alvo"}, Optional: []string{"alvo"}, Flags: []string{"pagina"}, Help: "rola (dy positivo desce; alvo= rola o container; --pagina força o documento)"},
 	{Cmd: "wait", Positional: []string{"text", "timeout"}, Optional: []string{"timeout"}, Help: "espera o texto aparecer (timeout em ms)"},
 	{Cmd: "waitgone", Positional: []string{"text", "timeout"}, Optional: []string{"timeout"}, Help: "espera o texto sumir (timeout em ms)"},
 	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Help: "lê o texto principal da página"},

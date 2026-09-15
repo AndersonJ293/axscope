@@ -191,21 +191,24 @@ func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.
 		if err != nil {
 			return protocol.Fail(err)
 		}
-		if err := browser.ScrollTarget(ctx, a.client(), sid, t.ObjectID, 0, dy); err != nil {
+		onde, err := browser.ScrollTarget(ctx, a.client(), sid, t.ObjectID, 0, dy)
+		if err != nil {
 			return protocol.Fail(err)
 		}
 		sess.Settle(ctx, sid, actionIdle)
-		label := fmt.Sprintf("scroll %.0f em %s", dy, alvo)
+		label := fmt.Sprintf("scroll %.0f em %s — agora em %s", dy, alvo, onde)
 		sess.UpdateHUD(ctx, label)
 		return ok("ok: " + label)
 	}
 
-	if err := browser.Scroll(ctx, a.client(), sid, 0, dy); err != nil {
+	onde, err := browser.Scroll(ctx, a.client(), sid, 0, dy, req.Bool("pagina", false))
+	if err != nil {
 		return protocol.Fail(err)
 	}
 	sess.Settle(ctx, sid, actionIdle)
-	sess.UpdateHUD(ctx, fmt.Sprintf("scroll %.0f", dy))
-	return ok(fmt.Sprintf("ok: rolei %.0f", dy))
+	label := fmt.Sprintf("scroll %.0f — agora em %s", dy, onde)
+	sess.UpdateHUD(ctx, label)
+	return ok("ok: " + label)
 }
 
 // finish resume o resultado de uma ação e anexa avisos de console.

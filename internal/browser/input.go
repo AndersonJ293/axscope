@@ -222,29 +222,35 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 // virtualizada, carregamento preguiçoso — nunca fica sabendo que rolou. Foi
 // assim que a lista virtualizada do laboratório ficou com o DOM parado em outro
 // ponto enquanto a posição já era a certa.
-func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64) error {
+//
+// Devolve onde parou, no formato "<quem> <posicao>/<maximo>": a resposta diz o
+// que a rolagem alcançou, não o que foi pedido — com scroll-snap, ou pedindo
+// além do limite, os dois diferem. `pagina` força o documento, para quando o
+// alvo está aninhado e o que se quer rolar é a página.
+func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64, pagina bool) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    fmt.Sprintf("(%s)(%v, %v)", scrollPassos, dx, dy),
+		"expression":    fmt.Sprintf("(%s)(%v, %v, %v)", scrollPassos, dx, dy, pagina),
 		"returnByValue": true,
 		"awaitPromise":  true,
 	}, session)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var res struct {
 		Result struct {
 			Value string `json:"value"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(raw, &res) != nil || res.Result.Value != "ok" {
-		return fmt.Errorf("não consegui rolar")
+	if json.Unmarshal(raw, &res) != nil || res.Result.Value == "" {
+		return "", fmt.Errorf("não consegui rolar")
 	}
-	return nil
+	return res.Result.Value, nil
 }
 
 // ScrollTarget rola o container do alvo — o próprio, se ele rola, ou o
-// ancestral rolável mais próximo; sem nenhum, o documento.
-func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID string, dx, dy float64) error {
+// ancestral rolável mais próximo; sem nenhum, o documento. Devolve onde parou,
+// como o Scroll.
+func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID string, dx, dy float64) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            objectID,
 		"functionDeclaration": scrollDoAlvo,
@@ -256,21 +262,26 @@ func ScrollTarget(ctx context.Context, client *cdp.Client, session, objectID str
 		"awaitPromise":  true,
 	}, session)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var res struct {
 		Result struct {
 			Value string `json:"value"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(raw, &res) != nil || res.Result.Value != "ok" {
-		return fmt.Errorf("não consegui rolar o alvo")
+	if json.Unmarshal(raw, &res) != nil || res.Result.Value == "" {
+		return "", fmt.Errorf("não consegui rolar o alvo")
 	}
-	return nil
+	return res.Result.Value, nil
 }
 
 // scrollDoAlvo rola o container do elemento, em passos.
 const scrollDoAlvo = `function (dx, dy) {
+	const descreve = (el) => {
+		const nome = el === (document.scrollingElement || document.documentElement) ? 'página'
+			: (el.id ? '#' + el.id : el.tagName.toLowerCase());
+		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight);
+	};
 	const rola = (el) => {
 		if (!el || !el.scrollHeight) return false;
 		const st = getComputedStyle(el);
@@ -299,23 +310,31 @@ const scrollDoAlvo = `function (dx, dy) {
 				rolavel.dispatchEvent(new Event('scroll'));
 				if (rolavel === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
 			}
-			pronto('ok');
+			pronto(descreve(rolavel));
 		};
 		passo();
 	});
 }`
 
-// scrollPassos rola o elemento rolável sob o centro da tela, em passos.
-const scrollPassos = `function (dx, dy) {
-	const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);
+// scrollPassos rola o elemento rolável sob o centro da tela, em passos; com
+// `pagina`, rola o documento.
+const scrollPassos = `function (dx, dy, pagina) {
+	const descreve = (el) => {
+		const nome = el === (document.scrollingElement || document.documentElement) ? 'página'
+			: (el.id ? '#' + el.id : el.tagName.toLowerCase());
+		return nome + ' ' + Math.round(el.scrollTop) + '/' + Math.round(el.scrollHeight - el.clientHeight);
+	};
 	let rolavel = document.scrollingElement || document.documentElement;
-	const alvo = document.elementFromPoint(cx, cy);
-	if (alvo) {
-		let c = alvo;
-		while (c) {
-			const st = getComputedStyle(c);
-			if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) { rolavel = c; break; }
-			c = c.parentElement;
+	if (!pagina) {
+		const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);
+		const alvo = document.elementFromPoint(cx, cy);
+		if (alvo) {
+			let c = alvo;
+			while (c) {
+				const st = getComputedStyle(c);
+				if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) { rolavel = c; break; }
+				c = c.parentElement;
+			}
 		}
 	}
 	const deX = rolavel.scrollLeft, deY = rolavel.scrollTop;
@@ -336,7 +355,7 @@ const scrollPassos = `function (dx, dy) {
 				rolavel.dispatchEvent(new Event('scroll'));
 				if (rolavel === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
 			}
-			pronto('ok');
+			pronto(descreve(rolavel));
 		};
 		passo();
 	});
