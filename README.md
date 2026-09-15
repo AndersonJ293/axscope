@@ -96,9 +96,13 @@ Alvo aceita quatro formas: `e12` (ref), `css=.botao`, `text=Entrar` e `pos=x,y`
 árvore de acessibilidade a achata — a leitura mostra o que está lá dentro, com
 ref — e a mira por `text=`/`css=` também alcança.
 
-Quando o alvo recusa a ação (`disabled`, `aria-disabled`, `pointer-events:
-none`), a resposta diz o motivo. Clicar num botão desabilitado não faz nada, e um
-`ok` sem aviso passaria por sucesso — o agente seguiria como se tivesse agido.
+Quando o alvo recusa a ação, a ação **não é enviada** e a resposta diz o motivo e
+o próximo passo: o alvo desabilitado (`espere habilitar`), o alvo coberto
+(`para clicar no ponto assim mesmo, use pos=x,y`) e o alvo que está fora da
+janela do container que o recorta. Clicar num botão coberto responde `ok` e não
+faz nada — e ainda cai na camada de cima, com o efeito colateral que a página
+quiser dar a ela. Também não passa em silêncio o texto que não entrou no campo
+(`o campo continua vazio`) nem o clique que foi enviado e o alvo não viu.
 
 O cabeçalho da leitura diz onde se está, inclusive dentro de uma área que rola:
 
@@ -422,6 +426,12 @@ internal/installer/ download do Chrome for Testing
   com o botão que dizia AGORA. A resposta diz onde achou (`em p.desc`), que é
   como se percebe, e a saída é esperar um texto que só exista no alvo
   (`waitgone "Ainda não"`).
+- **Aba em segundo plano trava o que depende de quadro.** Com o documento oculto
+  (`document.hidden`), o `IntersectionObserver` não dispara: página que carrega
+  conteúdo assim — feed infinito, imagem preguiçosa — não avança por mais que se
+  role. O `scroll` avisa quando chega ao fim nessa condição, e a saída é
+  `bu tab <n> --focus` (traz a aba à frente) ou o `eval` chamando a função da
+  própria página. Medido no laboratório v2: rolar até o fim deixava 6 posts de 18.
 - `upload` por `<input type=file>` manda o **caminho**, que quem lê é o
   navegador — vale para navegador e daemon na mesma máquina (o caso da
   extensão). Numa dropzone o conteúdo viaja em bytes, então o caminho não

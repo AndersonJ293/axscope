@@ -10,8 +10,9 @@ fazer. Cada item traz a medição que o justifica — nada aqui é palpite.
 - **Rolagem horizontal** não entra no cabeçalho da leitura: o eixo vertical é o
   que morde, e reportar os dois inventaria formato para um caso ainda não
   medido (item 1).
-- **`wait` não enxerga shadow root nem iframe de mesma origem** — e a leitura
-  agora mostra os dois (item 6).
+- **Conteúdo que carrega por `IntersectionObserver` não avança em aba oculta.**
+  Não é da ferramenta — é do navegador —, e a saída é `tab <n> --focus`; o
+  `scroll` avisa quando chega ao fim nessa condição. Está no README.
 
 O resto abaixo é histórico: o que fechou, com o que ensinou.
 
@@ -162,26 +163,48 @@ component não muda de alvo.
 
 ---
 
-## 6. `wait` não enxerga shadow root nem iframe de mesma origem
+## 6. `wait` não enxergava shadow root nem iframe — resolvido
 
-**Medido** agora que a leitura mostra os dois: `wait "Iframe zone"` e
-`wait "SHADOW-321"` estouram o tempo, embora o `snap` mostre o conteúdo da seção
-13 logo abaixo de `- Iframe` e o `SHADOW-321` da seção 12.
+**Medido** quando a leitura passou a mostrar os dois: `wait "Iframe zone"` e
+`wait "SHADOW-321"` estouravam o tempo, embora o `snap` mostrasse o conteúdo. A
+varredura do `wait` era `document.body.innerText` mais
+`document.querySelectorAll('body *')`, e nenhuma das duas atravessa fronteira.
 
-**Por quê:** o `wait` tem varredura própria (`document.body.innerText` mais
-`document.querySelectorAll('body *')`), e nenhuma das duas atravessa fronteira —
-`innerText` enxerga só o documento claro.
+**Feito:** a varredura desce em `el.shadowRoot` e em `iframe.contentDocument`
+(mesma origem) — o mesmo padrão da mira por texto e da leitura. A resposta
+inclusive diz quando achou dentro de um iframe:
 
-**O conserto:** o mesmo padrão que a mira por texto usa (`sobASombra`) e que a
-leitura agora usa para frame — descer em `el.shadowRoot` e em
-`iframe.contentDocument` (mesma origem) ao varrer. Vale para o `text=`/`css=`
-dentro de iframe também, que hoje só alcança o conteúdo do frame por `ref`.
-Barato, mas não entrou nesta rodada de propósito: mexe no `wait`, que é comando
-de espera, e espera é onde errar custa caro — ou volta cedo demais, ou estoura o
-tempo.
+    wait "Iframe zone"  →  ok: apareceu em 12ms — em h3 (dentro de iframe)
 
-**Enquanto isso:** o agente chega ao mesmo lugar lendo a tela (`snap` mostra o
-conteúdo) ou mirando por `ref`, que funciona dentro do iframe.
+---
+
+## 7. O clique que não chegava: três defeitos empilhados — resolvido
+
+Achado ao **refazer o desafio v2** depois de corrigir o bug do lab. O agente que
+testou tinha concluído que precisava de `eval` para a lista virtualizada; a
+investigação mostrou três defeitos meus no caminho do clique:
+
+1. **Ancestral no DOM claro passava como caminho livre.** A conferência aceitava
+   "o elemento do ponto contém o alvo" — mas evento borbulha para cima, não
+   desce: um container na frente do filho nunca entrega o clique a ele. Medido
+   com o botão em (1133,272), o clique enviado exatamente ali, e quem recebia era
+   o `div.card.padded` que **contém** o botão.
+2. **A rolagem achava visível o que estava recortado.** A lista virtualizada
+   recorta por `overflow`, e uma linha 85px acima da janela do container contava
+   como visível. Agora "visível" é a mesma pergunta do clique — *o que está no
+   ponto?* —, e o centro é o do próprio scroller, não o da janela.
+3. **A resposta não conferia se o evento passou pelo alvo.** O alvo recebe uma
+   escuta de captura antes do clique; se o evento não passar por ele, a resposta
+   avisa. `elementFromPoint` enxerga camadas mas não sabe para onde o navegador
+   reentrega o evento (shadow host, iframe); a escuta sabe.
+
+As duas perguntas — a do clique e a da rolagem — ficaram numa definição só:
+elas discordarem foi o que fez a rolagem dizer "já está visível" e o clique
+recusar logo depois.
+
+**Medido no desafio:** `snap` → ref do "Abrir" do Candidato 413 → clique →
+`CHECK 17`, sem `eval` e sem conta de seletor. E os oito checks que refiz
+(2, 8, 11, 12, 17, 18, 19, 20) saíram todos com comando de primeira classe.
 
 ---
 
