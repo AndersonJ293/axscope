@@ -379,3 +379,18 @@ internal/installer/ download do Chrome for Testing
 - Diálogos nativos são sempre descartados (`dismiss`), configurável depois.
 - O `bootstrap` assume o modelo de targets do Chromium; engines alternativos
   precisam de um caminho próprio.
+- **Ler e alcançar não são o mesmo conjunto.** O `snap` vem da árvore de
+  acessibilidade; a mira por `text=` anda no DOM. Os dois discordam em dois
+  casos medidos:
+  - **Conteúdo gerado por CSS** (`content: attr(...)`, típico de tooltip) existe
+    na leitura e **não existe no DOM** — e entra no **nome** do elemento em
+    volta: um botão passou de `"Passe o mouse"` para
+    `"Passe o mouse Tooltip carregado no hover"` depois do hover. Nome de alvo
+    não é estável; para lógica que dependa dele, use `ref`.
+  - **Rótulo de campo** é o inverso: o `text=` agora enxerga `placeholder` e
+    rótulo associado para concordar com o que a leitura mostra, mas um campo
+    **sem nome nenhum** (sem `aria-label`, rótulo ou placeholder) segue
+    inalcançável por identidade — só por `ref` ou `pos=`.
+- `hover` entra de fora para dentro de propósito: mover o ponteiro para onde ele
+  já está não gera `pointerenter`, e a ação responderia `ok` sem a página ver
+  nada.

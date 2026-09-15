@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ajunior/browser-use/internal/cdp"
+	"github.com/ajunior/browser-use/internal/dom"
 )
 
 func visualDelay() time.Duration {
@@ -74,17 +75,76 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 }
 
 // Hover passa o mouse por cima do alvo.
+// Hover passa o mouse por cima do alvo, entrando de fora para dentro.
+//
+// Entrar de fora importa: mover o ponteiro para onde ele já está não gera
+// `pointerenter`. Sem isso, um alvo com lógica de enter — botão que foge, menu
+// que abre no hover, tooltip — via o gesto chegar e a ferramenta responder ok,
+// sem a página ver nada. Medido no botão fujão do laboratório: quatro hovers
+// seguidos produziram três fugas, e a quarta só veio depois de tirar o mouse.
 func Hover(ctx context.Context, client *cdp.Client, session string, t *Target, p Presenter) error {
 	cx, cy := t.center()
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
-	_ = p.MoveCursor(ctx, client, session, cx, cy)
+
+	fx, fy := pontoFora(ctx, client, session, t.Rect)
+	_ = p.MoveCursor(ctx, client, session, fx, fy)
+	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
+		"type": "mouseMoved", "x": fx, "y": fy,
+	}, session); err != nil {
+		return err
+	}
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
+
+	_ = p.MoveCursor(ctx, client, session, cx, cy)
 	_, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseMoved", "x": cx, "y": cy,
 	}, session)
 	return err
+}
+
+// pontoFora devolve um ponto no viewport fora da caixa do alvo, para o ponteiro
+// ter de onde entrar. Prefere os lados: na linha do meio do alvo costuma haver
+// espaço livre, enquanto acima/abaixo pode cair dentro de um vizinho.
+func pontoFora(ctx context.Context, client *cdp.Client, session string, r dom.Rect) (float64, float64) {
+	const folga = 6
+	cx := r.X + r.Width/2
+	cy := r.Y + r.Height/2
+
+	var dims struct {
+		Result struct {
+			Value struct {
+				W float64 `json:"w"`
+				H float64 `json:"h"`
+			} `json:"value"`
+		} `json:"result"`
+	}
+	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
+		"expression":    "({w: innerWidth, h: innerHeight})",
+		"returnByValue": true,
+	}, session)
+	if err == nil {
+		_ = json.Unmarshal(raw, &dims)
+	}
+	largura, altura := dims.Result.Value.W, dims.Result.Value.H
+	if largura == 0 {
+		largura, altura = 1280, 720
+	}
+
+	if x := r.X - folga; x >= 0 {
+		return x, cy
+	}
+	if x := r.X + r.Width + folga; x <= largura {
+		return x, cy
+	}
+	if y := r.Y - folga; y >= 0 {
+		return cx, y
+	}
+	if y := r.Y + r.Height + folga; y <= altura {
+		return cx, y
+	}
+	return 0, 0
 }
 
 // Fill substitui o conteúdo do campo (foco + seleção + insertText).

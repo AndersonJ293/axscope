@@ -53,13 +53,17 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 	start := time.Now()
 	deadline := start.Add(timeout)
 	for time.Now().Before(deadline) {
-		has, err := pageHasText(ctx, a.client(), sid, want)
-		if err == nil && has == present {
+		onde, err := localizaTexto(ctx, a.client(), sid, want)
+		if err == nil && (onde != "") == present {
 			verb := "apareceu"
 			if !present {
 				verb = "sumiu"
 			}
-			return ok(fmt.Sprintf("ok: %q %s em %dms", want, verb, time.Since(start).Milliseconds()))
+			msg := fmt.Sprintf("ok: %q %s em %dms", want, verb, time.Since(start).Milliseconds())
+			if onde != "" {
+				msg += " — em " + onde
+			}
+			return ok(msg)
 		}
 		time.Sleep(120 * time.Millisecond)
 	}
@@ -97,22 +101,44 @@ func (a *Agent) reload(ctx context.Context, sess *browser.Session, req protocol.
 }
 
 // pageHasText diz se o corpo da página contém o texto pedido.
-func pageHasText(ctx context.Context, client *cdp.Client, session, want string) (bool, error) {
+// localizaTexto diz se o texto está na página e, se estiver, descreve onde.
+//
+// Devolver só "achei" engana: o texto pode já existir em outro canto e a espera
+// voltar em 1ms. Aconteceu na missão 3 do laboratório, esperando "Barreiras" —
+// que a própria lista de missões já citava. Dizer onde achou deixa o agente
+// conferir se é o lugar que ele queria.
+func localizaTexto(ctx context.Context, client *cdp.Client, session, want string) (string, error) {
 	expr := fmt.Sprintf(`(() => {
+		const want = %s;
 		const body = document.body;
-		if (!body) return false;
-		return (body.innerText || '').includes(%s);
+		if (!body || !(body.innerText || '').includes(want)) return '';
+		// O menor elemento que contém o texto é o candidato mais provável de ser
+		// "o" alvo — mesma lógica do desempate por sobra na mira por texto.
+		let melhor = null, sobra = Infinity;
+		for (const el of document.querySelectorAll('body *')) {
+			const t = el.innerText || '';
+			if (!t.includes(want)) continue;
+			const s = t.trim().length - want.length;
+			if (s < sobra) { sobra = s; melhor = el; }
+		}
+		if (!melhor) return '(na página)';
+		let marca = '';
+		if (melhor.id) marca = '#' + melhor.id;
+		else if (typeof melhor.className === 'string' && melhor.className.trim())
+			marca = '.' + melhor.className.trim().split(/\s+/)[0];
+		const trecho = (melhor.innerText || '').trim().slice(0, 60);
+		return melhor.tagName.toLowerCase() + marca + ' — "' + trecho + '"';
 	})()`, strconv.Quote(want))
 	raw, err := dom.Eval(ctx, client, session, expr)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	if len(raw) == 0 {
-		return false, nil
+		return "", nil
 	}
-	var has bool
-	if err := json.Unmarshal(raw, &has); err != nil {
-		return false, err
+	var onde string
+	if err := json.Unmarshal(raw, &onde); err != nil {
+		return "", err
 	}
-	return has, nil
+	return onde, nil
 }
