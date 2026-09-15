@@ -53,19 +53,20 @@
     }
 
     /* ---- ripple do clique ---- */
+    /* Leve de propósito: quem clica é o mouse, o ripple só confirma. Antes ele
+       se abria 3,6x com halo forte e virava o espetáculo. */
     .ripple {
-      width: 22px; height: 22px; margin: -11px 0 0 -11px; z-index: 2;
+      width: 18px; height: 18px; margin: -9px 0 0 -9px; z-index: 2;
       border-radius: 50%;
-      border: 2px solid rgba(199,210,254,.95);
-      background: rgba(99,102,241,.28);
-      box-shadow: 0 0 18px rgba(99,102,241,.55);
-      opacity: 0; transform: scale(.3);
+      border: 1.5px solid rgba(199,210,254,.75);
+      background: rgba(99,102,241,.16);
+      box-shadow: 0 0 10px rgba(99,102,241,.32);
+      opacity: 0; transform: scale(.35);
     }
-    .ripple.on { animation: bu-ripple 560ms cubic-bezier(.2,.8,.2,1); }
+    .ripple.on { animation: bu-ripple 380ms cubic-bezier(.2,.8,.2,1); }
     @keyframes bu-ripple {
-      0%   { opacity: .95; transform: scale(.30); }
-      70%  { opacity: .35; }
-      100% { opacity: 0;   transform: scale(3.6); }
+      0%   { opacity: .8; transform: scale(.35); }
+      100% { opacity: 0;  transform: scale(2.1); }
     }
 
     /* Contorno puro: realça o alvo sem cobrir o conteúdo. Nada de fundo — o

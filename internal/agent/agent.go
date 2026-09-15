@@ -478,14 +478,19 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 		at = "bottom"
 	}
 	before := a.errCount(sess, sid)
-	tipo, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
+	tipo, mudou, err := browser.Drag(ctx, a.client(), sid, from, to, browser.DragOptions{
 		DropAt: at,
 		Tipo:   req.String("tipo"),
 	})
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	return ok(a.finish(ctx, sess, sid, fmt.Sprintf("drag %s -> %s [%s]", fromSpec, toSpec, tipo), before))
+	label := fmt.Sprintf("drag %s -> %s [%s]", fromSpec, toSpec, tipo)
+	if !mudou {
+		// Gesto que não pega pode ter terminado em clique real no alvo.
+		label += " (não vi mudança de posição — pode não ter pegado)"
+	}
+	return ok(a.finish(ctx, sess, sid, label, before))
 }
 
 func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {

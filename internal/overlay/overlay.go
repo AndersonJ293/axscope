@@ -6,6 +6,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ajunior/browser-use/internal/cdp"
@@ -68,7 +70,15 @@ func Press(ctx context.Context, c *cdp.Client, session string, x, y float64, kin
 }
 
 // Spotlight realça o retângulo do alvo; nil limpa.
+//
+// Desligado por padrão. O contorno no alvo poluía mais do que ajudava: ficava
+// aceso depois da ação e, quando a página rolava, apontava para o nada. Quem
+// quiser de volta liga com BROWSER_USE_DESTAQUE=1.
 func Spotlight(ctx context.Context, c *cdp.Client, session string, rect *Rect) error {
+	ligado, _ := strconv.Atoi(os.Getenv("BROWSER_USE_DESTAQUE"))
+	if ligado <= 0 {
+		return nil
+	}
 	if rect == nil {
 		return call(ctx, c, session, "clearSpotlight")
 	}

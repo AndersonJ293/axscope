@@ -43,7 +43,8 @@ func cursorDelayMs() int {
 // Formas aceitas:
 //   - "e12"        → ref do último `snap`
 //   - "css=..."    → seletor CSS
-//   - "text=..."   → elemento cujo texto visível casa
+//   - "text=..."   → nome acessível ou texto visível que casa
+//   - "pos=x,y"    → o elemento sob o ponto (último recurso, para alvo sem nome)
 func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs map[string]int, spec string) (*Target, error) {
 	if spec == "" {
 		return nil, fmt.Errorf("alvo vazio")
@@ -81,14 +82,18 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			// justo (menos sobra de texto); acionável só desempata. Sem o "mais
 			// justo", o primeiro que contém o texto é sempre o container da
 			// página inteira — e o alvo vira a tela toda.
-			const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+			const melhorQue = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3];
+			// Nome que colide com o cromo da página é armadilha: o menu "⋯" do
+			// LinkedIn se chama "Resources", igual ao "Resources" do topo. Fora
+			// do cromo ganha o desempate.
+			const cromo = el => el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]') ? 1 : 0;
 			let escolhido = null, chave = null;
 			for (const el of nodes) {
 				const t = texto(el);
 				if (!t) continue;
 				const exato = t === want;
 				if (!exato && !t.includes(want)) continue;
-				const atual = [exato ? 0 : 1, t.length - want.length, acionavel(el) ? 0 : 1];
+				const atual = [exato ? 0 : 1, t.length - want.length, cromo(el), acionavel(el) ? 0 : 1];
 				if (chave === null || melhorQue(atual, chave) < 0) {
 					escolhido = el;
 					chave = atual;
@@ -101,7 +106,30 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 			return nil, err
 		}
 		if id == "" {
-			return nil, fmt.Errorf("nenhum elemento com texto %q", want)
+			return nil, fmt.Errorf(
+				"nenhum elemento com texto %q — se a página carrega por rolagem, desça até a seção e tente de novo", want)
+		}
+		objectID = id
+
+	case strings.HasPrefix(spec, "pos="):
+		// Último recurso, para alvo sem nome acessível nenhum (alça de arrastar
+		// sem aria-label, por exemplo). É posição, não identidade: quebra fácil.
+		xy := strings.Split(strings.TrimPrefix(spec, "pos="), ",")
+		if len(xy) != 2 {
+			return nil, fmt.Errorf("posição mal formada %q — use pos=x,y", spec)
+		}
+		x, errX := strconv.ParseFloat(strings.TrimSpace(xy[0]), 64)
+		y, errY := strconv.ParseFloat(strings.TrimSpace(xy[1]), 64)
+		if errX != nil || errY != nil {
+			return nil, fmt.Errorf("posição mal formada %q — use pos=x,y", spec)
+		}
+		expr := fmt.Sprintf("document.elementFromPoint(%v, %v)", x, y)
+		id, err := evalObject(ctx, client, session, expr)
+		if err != nil {
+			return nil, err
+		}
+		if id == "" {
+			return nil, fmt.Errorf("nada em %s (fora da tela?)", spec)
 		}
 		objectID = id
 
@@ -198,7 +226,8 @@ const scrollScript = `function (intervalo) {
 	const de = rolavel.scrollTop;
 	const r = el.getBoundingClientRect();
 	const delta = (r.top - innerHeight / 2 + r.height / 2);
-	const passos = 6;
+	// Aba em segundo plano estrangula setTimeout; escondida, vai de uma vez.
+	const passos = document.hidden ? 1 : 6;
 	let i = 0;
 	return new Promise((pronto) => {
 		const passo = () => {
@@ -376,6 +405,70 @@ type DragOptions struct {
 	Steps int
 }
 
+// paraLinha troca o alvo pela "linha" que o contém — o item de lista ou de
+// tabela mais próximo.
+//
+// Descoberto no reorder do LinkedIn: mirar o parágrafo (≈20px, centralizado na
+// linha de 48px) ou a linha inteira muda o ponto de soltura — e a biblioteca
+// insere no índice da linha sob o ponteiro. Três tentativas erraram a posição
+// por causa disso; mirando a linha, acertou de primeira.
+func paraLinha(ctx context.Context, client *cdp.Client, session string, t *Target) {
+	if t == nil || t.ObjectID == "" {
+		return
+	}
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": t.ObjectID,
+		"functionDeclaration": `function () {
+			return this.closest ? (this.closest('li,tr,[role="listitem"],[role="row"]') || this) : this;
+		}`,
+		"returnByValue": false,
+	}, session)
+	if err != nil {
+		return
+	}
+	var res struct {
+		Result struct {
+			ObjectID string `json:"objectId"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil || res.Result.ObjectID == "" || res.Result.ObjectID == t.ObjectID {
+		return
+	}
+	rect, err := boxOf(ctx, client, session, res.Result.ObjectID)
+	if err != nil {
+		return
+	}
+	t.ObjectID = res.Result.ObjectID
+	t.Rect = rect
+}
+
+// assinaturaDe resume onde o elemento está (índice entre os irmãos + posição),
+// para saber se o arraste mudou alguma coisa de fato.
+func assinaturaDe(ctx context.Context, client *cdp.Client, session, objectID string) string {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			if (!this || !this.parentElement) return '';
+			const irmaos = [...this.parentElement.children];
+			const r = this.getBoundingClientRect();
+			return irmaos.indexOf(this) + '@' + Math.round(r.left) + ',' + Math.round(r.top) + '/' + irmaos.length;
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return ""
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return ""
+	}
+	return res.Result.Value
+}
+
 // Drag arrasta `from` até `to`.
 //
 // Duas famílias de arraste convivem na web e não se falam:
@@ -388,15 +481,37 @@ type DragOptions struct {
 //
 // A origem com `draggable="true"` (nela ou num ancestral) diz de qual família se
 // trata. `tipo=ponteiro|html5` força, se a detecção errar.
-func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) (string, error) {
+func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions) (string, bool, error) {
+	// A linha, não o texto: é ela que define o ponto de soltura.
+	paraLinha(ctx, client, session, from)
+	paraLinha(ctx, client, session, to)
+
+	// Guarda onde a origem estava, para poder dizer se algo mudou de verdade —
+	// gesto que não pega costuma terminar em clique, sem aviso nenhum.
+	antes := assinaturaDe(ctx, client, session, from.ObjectID)
+
 	tipo := opts.Tipo
 	if tipo == "" {
 		tipo = dragKind(ctx, client, session, from.ObjectID)
 	}
+	var err error
 	if tipo == "ponteiro" {
-		return tipo, dragPointer(ctx, client, session, from, to, opts)
+		err = dragPointer(ctx, client, session, from, to, opts)
+	} else {
+		tipo = "html5"
+		err = dragHTML5(ctx, client, session, from, to, opts)
 	}
-	return "html5", dragHTML5(ctx, client, session, from, to, opts)
+	if err != nil {
+		return tipo, false, err
+	}
+
+	mudou := true
+	if antes != "" {
+		if depois := assinaturaDe(ctx, client, session, from.ObjectID); depois != "" {
+			mudou = antes != depois
+		}
+	}
+	return tipo, mudou, nil
 }
 
 // dragKind diz de que família é o arraste: "html5" ou "ponteiro".
@@ -635,35 +750,65 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	return nil
 }
 
-// Scroll rola o viewport por (dx, dy) a partir do centro.
+// Scroll rola o viewport por (dx, dy). Vai em passos, para quem olha acompanhar
+// o movimento em vez de a página pular de uma vez.
+//
+// Rola pelo scroller sob o centro da tela, e não por roda de mouse: a roda
+// depende de quem está sob o ponteiro (numa página com caixa de rolagem no meio
+// do caminho, ela rola o container errado) e o ack dela pelo chrome.debugger às
+// vezes não volta — medido: 30s de timeout sem rolar nada.
 func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64) error {
-	var dims struct {
+	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
+		"expression":    fmt.Sprintf("(%s)(%v, %v)", scrollPassos, dx, dy),
+		"returnByValue": true,
+		"awaitPromise":  true,
+	}, session)
+	if err != nil {
+		return err
+	}
+	var res struct {
 		Result struct {
-			Value struct {
-				W float64 `json:"w"`
-				H float64 `json:"h"`
-			} `json:"value"`
+			Value string `json:"value"`
 		} `json:"result"`
 	}
-	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    "({w: window.innerWidth, h: window.innerHeight})",
-		"returnByValue": true,
-	}, session)
-	if err == nil {
-		_ = json.Unmarshal(raw, &dims)
-	}
-	cx := dims.Result.Value.W / 2
-	cy := dims.Result.Value.H / 2
-	if cx == 0 {
-		cx, cy = 640, 400
-	}
-	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
-		"type": "mouseWheel", "x": cx, "y": cy, "deltaX": dx, "deltaY": dy,
-	}, session); err != nil {
-		return err
+	if json.Unmarshal(raw, &res) != nil || res.Result.Value != "ok" {
+		return fmt.Errorf("não consegui rolar")
 	}
 	return nil
 }
+
+// scrollPassos rola o elemento rolável sob o centro da tela, em passos.
+const scrollPassos = `function (dx, dy) {
+	const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);
+	let rolavel = document.scrollingElement || document.documentElement;
+	const alvo = document.elementFromPoint(cx, cy);
+	if (alvo) {
+		let c = alvo;
+		while (c) {
+			const st = getComputedStyle(c);
+			if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) { rolavel = c; break; }
+			c = c.parentElement;
+		}
+	}
+	const deX = rolavel.scrollLeft, deY = rolavel.scrollTop;
+	// Aba em segundo plano estrangula setTimeout, e animar para ninguém só
+	// deixa a rolagem lenta: escondida, vai de uma vez.
+	const passos = document.hidden ? 1 : 6;
+	let i = 0;
+	return new Promise((pronto) => {
+		const passo = () => {
+			i++;
+			rolavel.scrollTo({
+				left: deX + dx * (i / passos),
+				top: deY + dy * (i / passos),
+				behavior: 'instant',
+			});
+			if (i < passos) { setTimeout(passo, 35); return; }
+			pronto('ok');
+		};
+		passo();
+	});
+}`
 
 // Press envia uma tecla/atalho (ex.: "Enter", "Control+A").
 func Press(ctx context.Context, client *cdp.Client, session, combo string) error {
