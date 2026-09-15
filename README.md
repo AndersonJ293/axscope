@@ -392,14 +392,12 @@ internal/installer/ download do Chrome for Testing
 
 ## Limitações conhecidas
 
-- Iframe **não aparece na leitura**: o `snap` mostra o frame como uma linha só
-  (`- Iframe`, sem ref), porque a árvore de acessibilidade do frame principal
-  não inclui o documento de dentro. A ação alcança o que está lá — evento de
-  mouse é entregue por hit-test no viewport e atravessa a fronteira —, mas hoje
-  o ponto tem de vir de fora: um `eval` que leia o `contentDocument` e some o
-  deslocamento do frame. O desenho para fechar isso está em
-  [`PENDENCIAS.md`](PENDENCIAS.md), item 3 (mesma origem desce pelo DOM;
-  origem diferente precisa de sessão CDP por frame).
+- **Iframe de outra origem (OOPIF) não aparece na leitura**: o `snap` mostra o
+  frame como uma linha só (`- Iframe`, sem conteúdo), porque aquela árvore de
+  acessibilidade vive no processo do outro site — alcançá-la exige sessão CDP
+  própria por frame (ver [`PENDENCIAS.md`](PENDENCIAS.md), item 3). Iframe da
+  **mesma origem** é lido por inteiro, e o ref de dentro funciona: as árvores dos
+  dois frames são juntadas na leitura.
 - Diálogos nativos são sempre descartados (`dismiss`), configurável depois.
 - O `bootstrap` assume o modelo de targets do Chromium; engines alternativos
   precisam de um caminho próprio.

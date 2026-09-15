@@ -71,7 +71,14 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 		return nil, fmt.Errorf("árvore de acessibilidade vazia")
 	}
 
-	snap := montarTexto(tree.Nodes, opts)
+	// Iframe é outra árvore: a do frame principal mostra o iframe como uma linha
+	// só. Sem juntar, a leitura não diz o que tem dentro.
+	nodes := tree.Nodes
+	if temIframe(nodes) {
+		nodes = juntarFrames(ctx, client, session, nodes)
+	}
+
+	snap := montarTexto(nodes, opts)
 	meta := lerMetaDaPagina(ctx, client, session)
 	snap.Title, snap.URL = meta.Title, meta.URL
 	snap.Pagina, snap.Rolagens, snap.RolagensTotal = meta.Pagina, meta.Rolagens, meta.Total
@@ -216,7 +223,10 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	hadText := false
 	if name != "" {
 		line += " " + strconv.Quote(name)
-	} else if !b.refsOnly {
+	} else if !b.refsOnly && !frameRoles[role] {
+		// O iframe fica de fora da coleta: ele não tem texto próprio, e o que
+		// ela pescaria é o texto do documento de dentro — que já aparece logo
+		// abaixo, na árvore que foi enxertada nele.
 		if text := b.collectText(nodeID); text != "" && !repeatOf(text, parentName) {
 			line += ": " + text
 			hadText = true

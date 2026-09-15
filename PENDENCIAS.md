@@ -1,9 +1,17 @@
 # Pendências
 
-O que ficou fora do trabalho de hoje, por que ficou, e o que já foi decidido **não**
+O que ficou fora do trabalho, por que ficou, e o que já foi decidido **não**
 fazer. Cada item traz a medição que o justifica — nada aqui é palpite.
 
-Ordem: as três primeiras são de ferramenta.
+**Aberto hoje:**
+
+- **Iframe de outra origem (OOPIF)** não é lido: aquela árvore de acessibilidade
+  vive no processo do outro site e exige sessão CDP própria por frame (item 3).
+- **Rolagem horizontal** não entra no cabeçalho da leitura: o eixo vertical é o
+  que morde, e reportar os dois inventaria formato para um caso ainda não
+  medido (item 1).
+
+O resto abaixo é histórico: o que fechou, com o que ensinou.
 
 ---
 
@@ -64,38 +72,43 @@ não achata — senão a leitura inventaria uma coluna.
 
 ---
 
-## 3. Iframe: a leitura não entra, a ação entra
+## 3. Iframe na leitura: mesma origem resolvido, OOPIF não
 
-**Estado hoje:** a missão 13 do laboratório **passa**, por coordenada — mas o
-caminho tem fricção e vale registrar por quê.
+**Feito (mesma origem):** a leitura agora entra no iframe. A árvore de
+acessibilidade vem **por frame** — a do frame principal mostra o iframe como uma
+linha só —, e o CDP entrega a do documento de dentro separada
+(`Accessibility.getFullAXTree` com `frameId`) e diz qual elemento hospeda cada
+frame (`DOM.getFrameOwner`). As duas viram uma, penduradas no nó do iframe:
 
-**O que funciona:** `click pos=x,y` com o ponto do botão de dentro. Evento de
-mouse é do navegador, não da página: ele é entregue por hit-test no viewport e
-atravessa a fronteira do iframe sem que ninguém precise saber que ela existe.
+    - Iframe
+      - heading "Iframe zone" [level=3]
+      - button "Clique dentro do iframe" [ref=e55]
 
-**O que falta:** a leitura. O `snap` mostra o iframe como uma linha só (`-
-Iframe`, sem ref e sem conteúdo), porque a árvore de acessibilidade do frame
-principal não inclui o documento de dentro. Então, para saber **onde** fica o
-botão de dentro, hoje é preciso um `eval` que leia `contentDocument` e some o
-deslocamento do iframe — foi o que eu fiz para fechar a missão. Não é gambiarra,
-mas é conta que a ferramenta deveria poupar.
+O ref de dentro **funciona**: resolve por `backendNodeId` e a geometria do
+`DOM.getBoxModel` já vem no sistema de coordenadas da página — medido, o clique
+pelo ref fecha o `check(13)` do laboratório. Então a missão deixou de depender de
+`pos=x,y` calculado à mão.
 
-**O desenho, em dois degraus:**
+Três detalhes que a implementação exigiu:
 
-- **Mesma origem** (o caso do `srcdoc` do laboratório): `iframe.contentDocument`
-  é alcançável, então a mira por `text=`/`css=` pode descer nele como já desce em
-  shadow root — e aí a geometria precisa do deslocamento do frame, porque
-  `getBoundingClientRect` de dentro responde no sistema de coordenadas do iframe.
-  É o mesmo cuidado que o shadow root não exigiu (lá não há viewport própria).
-- **Origem diferente (OOPIF)**: aí não há `contentDocument`; cada frame vira
-  sessão CDP própria (`Target.setAutoAttach`) e a leitura compõe os pedaços.
-  É mudança de modelo — hoje `Session` assume "uma aba = uma sessão".
+- **Ids prefixados por frame.** Cada árvore numera os nós a partir do próprio
+  root; sem prefixo, os ids de dois frames colidem no mesmo mapa e a leitura sai
+  misturada.
+- **A raiz do frame não vira linha.** `RootWebArea "título do documento"` dentro
+  do iframe é ruído; o que interessa é o conteúdo, que se pendura direto no nó do
+  iframe.
+- **O iframe não coleta texto.** Ele não tem texto próprio, e a coleta pescaria o
+  texto do documento de dentro — que já aparece logo abaixo. Saía
+  `- Iframe: FRAME-991` duplicando o conteúdo.
 
-**O que já foi corrigido nesta rodada:** `pos=x,y` agia no centro do elemento
-sob o ponto, e não no ponto. Sobre um iframe isso é o centro do iframe — a
-dezenas de pixels do lugar pedido — e o clique acertava o vazio. Agora o ponto
-pedido é onde a ação acontece, e o `Rect` do elemento continua servindo ao
-destaque e ao "entrar de fora" do hover.
+O custo fica com quem tem iframe: sem um nó de papel `Iframe` na árvore, nada é
+buscado.
+
+**O que fica (OOPIF):** origem diferente continua mostrando `- Iframe` sem
+conteúdo. Medido com uma página de teste (`file://` com iframe para
+`https://example.com`): a árvore não vem, porque ela vive no processo do outro
+site. Alcançar exige sessão CDP própria por frame (`Target.setAutoAttach`, com as
+sessões que o cliente já sabe usar) — mudança de modelo, não de detalhe.
 
 ---
 

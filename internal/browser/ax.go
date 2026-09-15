@@ -46,6 +46,9 @@ var interactiveRoles = map[string]bool{
 	"menulist": true, "textfield": true, "popupbutton": true,
 }
 
+// frameRoles são os papéis do elemento que hospeda um documento à parte.
+var frameRoles = map[string]bool{"Iframe": true, "iframe": true}
+
 // skipRoles são papéis que nunca entram na leitura (ruído puro).
 
 var skipRoles = map[string]bool{
