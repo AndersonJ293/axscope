@@ -51,6 +51,10 @@ consumer that does. When you point an LLM agent at untrusted pages, treat every
 byte that comes back from `snap`, `read`, `console` and `net` as attacker-
 controlled input.
 
+Concrete guidance for wiring axscope into an agent — which outputs are
+attacker-controlled, how to frame them, and what to confirm before acting — is in
+[`docs/USING_WITH_LLM.md`](docs/USING_WITH_LLM.md).
+
 ### Credentials and profiles
 
 Profiles are persistent and may contain logged-in sessions. `axscope clean`
