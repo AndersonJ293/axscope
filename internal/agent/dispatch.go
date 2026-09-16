@@ -43,6 +43,7 @@ func (a *Agent) routes() map[string]route {
 		"wait":     {needsSession: true, handle: a.wait},
 		"waitgone": {needsSession: true, handle: a.wait},
 		"read":     {needsSession: true, handle: a.read},
+		"find":     {needsSession: true, handle: a.find},
 		"eval":     {needsSession: true, handle: a.eval},
 		"tabs":     {needsSession: true, handle: a.tabs},
 		"tab":      {needsSession: true, handle: a.switchTab},

@@ -42,6 +42,20 @@ func (a *Agent) currentRefs() map[string]int {
 	return a.refs
 }
 
+// refForBackend returns the ref the current reading gave a backend node id, or
+// "" when the node is not one of its targets.
+func refForBackend(refs map[string]int, backendID int) string {
+	if backendID == 0 {
+		return ""
+	}
+	for ref, id := range refs {
+		if id == backendID {
+			return ref
+		}
+	}
+	return ""
+}
+
 // qualifyRef completes a plain ref with the current reading's generation, so
 // `click e12` keeps working as the docs show: `snap` prints `e12#7`, but the
 // caller does not have to repeat the suffix it just read. An explicit
