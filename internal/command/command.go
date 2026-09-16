@@ -44,7 +44,7 @@ var Specs = []Spec{
 	{Cmd: "wait", Positional: []string{"text", "timeout", "within"}, Optional: []string{"timeout", "within"}, Flags: []string{"enabled", "visible", "gone"}, Help: "waits for the text to appear (within= limits the container; --enabled/--visible/--gone wait for that state of the target, and then the first argument is the target)"},
 	{Cmd: "waitgone", Positional: []string{"text", "timeout", "within"}, Optional: []string{"timeout", "within"}, Help: "waits for the text to disappear (timeout in ms; within= limits the container)"},
 	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Help: "reads the page's main text"},
-	{Cmd: "eval", Positional: []string{"js"}, Help: "evaluates JavaScript on the page"},
+	{Cmd: "eval", Positional: []string{"js"}, Flags: []string{"raw"}, Help: "evaluates JavaScript on the page (--raw prints the exact CDP JSON)"},
 	{Cmd: "tabs", Help: "lists the tabs"},
 	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "switches to the tab (index or targetId; --focus brings the window to the front)"},
 	{Cmd: "newtab", Positional: []string{"url"}, Optional: []string{"url"}, Help: "opens a new tab"},

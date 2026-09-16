@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -124,11 +125,39 @@ func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	out := string(raw)
-	if out == "" {
-		out = "undefined"
+	if req.Bool("raw", false) {
+		return ok(rawValue(raw))
 	}
-	return ok(out)
+	return ok(prettyValue(raw))
+}
+
+// prettyValue shows a CDP value the way a person reads it: a JSON string loses
+// the quotes and escapes, an object/array is indented, and scalars keep their
+// exact text (a float round-trip would corrupt big integers). --raw bypasses it.
+func prettyValue(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "undefined"
+	}
+	switch raw[0] {
+	case '"':
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return s
+		}
+	case '{', '[':
+		if b, err := json.MarshalIndent(raw, "", "  "); err == nil {
+			return string(b)
+		}
+	}
+	return string(raw)
+}
+
+// rawValue is the exact CDP result.value, the previous behavior kept behind --raw.
+func rawValue(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "undefined"
+	}
+	return string(raw)
 }
 
 func (a *Agent) console(_ context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
