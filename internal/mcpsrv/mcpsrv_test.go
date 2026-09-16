@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -93,6 +95,60 @@ func TestCatalogDoesNotGrowByCarelessness(t *testing.T) {
 	}
 }
 
+// Regression: the catalog must not mark an optional positional as required. A
+// client rejected `read` with `selector: Missing key`, because the schema carried
+// a required array for a field the command does not need.
+func TestSchemaDoesNotRequireOptionalPositionals(t *testing.T) {
+	byName := map[string]toolDef{}
+	for _, td := range tools() {
+		byName[td.Name] = td
+	}
+	read, ok := byName["read"]
+	if !ok {
+		t.Fatal("read must be in the curated catalog")
+	}
+	if req, has := read.InputSchema["required"]; has {
+		t.Errorf("read marks a field required, but its selector is optional: %v", req)
+	}
+	// The other side of the contract: a command that does need an argument still
+	// marks it, so the check above is not passing on an empty schema.
+	open, ok := byName["open"]
+	if !ok {
+		t.Fatal("open must be in the curated catalog")
+	}
+	if req, _ := open.InputSchema["required"].([]string); len(req) != 1 || req[0] != "url" {
+		t.Errorf("open required = %v, want [url]", open.InputSchema["required"])
+	}
+}
+
+// A client that sees a partial catalog otherwise assumes the rest does not exist
+// and reimplements it with `eval`; the handshake has to say that the set is
+// curated and how to open it.
+func TestInitializeCarriesTheCatalogNote(t *testing.T) {
+	var buf bytes.Buffer
+	w := bufio.NewWriter(&buf)
+	line := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`)
+	handleLine(context.Background(), line, w)
+	_ = w.Flush()
+	out := buf.String()
+	for _, want := range []string{"instructions", "AXSCOPE_MCP_TOOLS=all"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("initialize did not carry %q: %s", want, out)
+		}
+	}
+}
+
+// The note names the exposed count and the total, so the gap between them is
+// visible from inside the client.
+func TestInstructionsNameTheCounts(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TOOLS", "")
+	text := instructions()
+	if !strings.Contains(text, strconv.Itoa(len(tools()))) || !strings.Contains(text, strconv.Itoa(mcpCommands())) {
+		t.Errorf("instructions do not name the counts (%d of %d): %q", len(tools()), mcpCommands(), text)
+	}
+}
+
+// response is discarded (only the AXSCOPE_AGENT side effect matters here).
 // initialize(t, client) drives the handshake with the given clientInfo.name; the
 // response is discarded (only the AXSCOPE_AGENT side effect matters here).
 func initialize(t *testing.T, client string) {

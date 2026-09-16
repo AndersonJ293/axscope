@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -88,6 +89,7 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "axscope", "version": "0.1.0"},
+			"instructions":    instructions(),
 		}})
 
 	case "ping":
@@ -193,8 +195,7 @@ func tools() []toolDef {
 	all := os.Getenv("AXSCOPE_MCP_TOOLS") == "all"
 	out := make([]toolDef, 0, len(command.Specs))
 	for _, spec := range command.Specs {
-		switch spec.Cmd {
-		case "ping", "stop", "install":
+		if mcpHidden(spec.Cmd) {
 			continue
 		}
 		if !all && !curatedMCP[spec.Cmd] {
@@ -226,6 +227,38 @@ func tools() []toolDef {
 		})
 	}
 	return out
+}
+
+// mcpHidden reports the commands that are never MCP tools: the daemon or the CLI
+// settles ping/stop/install before any browser action is involved.
+func mcpHidden(cmd string) bool {
+	switch cmd {
+	case "ping", "stop", "install":
+		return true
+	}
+	return false
+}
+
+// mcpCommands is how many commands the full catalog would expose.
+func mcpCommands() int {
+	n := 0
+	for _, spec := range command.Specs {
+		if !mcpHidden(spec.Cmd) {
+			n++
+		}
+	}
+	return n
+}
+
+// instructions says, at handshake time, that the catalog is curated: a client
+// that sees a partial list otherwise assumes the rest does not exist and
+// reimplements it with `eval`.
+func instructions() string {
+	exposed, total := len(tools()), mcpCommands()
+	if exposed >= total {
+		return fmt.Sprintf("axscope drives a real browser (snap → ref → act). All %d commands are exposed; `axscope help` lists them with their arguments.", total)
+	}
+	return fmt.Sprintf("axscope drives a real browser (snap → ref → act). %d of the %d commands are exposed by default to keep each request lean; set AXSCOPE_MCP_TOOLS=all to expose every command, or run `axscope help` to list them all.", exposed, total)
 }
 
 func write(writer *bufio.Writer, resp rpcResponse) {
