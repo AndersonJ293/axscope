@@ -62,17 +62,18 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 }
 
 // scrollLine summarizes where the scrolling areas are, how far they scrolled
-// and how much fits; the accessibility tree does not carry scroll state.
+// and how much fits; the accessibility tree does not carry scroll state. The
+// horizontal amount appears only when the area scrolls sideways.
 func scrollLine(snap *browser.Snapshot) string {
 	var parts []string
-	if p := snap.Page; p != nil && p.Max > 1 {
-		parts = append(parts, fmt.Sprintf("%s %d/%d", p.Name, p.Pos, p.Max))
+	if p := snap.Page; p != nil && (p.Max > 1 || p.MaxX > 1) {
+		parts = append(parts, scrollAreaLine(*p))
 	}
 	for _, r := range snap.ScrollAreas {
 		if len(parts) >= maxScrollAreas {
 			break
 		}
-		parts = append(parts, fmt.Sprintf("%s %d/%d", r.Name, r.Pos, r.Max))
+		parts = append(parts, scrollAreaLine(r))
 	}
 	if len(parts) == 0 {
 		return ""
@@ -82,6 +83,20 @@ func scrollLine(snap *browser.Snapshot) string {
 		line += fmt.Sprintf(" (+%d)", rest)
 	}
 	return line
+}
+
+// scrollAreaLine formats one area: `123/456` vertically, `x78/900` horizontally.
+// An area that does not scroll an axis omits it, so a vertical-only area keeps
+// the format it had before horizontal scroll existed.
+func scrollAreaLine(a browser.ScrollArea) string {
+	var axes []string
+	if a.Max > 1 {
+		axes = append(axes, fmt.Sprintf("%d/%d", a.Pos, a.Max))
+	}
+	if a.MaxX > 1 {
+		axes = append(axes, fmt.Sprintf("x%d/%d", a.PosX, a.MaxX))
+	}
+	return a.Name + " " + strings.Join(axes, " ")
 }
 
 // maxScrollAreas is how many areas enter the header before the "+N" summary.

@@ -145,6 +145,27 @@ func TestScrollLine(t *testing.T) {
 			t.Errorf("line %q does not say %q", got, want)
 		}
 	}
+	if strings.Contains(got, " x") {
+		t.Errorf("an area without horizontal scroll must not add an x: %q", got)
+	}
+
+	// Horizontal scroll appears only when it exists, and only on that axis.
+	side := &browser.Snapshot{
+		ScrollAreas: []browser.ScrollArea{
+			{Name: "#code", Pos: 5000, Max: 41672, PosX: 120, MaxX: 800},
+			{Name: "#wide", Pos: 0, Max: 0, PosX: 40, MaxX: 900},
+		},
+		ScrollAreasTotal: 2,
+	}
+	got = scrollLine(side)
+	for _, want := range []string{"#code 5000/41672 x120/800", "#wide x40/900"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("line %q does not say %q", got, want)
+		}
+	}
+	if strings.Contains(got, "#wide 0/0") {
+		t.Errorf("a horizontal-only area must not print a zero vertical: %q", got)
+	}
 
 	// Many areas: summarize instead of inventorying.
 	many := &browser.Snapshot{ScrollAreasTotal: 9}
