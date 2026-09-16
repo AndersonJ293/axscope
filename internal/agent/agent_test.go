@@ -64,6 +64,39 @@ func TestQualifyRef(t *testing.T) {
 	}
 }
 
+// `wait url=` matches a substring; `urlre=` matches a regular expression; a bad
+// regex is refused instead of polling until the timeout.
+func TestURLMatcher(t *testing.T) {
+	match, label, err := urlMatcher("settings/rules", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !match("https://github.com/o/r/settings/rules?target=branch") {
+		t.Error("substring matcher missed a matching URL")
+	}
+	if match("https://github.com/o/r/settings") {
+		t.Error("substring matcher accepted a URL without the substring")
+	}
+	if label != strconv.Quote("settings/rules") {
+		t.Errorf("label = %q, want the quoted substring", label)
+	}
+
+	match, _, err = urlMatcher("", `^https://github\.com/[^/]+/[^/]+/settings/rules`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !match("https://github.com/o/r/settings/rules") {
+		t.Error("regex matcher missed a matching URL")
+	}
+	if match("https://github.com/settings/rules") {
+		t.Error("regex matcher accepted a URL that does not match")
+	}
+
+	if _, _, err := urlMatcher("", "("); err == nil {
+		t.Error("a malformed urlre must be refused")
+	}
+}
+
 func TestSplitTokens(t *testing.T) {
 	cases := []struct {
 		name    string
