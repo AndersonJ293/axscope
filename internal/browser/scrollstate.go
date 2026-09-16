@@ -1,5 +1,6 @@
 // Scroll state read from the DOM, since the accessibility tree does not carry
-// scrolling. Only the vertical axis is reported.
+// scrolling. Both axes are read, but the horizontal one is only reported when it
+// actually scrolls, so the common header keeps its shape.
 package browser
 
 import (
@@ -10,11 +11,14 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// ScrollArea is a scrollable area: who scrolls, how far, and how much fits.
+// ScrollArea is a scrollable area: who scrolls, how far, and how much fits. The
+// horizontal fields are set only when that axis scrolls (maxX > 1).
 type ScrollArea struct {
 	Name string `json:"target"`
 	Pos  int    `json:"pos"`
 	Max  int    `json:"max"`
+	PosX int    `json:"posX,omitempty"`
+	MaxX int    `json:"maxX,omitempty"`
 }
 
 // pageMeta is what the reading needs to know about the page beyond the tree.
@@ -50,21 +54,35 @@ const pageMetaJS = `(() => {
 	};
 	const doc = document.scrollingElement || document.documentElement;
 	const pageRemainder = Math.round(doc.scrollHeight - doc.clientHeight);
+	const pageRemainderX = Math.round(doc.scrollWidth - doc.clientWidth);
 	const page = { target: 'page', pos: Math.round(doc.scrollTop), max: pageRemainder };
+	if (pageRemainderX > 1) {
+		page.posX = Math.round(doc.scrollLeft);
+		page.maxX = pageRemainderX;
+	}
 	const scrollAreas = [];
-	let total = pageRemainder > 1 ? 1 : 0;
+	let total = (pageRemainder > 1 || pageRemainderX > 1) ? 1 : 0;
 	for (const el of document.querySelectorAll('*')) {
 		if (el === doc || el === document.documentElement || el === document.body) continue;
 		// The cheap test comes first: getComputedStyle on every element is
 		// expensive, so only elements that overflow pay for it.
 		const remainder = el.scrollHeight - el.clientHeight;
-		if (remainder <= 1) continue;
-		if (!/(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY)) continue;
+		const remainderX = el.scrollWidth - el.clientWidth;
+		if (remainder <= 1 && remainderX <= 1) continue;
+		const st = getComputedStyle(el);
+		const scrollsY = remainder > 1 && /(auto|scroll|overlay)/.test(st.overflowY);
+		const scrollsX = remainderX > 1 && /(auto|scroll|overlay)/.test(st.overflowX);
+		if (!scrollsY && !scrollsX) continue;
 		total++;
-		scrollAreas.push({ target: short(el), pos: Math.round(el.scrollTop), max: remainder });
+		const area = { target: short(el), pos: Math.round(el.scrollTop), max: remainder };
+		if (scrollsX) {
+			area.posX = Math.round(el.scrollLeft);
+			area.maxX = remainderX;
+		}
+		scrollAreas.push(area);
 	}
 	// Largest first: the area that scrolls the most usually matters for
 	// "scroll to item 777 of 1000".
-	scrollAreas.sort((a, b) => b.max - a.max);
+	scrollAreas.sort((a, b) => Math.max(b.max, b.maxX || 0) - Math.max(a.max, a.maxX || 0));
 	return { title: document.title, url: location.href, page: page, scrollAreas: scrollAreas.slice(0, 8), total: total };
 })()`

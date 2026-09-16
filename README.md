@@ -141,7 +141,8 @@ The snapshot header says where you are, including inside a scrollable area:
 
 The accessibility tree does not carry scrolling, so this comes from the DOM. The
 largest areas come first, and the short selector (`#id`, `tag.class`) works
-directly with `css=`.
+directly with `css=`. When an area also scrolls sideways, the header adds that
+axis (`#code 5000/41672 x120/800`); without it the format stays as above.
 
 The end of the snapshot lists the **clickables the tree does not mark** — a `div`
 with a handler and `cursor: pointer`, the case of the chat that never becomes a

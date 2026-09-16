@@ -9,9 +9,6 @@ nothing here is a guess.
 - **Iframe from another origin (OOPIF)** is not read: that accessibility tree
   lives in the other site's process and requires its own CDP session per frame
   (item 3).
-- **Horizontal scroll** does not enter the snapshot header: the vertical axis is
-  the one that bites, and reporting both would invent a format for a case not
-  yet measured (item 1).
 - **Content that loads via `IntersectionObserver` does not advance in a hidden
   tab.** It is not the tool's fault — it is the browser's — and the way out is
   `tab <n> --focus`; `scroll` warns when it reaches the end under that condition.
@@ -45,9 +42,10 @@ that scrolls the most is usually the one that matters, and the header is short b
 definition (five areas, then `(+N)`). The cheap test (`scrollHeight > clientHeight`)
 comes before `getComputedStyle`, which is expensive.
 
-**What was left out:** the horizontal axis. It exists (code bar, wide panel) and
-was not reported because it would invent a format for a case that has not bitten
-yet — when it bites, the place is `scroll.go`.
+**The horizontal axis:** it was left out at first (code bar, wide panel) to avoid
+inventing a format for a case that had not bitten. It now comes from the same
+evaluation and enters the header only when it scrolls (`#code 5000/41672 x120/800`);
+an area that does not scroll sideways keeps the format above.
 
 **Measured:** `scroll 5000 target=css=#virtual` and the following `snap` already
 says `#virtual 5000/41672` with the item visible next to it (`Virtual item 117`),
