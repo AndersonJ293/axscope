@@ -28,7 +28,8 @@ surface; this section describes what is in scope.
 - **The daemon socket** lives in the user runtime directory
   (`$XDG_RUNTIME_DIR/axscope/<session>.sock`, or the system temp dir as a
   fallback) and speaks a local protocol. Anyone who can write to that socket can
-  drive the browser session. It is meant to be reachable only by the same user.
+  drive the browser session. The socket is created with mode `0600` and its
+  runtime directory with `0700`, so it is reachable only by the same user.
 - **The extension bridge** listens on `127.0.0.1` on ports in the
   `8787–8802` range and exchanges CDP with the extension over WebSocket. It is
   bound to loopback.

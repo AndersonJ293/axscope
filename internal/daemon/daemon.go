@@ -42,13 +42,32 @@ func capLog(session string) {
 	_ = os.Truncate(path, 0)
 }
 
+// listenUnix opens the daemon socket owned by the current user only. The mode
+// cannot be left to the umask: on the temp-dir fallback the socket would be
+// reachable by other local users.
+func listenUnix(socketPath string) (net.Listener, error) {
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	return ln, nil
+}
+
 // Run brings up the daemon and only returns when it is terminated.
 func Run(ctx context.Context, opts Options) error {
 	capLog(opts.Session)
 	socketPath := paths.SocketPath(opts.Session)
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
+	// The socket lives in the runtime directory, which must stay owner-only: a
+	// world-readable directory on the temp-dir fallback would expose the daemon.
+	runtimeDir := filepath.Dir(socketPath)
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
 		return err
 	}
+	_ = os.Chmod(runtimeDir, 0o700) // best effort: an existing directory is kept
 	if err := os.MkdirAll(filepath.Join(paths.StateDir(), "sessions"), 0o755); err != nil {
 		return err
 	}
@@ -62,7 +81,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	ln, err := net.Listen("unix", socketPath)
+	ln, err := listenUnix(socketPath)
 	if err != nil {
 		return fmt.Errorf("opening socket %s: %w", socketPath, err)
 	}

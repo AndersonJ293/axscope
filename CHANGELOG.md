@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The daemon socket is created with mode `0600` and its runtime directory with
+  `0700`, so other local users cannot drive the browser session on the temp-dir
+  fallback.
+
 ### Removed
 
 - The `dialog` command from the command surface. It was declared in the catalog
