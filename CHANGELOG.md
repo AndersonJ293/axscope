@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Input (and `IntersectionObserver`) now reaches a background tab: each tab
+  emulates focus (`Emulation.setFocusEmulationEnabled`), so `click`/`scroll` no
+  longer need `tab --focus`, which brought the browser forward and stole the tab
+  the user was on.
 - The extension stopped grouping tabs after the user removed the group (a dead
   `groupId` was kept), and adoption is now keyed on the **session**, not the
   agent name, so two sessions of the same agent get separate groups.
