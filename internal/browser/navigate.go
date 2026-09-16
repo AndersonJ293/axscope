@@ -40,6 +40,20 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 	if url == "" {
 		url = "about:blank"
 	}
+	// The session seeds an about:blank at boot (some engines are born without a
+	// page). Opening a URL reuses that seed instead of stranding an empty tab.
+	if url != "about:blank" {
+		if seed := s.takeSeed(); seed != nil {
+			tab, err := s.Select(ctx, seed.TargetID, false)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.Navigate(ctx, tab.SessionID, url, 15*time.Second); err != nil {
+				return nil, err
+			}
+			return tab, nil
+		}
+	}
 	var res struct {
 		TargetID string `json:"targetId"`
 	}
@@ -57,6 +71,22 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("new tab did not become ready")
+}
+
+// takeSeed returns the boot about:blank page while it is still blank, clearing
+// the mark so only the first NewTab claims it.
+func (s *Session) takeSeed() *Tab {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.seedID == "" {
+		return nil
+	}
+	tab := s.tabs[s.seedID]
+	s.seedID = ""
+	if tab == nil || (tab.URL != "" && tab.URL != "about:blank") {
+		return nil
+	}
+	return tab
 }
 
 // CloseTab closes a tab.
