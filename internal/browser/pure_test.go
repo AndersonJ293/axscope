@@ -445,6 +445,16 @@ func TestTargetExpressions(t *testing.T) {
 	}
 }
 
+// A scroll whose default scroller is stuck must fall back to the largest
+// scrollable area in view, and the answer must name whichever moved.
+func TestScrollStepsFallback(t *testing.T) {
+	for _, want := range []string{"elementFromPoint", "inView", "bestMax", "describe(best)"} {
+		if !strings.Contains(scrollSteps, want) {
+			t.Errorf("scrollSteps lost the fallback piece %q", want)
+		}
+	}
+}
+
 // The ARIA option search must stay on role=option, cross shadow roots, skip the
 // hidden and carry the requested label.
 func TestAriaOptionExpression(t *testing.T) {

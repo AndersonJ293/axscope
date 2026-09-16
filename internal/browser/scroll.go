@@ -13,6 +13,8 @@ import (
 // Scroll scrolls the viewport by (dx, dy), in steps, returning where it stopped
 // as "<who> <position>/<max>". It uses the scroller under the center, not a mouse
 // wheel, and fires a scroll event on a hidden tab; `page` forces the document.
+// When that scroller cannot move, it falls back to the largest scrollable area in
+// view, and the answer names whichever moved.
 func Scroll(ctx context.Context, client *cdp.Client, session string, dx, dy float64, page bool) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
 		"expression":    fmt.Sprintf("(%s)(%v, %v, %v)", scrollSteps, dx, dy, page),
@@ -110,41 +112,79 @@ const scrollTargetScript = `function (dx, dy) {` + jsDescribeScroll + `
 }`
 
 // scrollSteps scrolls the scrollable element under the center of the screen, in
-// steps; with `page`, it scrolls the document.
+// steps; with `page`, it scrolls the document. When the default cannot move (the
+// page is already at its end) it falls back to the largest scrollable area in
+// view, so an inner list still moves; the answer names whichever moved.
 const scrollSteps = `function (dx, dy, page) {` + jsDescribeScroll + `
-	let scroller = document.scrollingElement || document.documentElement;
+	const doc = document.scrollingElement || document.documentElement;
+	const scrollableY = (el) => {
+		if (!el || !el.scrollHeight) return false;
+		const st = getComputedStyle(el);
+		return /(auto|scroll|overlay)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 1;
+	};
+	const canMove = (el) => {
+		const max = el.scrollHeight - el.clientHeight;
+		if (dy > 0) return el.scrollTop < max - 1;
+		if (dy < 0) return el.scrollTop > 1;
+		return false;
+	};
+	const inView = (el) => {
+		const r = el.getBoundingClientRect();
+		return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+	};
+
+	let scroller = doc;
 	if (!page) {
 		const cx = Math.round(innerWidth / 2), cy = Math.round(innerHeight / 2);
 		const target = document.elementFromPoint(cx, cy);
 		if (target) {
 			let c = target;
 			while (c) {
-				const st = getComputedStyle(c);
-				if (/(auto|scroll|overlay)/.test(st.overflowY) && c.scrollHeight > c.clientHeight + 1) { scroller = c; break; }
+				if (scrollableY(c)) { scroller = c; break; }
 				c = c.parentElement;
 			}
 		}
 	}
-	const fromX = scroller.scrollLeft, fromY = scroller.scrollTop;
-	// A background tab throttles setTimeout, and animating for nobody only makes
-	// the scroll slow: hidden, it goes all at once.
-	const steps = document.hidden ? 1 : 6;
-	let i = 0;
-	return new Promise((done) => {
+
+	const run = (el) => new Promise((done) => {
+		const fromX = el.scrollLeft, fromY = el.scrollTop;
+		// A background tab throttles setTimeout, and animating for nobody only
+		// makes the scroll slow: hidden, it goes all at once.
+		const steps = document.hidden ? 1 : 6;
+		let i = 0;
 		const step = () => {
 			i++;
-			scroller.scrollTo({
+			el.scrollTo({
 				left: fromX + dx * (i / steps),
 				top: fromY + dy * (i / steps),
 				behavior: 'instant',
 			});
 			if (i < steps) { setTimeout(step, 35); return; }
 			if (document.hidden) {
-				scroller.dispatchEvent(new Event('scroll'));
-				if (scroller === (document.scrollingElement || document.documentElement)) window.dispatchEvent(new Event('scroll'));
+				el.dispatchEvent(new Event('scroll'));
+				if (el === doc) window.dispatchEvent(new Event('scroll'));
 			}
-			done(describe(scroller));
+			done(Math.abs(el.scrollTop - fromY) > 1 || Math.abs(el.scrollLeft - fromX) > 1);
 		};
 		step();
 	});
+
+	return (async () => {
+		if (await run(scroller)) return describe(scroller);
+		// The default could not move: take the largest scrollable area in view
+		// that can move in the requested direction, instead of scrolling nothing.
+		if (page) return describe(scroller);
+		let best = null, bestMax = 0;
+		for (const el of document.querySelectorAll('*')) {
+			if (el === doc || el === scroller) continue;
+			// The cheap test first: getComputedStyle on every element is expensive.
+			if (el.scrollHeight - el.clientHeight <= bestMax) continue;
+			if (!scrollableY(el) || !canMove(el) || !inView(el)) continue;
+			best = el;
+			bestMax = el.scrollHeight - el.clientHeight;
+		}
+		if (!best) return describe(scroller);
+		await run(best);
+		return describe(best);
+	})();
 }`

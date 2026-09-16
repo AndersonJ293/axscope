@@ -163,6 +163,11 @@ largest areas come first, and the short selector (`#id`, `tag.class`) works
 directly with `css=`. When an area also scrolls sideways, the header adds that
 axis (`#code 5000/41672 x120/800`); without it the format stays as above.
 
+`scroll` moves the scroller under the middle of the screen. When it cannot move —
+the page is already at its end — it falls back to the largest scrollable area in
+view and the answer names whichever moved (`#jobs 400/1914`); `target=` picks the
+container yourself.
+
 The end of the snapshot lists the **clickables the tree does not mark** — a `div`
 with a handler and `cursor: pointer`, the case of the chat that never becomes a
 target:
