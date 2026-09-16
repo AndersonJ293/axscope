@@ -108,6 +108,7 @@ func (s *Session) CloseTab(ctx context.Context, ref string) error {
 // navigation can leave it.
 func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Duration, force bool) error {
 	start := time.Now()
+	from := s.mark(ctx, sid)
 	if force {
 		s.ForceUnload(true)
 	}
@@ -125,7 +126,7 @@ func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Du
 		return navigationError(s.Observe.Dialogs(sid), res.ErrorText, start)
 	}
 	// The load wait is advisory; Settle caps the total wait below.
-	_ = s.WaitForLoad(ctx, sid, timeout)
+	_ = s.WaitForLoad(ctx, sid, from, timeout)
 	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
@@ -168,25 +169,62 @@ func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeou
 	if target < 0 || target >= len(hist.Entries) {
 		return fmt.Errorf("no history to %s", map[int]string{-1: "back", 1: "forward"}[delta])
 	}
+	from := s.mark(ctx, sid)
 	if _, err := s.client.Send(ctx, "Page.navigateToHistoryEntry",
 		map[string]any{"entryId": hist.Entries[target].ID}, sid); err != nil {
 		return err
 	}
 	// The load wait is advisory; Settle caps the total wait below.
-	_ = s.WaitForLoad(ctx, sid, timeout)
+	_ = s.WaitForLoad(ctx, sid, from, timeout)
 	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
 
-// Reload reloads the page.
+// docMark is where a navigation starts from: the current document's token and
+// URL, and when the command was issued. A wait compares them, because the
+// previous document keeps reporting `complete` for a moment after a navigation
+// begins — a plain readyState check returns on the old page.
+type docMark struct {
+	doc  string
+	url  string
+	when time.Time
+}
+
+// mark records where a navigation starts from. An empty doc means the reading
+// failed; the wait then falls back to a plain readyState check.
+func (s *Session) mark(ctx context.Context, sid string) docMark {
+	from := docMark{when: time.Now()}
+	// `performance.timeOrigin` is fresh for each document, so it names the page;
+	// the URL catches a same-document navigation (a hash), which keeps the page.
+	raw, err := dom.EvalString(ctx, s.client, sid, "JSON.stringify([String(performance.timeOrigin), location.href])")
+	if err != nil {
+		return from
+	}
+	if parts, ok := parseFields(raw, 2); ok {
+		from.doc, from.url = parts[0], parts[1]
+	}
+	return from
+}
+
+// parseFields parses the JSON array a document reading answers, requiring n
+// fields so a malformed or half-written answer is not taken for a document.
+func parseFields(value string, n int) ([]string, bool) {
+	var parts []string
+	if json.Unmarshal([]byte(value), &parts) != nil || len(parts) != n {
+		return nil, false
+	}
+	return parts, true
+}
+
 // Reload reloads the page. hard bypasses the cache, the standard remedy for a
 // dead UI.
 func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration, hard bool) error {
+	from := s.mark(ctx, sid)
 	if _, err := s.client.Send(ctx, "Page.reload", map[string]any{"ignoreCache": hard}, sid); err != nil {
 		return err
 	}
 	// The load wait is advisory; Settle caps the total wait below.
-	_ = s.WaitForLoad(ctx, sid, timeout)
+	_ = s.WaitForLoad(ctx, sid, from, timeout)
 	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
 }
@@ -241,27 +279,51 @@ func (s *Session) WaitForNetworkIdle(ctx context.Context, sid string, idle, time
 	}
 }
 
-// WaitForLoad waits for the document to become complete.
-func (s *Session) WaitForLoad(ctx context.Context, sid string, timeout time.Duration) error {
+// WaitForLoad waits for a navigation to land: the document must be complete and
+// be the new one (a different `performance.timeOrigin`, or the same document
+// with a new URL for a same-document navigation). Without that, the previous
+// document — still reporting `complete` just after the navigation starts — would
+// satisfy the wait, and an eval right after `reload` could read the old page. A
+// beforeunload dialog blocks the navigation so it never lands; the wait gives up
+// then, and the caller can name the dialog.
+func (s *Session) WaitForLoad(ctx context.Context, sid string, from docMark, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		raw, err := s.client.Send(ctx, "Runtime.evaluate", map[string]any{
-			"expression":    "document.readyState",
-			"returnByValue": true,
-		}, sid)
-		if err == nil {
-			var res struct {
-				Result struct {
-					Value string `json:"value"`
-				} `json:"result"`
-			}
-			if json.Unmarshal(raw, &res) == nil && res.Result.Value == "complete" {
-				return nil
-			}
+		doc, state, url := s.docState(ctx, sid)
+		if state == "complete" && (from.doc == "" || doc != from.doc || url != from.url) {
+			return nil
+		}
+		if beforeUnloadSince(s.Observe.Dialogs(sid), from.when) {
+			return nil
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for the page to load")
+}
+
+// docState reads the document's token, readyState and URL in one round trip. It
+// answers empty strings while the execution context is being replaced, which the
+// caller reads as "not yet".
+func (s *Session) docState(ctx context.Context, sid string) (doc, state, url string) {
+	raw, err := s.client.Send(ctx, "Runtime.evaluate", map[string]any{
+		"expression":    "JSON.stringify([String(performance.timeOrigin), document.readyState, location.href])",
+		"returnByValue": true,
+	}, sid)
+	if err != nil {
+		return "", "", ""
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return "", "", ""
+	}
+	if parts, ok := parseFields(res.Result.Value, 3); ok {
+		return parts[0], parts[1], parts[2]
+	}
+	return "", "", ""
 }
 
 // settleCap is the ceiling of the wait for quiet. Navigation and action have
