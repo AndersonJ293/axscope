@@ -88,6 +88,7 @@ axscope wait url=settings/rules      # waits for the URL (a SPA changes it with 
 axscope wait --network-idle          # waits until the requests stop (a page that renders in cascades)
 axscope find css=#submit             # the ref the last snap gave a css=/text= target, without acting
 axscope read --links                 # the links of the page as `label — href` (absolute)
+axscope read --table                 # an HTML <table> as aligned rows
 axscope tabs                         # open tabs (the active one is marked *)
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script

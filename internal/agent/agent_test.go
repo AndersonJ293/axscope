@@ -148,6 +148,19 @@ func TestRefIndex(t *testing.T) {
 	}
 }
 
+// read --table must read real table rows and answer JSON so a miss can be named.
+func TestTableExpression(t *testing.T) {
+	expr := tableExpression("#results")
+	for _, want := range []string{"querySelectorAll('tr')", "th,td", "JSON.stringify", "innerText"} {
+		if !strings.Contains(expr, want) {
+			t.Errorf("the table reader does not use %q", want)
+		}
+	}
+	if !strings.Contains(expr, strconv.Quote("#results")) {
+		t.Error("the selector did not enter the expression")
+	}
+}
+
 // read --links must stay on anchors with an href, resolve them (the `href`
 // property is absolute) and carry the scope selector.
 func TestLinksExpression(t *testing.T) {

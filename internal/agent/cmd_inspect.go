@@ -107,9 +107,28 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	sel := req.String("selector")
+	raw := req.String("selector")
+	sel := raw
 	if sel == "" {
 		sel = "main, article, [role=main], #content, .content, body"
+	}
+	if req.Bool("table", false) {
+		result, err := dom.EvalString(ctx, a.client(), sid, tableExpression(raw))
+		if err != nil {
+			return protocol.Fail(err)
+		}
+		var res struct {
+			Text  string `json:"text"`
+			Error string `json:"error"`
+		}
+		if json.Unmarshal([]byte(result), &res) != nil {
+			return protocol.Fail(fmt.Errorf("could not read the table"))
+		}
+		if res.Error != "" {
+			return protocol.Fail(fmt.Errorf("%s", res.Error))
+		}
+		url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
+		return ok(fmt.Sprintf("url: %s\n\n%s", url, res.Text))
 	}
 	if req.Bool("links", false) {
 		links, err := dom.EvalString(ctx, a.client(), sid, linksExpression(sel))
@@ -162,6 +181,41 @@ func linksExpression(sel string) string {
 		const capped = out.slice(0, 200);
 		if (out.length > capped.length) capped.push('(... ' + (out.length - capped.length) + ' more)');
 		return capped.join('\n');
+	})()`, strconv.Quote(sel))
+}
+
+// tableExpression reads an HTML table as aligned rows: the cells of each `tr`
+// (th/td), one row per line, columns padded to the widest cell. It answers JSON
+// so a missing or non-table target is refused by name, not with prose. Cards
+// built from divs have no such structure and stay out of scope.
+func tableExpression(sel string) string {
+	return fmt.Sprintf(`(() => {
+		let table = null;
+		const sel = %s;
+		if (sel) {
+			const el = document.querySelector(sel);
+			if (!el) return JSON.stringify({ error: 'no element for selector ' + sel });
+			table = el.tagName === 'TABLE' ? el : el.querySelector('table');
+			if (!table) return JSON.stringify({ error: 'the selector matched no <table> (cards built from divs are not a table)' });
+		} else {
+			table = document.querySelector('table');
+			if (!table) return JSON.stringify({ error: 'no <table> on the page' });
+		}
+		const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+		const rows = [...table.querySelectorAll('tr')]
+			.map((tr) => [...tr.querySelectorAll('th,td')].map((cell) => clean(cell.innerText)))
+			.filter((r) => r.length > 0);
+		if (!rows.length) return JSON.stringify({ error: 'the <table> has no rows' });
+		const cols = Math.max(...rows.map((r) => r.length));
+		const widths = [];
+		for (let c = 0; c < cols; c++) widths[c] = Math.max(...rows.map((r) => (r[c] || '').length));
+		const pad = (s, w) => s + ' '.repeat(Math.max(0, w - s.length));
+		const text = rows.map((r) => {
+			const cells = [];
+			for (let c = 0; c < cols; c++) cells.push(pad(r[c] || '', widths[c]));
+			return cells.join('  ').replace(/\s+$/, '');
+		}).join('\n');
+		return JSON.stringify({ text: text });
 	})()`, strconv.Quote(sel))
 }
 
