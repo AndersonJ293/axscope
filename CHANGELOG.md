@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `daemon.Run` stats the socket path once instead of twice; the redundant,
+  racy check around the stale-socket cleanup is gone.
+
 ### Security
 
 - The daemon socket is created with mode `0600` and its runtime directory with

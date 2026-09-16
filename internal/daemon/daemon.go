@@ -96,13 +96,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	// A leftover socket from a dead daemon must not prevent the bind.
-	if info, err := os.Stat(socketPath); err == nil && info.Mode()&os.ModeSocket != 0 {
-		if _, err := os.Stat(socketPath); err == nil {
-			if !socketAlive(socketPath) {
-				_ = os.Remove(socketPath)
-			}
-		}
-	}
+	removeStaleSocket(socketPath)
 
 	ln, err := listenUnix(socketPath)
 	if err != nil {
@@ -237,6 +231,19 @@ func trimNewline(b []byte) []byte {
 		b = b[:len(b)-1]
 	}
 	return b
+}
+
+// removeStaleSocket removes a socket left behind by a dead daemon so it does
+// not block the bind. A live socket, or anything that is not a socket, is kept.
+func removeStaleSocket(socketPath string) {
+	info, err := os.Stat(socketPath)
+	if err != nil || info.Mode()&os.ModeSocket == 0 {
+		return
+	}
+	if socketAlive(socketPath) {
+		return
+	}
+	_ = os.Remove(socketPath)
 }
 
 func socketAlive(socketPath string) bool {
