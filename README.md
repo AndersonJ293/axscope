@@ -104,6 +104,22 @@ side effect the page gives it. Text that did not make it into the field
 (`the field is still empty`) and a click that was sent but the target never saw
 are also not silently ignored.
 
+### Rich-text editors and `fill`
+
+When `fill` targets rich-text editors (ProseMirror, Slate, Lexical, Draft.js, or
+any `contenteditable` container), newline and list behavior differs from standard
+inputs:
+
+- **`\n` creates a new paragraph/block**, rather than a soft `<br>` line break.
+- **`\n\n` creates an empty paragraph** (e.g. `<p><br></p>`), rather than visual
+  spacing.
+- **Typed bullet or list markers (`•`, `-`, `1.`) stay as plain text paragraphs**:
+  programmatic fill inserts text without triggering the editor's keyboard-driven
+  autoformat rules (which usually listen for an interactive `Enter`).
+- **Semantic lists require `eval`**: to insert real `<ul>` or `<ol>` elements,
+  use `eval` to call the editor instance's command API or manipulate DOM nodes
+  directly.
+
 The snapshot header says where you are, including inside a scrollable area:
 
 ```
@@ -457,6 +473,12 @@ internal/installer/ Chrome for Testing download
 - `upload` through `<input type=file>` sends the **path**, which the browser
   reads — valid for browser and daemon on the same machine (the extension case).
   In a dropzone the content travels as bytes, so the path does not matter.
+- **Rich-text editor formatting with `fill`:** In rich-text editors (ProseMirror,
+  Slate, Lexical, Draft.js, contenteditable), `\n` creates paragraph blocks rather
+  than soft breaks (`<br>`), `\n\n` creates empty paragraph blocks, and typed
+  list markers (`•`, `-`, `1.`) do not trigger autoformat list creation. To
+  generate semantic `<ul>`/`<ol>` elements reliably, use `eval` to call the editor's
+  internal command API or insert DOM elements.
 - Linux-first: the daemon uses a unix socket and the banner workaround is a
   `.desktop` override. macOS and Windows are not verified yet.
 
