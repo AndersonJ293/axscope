@@ -315,6 +315,28 @@ const jsElementText = `
 		return getComputedStyle(el).visibility === 'hidden' ? 1 : 0;
 	};`
 
+// jsCovered defines `covered(el)`: 1 when another layer sits over the element's
+// center, 0 otherwise. It mirrors the click's own hit test (jsIsAtPoint) and
+// crosses an open shadow boundary, so aiming by text does not pick the copy left
+// under a modal overlay.
+const jsCovered = `
+	const covered = (el) => {
+		const r = el.getBoundingClientRect();
+		if (!r.width || !r.height) return 1;
+		const over = el.ownerDocument.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		if (!over) return 0;
+		if (over === el || (el.contains && el.contains(over))) return 0;
+		let n = el, crossed = false;
+		while (n) {
+			if (n === over) return (crossed || !!over.shadowRoot) ? 0 : 1;
+			if (n.parentNode) { n = n.parentNode; continue; }
+			const root = n.getRootNode ? n.getRootNode() : null;
+			if (root && root.host) { n = root.host; crossed = true; continue; }
+			return 1;
+		}
+		return 1;
+	};`
+
 // textExpression builds the search by visible text/accessible name, separated
 // from ResolveTarget so the shadow-root crossing can be tested.
 func textExpression(want string) string {
@@ -323,15 +345,18 @@ func textExpression(want string) string {
 		%s
 		%s
 		%s
+		%s
 		const nodes = underShadow(document, sel, []);
 		// "Actionable" breaks ties: the text lives in the <span>, but whoever
 		// accepts the action is the <li draggable> / <a> around it. Without
 		// that the target becomes the text.
 		const actionable = el => el.matches('a,button,input,select,textarea,summary,[role],[tabindex],[contenteditable="true"],[draggable="true"]') || typeof el.onclick === 'function';
-		// Preference order: exact name, then in view, then tightest; actionable
-		// and outside the chrome break ties. Exact hidden still beats partial
-		// visible, because aiming by text is aiming by name.
-		const betterThan = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4];
+		// Preference order: exact name, then in view, then uncovered, then
+		// tightest; actionable and outside the chrome break ties. Exact hidden
+		// still beats partial visible, because aiming by text is aiming by name.
+		// Covered comes before tightest so an overlay does not drag the aim to
+		// the copy left under it.
+		const betterThan = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3] || a[4] - b[4] || a[5] - b[5];
 		// A name colliding with the page chrome is a trap (two "Resources" menus);
 		// outside the chrome wins the tie.
 		const chrome = el => el.closest('nav,header,footer,[role="navigation"],[role="banner"],[role="contentinfo"]') ? 1 : 0;
@@ -341,14 +366,14 @@ func textExpression(want string) string {
 			if (!t) continue;
 			const exact = t === want;
 			if (!exact && !t.includes(want)) continue;
-			const current = [exact ? 0 : 1, hidden(el), t.length - want.length, chrome(el), actionable(el) ? 0 : 1];
+			const current = [exact ? 0 : 1, hidden(el), covered(el), t.length - want.length, chrome(el), actionable(el) ? 0 : 1];
 			if (key === null || betterThan(current, key) < 0) {
 				chosen = el;
 				key = current;
 			}
 		}
 		return chosen;
-	})()`, strconv.Quote(want), underShadow, jsCandidates, jsElementText)
+	})()`, strconv.Quote(want), underShadow, jsCandidates, jsElementText, jsCovered)
 }
 
 // countExpression counts how many elements match the text and how many are in
