@@ -590,7 +590,8 @@ internal/installer/ Chrome for Testing download
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Security issues: see
-[`SECURITY.md`](SECURITY.md).
+[`SECURITY.md`](SECURITY.md); pointing an LLM agent at untrusted pages: see
+[`docs/USING_WITH_LLM.md`](docs/USING_WITH_LLM.md).
 
 ## License
 
