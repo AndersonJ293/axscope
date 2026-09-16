@@ -20,7 +20,10 @@ let heartbeatTimer = null;
 
 const AGENT_DEFAULT = 'axscope';
 
-/** Next free number for an agent ("Opencode 1", "Opencode 2", …). */
+/**
+ * Next free number for the display title ("Opencode 1", "Opencode 2", …). The
+ * title is cosmetic: group ownership is the session, not this name.
+ */
 async function nextTitleFor(agent) {
   const name = agent || AGENT_DEFAULT;
   let max = 0;
@@ -204,23 +207,9 @@ async function adoptExistingGroup(st) {
   st.groupId = null;
   st.groupTitle = null;
 
-  // 2) Otherwise adopt a group whose title matches the agent name.
-  try {
-    const groups = await chrome.tabGroups.query({});
-    const name = st.agent || AGENT_DEFAULT;
-    const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\d+$`);
-    for (const g of groups) {
-      if (re.test(g.title || '')) {
-        st.groupId = g.id;
-        st.groupTitle = g.title;
-        await chrome.storage.local.set({ [key]: st.groupId });
-        await syncGroupTabs(st);
-        return;
-      }
-    }
-  } catch {
-    /* tabGroups unavailable: carry on without a group */
-  }
+  // No title fallback on purpose: a group belongs to a session (the stored key),
+  // never to an agent name. Two sessions of the same agent (two "Opencode"
+  // instances) must not adopt each other's group.
 }
 
 /** Re-associates the tabs of a group that already existed in the new session. */
