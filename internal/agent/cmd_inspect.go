@@ -142,11 +142,7 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 		url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 		return ok(fmt.Sprintf("url: %s\n\n%s", url, links))
 	}
-	expr := fmt.Sprintf(`(() => {
-		const el = document.querySelector(%s) || document.body;
-		return el ? el.innerText : '';
-	})()`, strconv.Quote(sel))
-	text, err := dom.EvalString(ctx, a.client(), sid, expr)
+	text, err := dom.EvalString(ctx, a.client(), sid, readExpression(sel))
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -156,6 +152,38 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	return ok(fmt.Sprintf("url: %s\n\n%s", url, text))
+}
+
+// readExpression reads the rendered text of the scope. `innerText` is the honest
+// reading of a subtree — it skips what is not rendered — but it stops at a shadow
+// boundary, so the text of each open shadow root is spliced in after the light
+// DOM (its order untouched, its text first). A modal rendered in a shadow root
+// (LinkedIn's `#interop-outlet`) is otherwise invisible to `read`.
+func readExpression(sel string) string {
+	return fmt.Sprintf(`(() => {
+		const el = document.querySelector(%s) || document.body;
+		if (!el) return '';
+		let out = el.innerText || '';
+		const add = (host) => {
+			for (const child of host.shadowRoot.children) {
+				const t = child.innerText || '';
+				if (t) out += '\n' + t;
+			}
+		};
+		const walk = (root) => {
+			for (const host of root.querySelectorAll('*')) {
+				if (!host.shadowRoot) continue;
+				add(host);
+				walk(host.shadowRoot);
+			}
+		};
+		if (el.shadowRoot) {
+			add(el);
+			walk(el.shadowRoot);
+		}
+		walk(el);
+		return out;
+	})()`, strconv.Quote(sel))
 }
 
 // linksExpression lists the links of the scope as `label — href`, resolving
