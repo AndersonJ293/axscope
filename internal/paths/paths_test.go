@@ -1,6 +1,7 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -54,7 +55,7 @@ func TestRuntimeDir(t *testing.T) {
 		want    string
 	}{
 		{"XDG_RUNTIME_DIR", "/run/user/1000", filepath.Join("/run/user/1000", "axscope")},
-		{"falls back to temp", "", filepath.Join(os.TempDir(), "axscope")},
+		{"falls back to a per-user temp dir", "", filepath.Join(os.TempDir(), fmt.Sprintf("axscope-%d", os.Getuid()))},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

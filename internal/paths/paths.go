@@ -2,6 +2,7 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -27,7 +28,9 @@ func RuntimeDir() string {
 	if v := os.Getenv("XDG_RUNTIME_DIR"); v != "" {
 		return filepath.Join(v, "axscope")
 	}
-	return filepath.Join(os.TempDir(), "axscope")
+	// The temp fallback is shared and predictable, so the directory is named
+	// after the user: another local user cannot own the path we use.
+	return filepath.Join(os.TempDir(), fmt.Sprintf("axscope-%d", os.Getuid()))
 }
 
 // Session is the name of the tab/daemon set. It allows multiple parallel sessions.

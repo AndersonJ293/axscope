@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/AndersonJ293/axscope/internal/agent"
@@ -42,11 +43,52 @@ func capLog(session string) {
 	_ = os.Truncate(path, 0)
 }
 
+// listenUnix opens the daemon socket owned by the current user only. The mode
+// cannot be left to the umask: if the socket ever ends up writable it becomes
+// reachable by other local users.
+func listenUnix(socketPath string) (net.Listener, error) {
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	return ln, nil
+}
+
+// ensureRuntimeDir creates the directory that holds the socket and refuses one
+// it does not exclusively own: the temp fallback is a shared, predictable path,
+// and a directory controlled by another user lets them replace the socket the
+// clients connect to.
+func ensureRuntimeDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("runtime directory %s is not a directory", dir)
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Getuid() {
+		return fmt.Errorf("runtime directory %s is owned by another user", dir)
+	}
+	if info.Mode().Perm() != 0o700 {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return fmt.Errorf("runtime directory %s is not owner-only: %w", dir, err)
+		}
+	}
+	return nil
+}
+
 // Run brings up the daemon and only returns when it is terminated.
 func Run(ctx context.Context, opts Options) error {
 	capLog(opts.Session)
 	socketPath := paths.SocketPath(opts.Session)
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0o755); err != nil {
+	if err := ensureRuntimeDir(filepath.Dir(socketPath)); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(paths.StateDir(), "sessions"), 0o755); err != nil {
@@ -62,7 +104,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	ln, err := net.Listen("unix", socketPath)
+	ln, err := listenUnix(socketPath)
 	if err != nil {
 		return fmt.Errorf("opening socket %s: %w", socketPath, err)
 	}
