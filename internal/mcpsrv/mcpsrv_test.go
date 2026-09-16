@@ -63,6 +63,22 @@ func TestCatalogCoversTheCommandsTheMessagesCite(t *testing.T) {
 	}
 }
 
+// Regression: the curated catalog must expose the everyday core — scrolling is
+// how a snapshot reaches lazy lists, and the tab/navigation lifecycle is what
+// keeps a session from accumulating tabs it cannot close.
+func TestCatalogCoversCoreInteractions(t *testing.T) {
+	required := []string{"scroll", "newtab", "closetab", "back", "forward", "reload"}
+	exposed := map[string]bool{}
+	for _, td := range tools() {
+		exposed[td.Name] = true
+	}
+	for _, cmd := range required {
+		if !exposed[cmd] {
+			t.Errorf("%q is a core interaction and must be exposed in the default catalog", cmd)
+		}
+	}
+}
+
 // The catalog remains a lean set: if it grows by carelessness, this is where it
 // is noticed (each schema costs context on every request).
 func TestCatalogDoesNotGrowByCarelessness(t *testing.T) {

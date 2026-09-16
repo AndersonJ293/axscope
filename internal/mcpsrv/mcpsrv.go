@@ -152,7 +152,8 @@ type toolDef struct {
 }
 
 // curatedMCP is the lean set exposed by default (fewer schemas means less context
-// per request; `AXSCOPE_MCP_TOOLS=all` opens everything). select/check/uncheck/
+// per request; `AXSCOPE_MCP_TOOLS=all` opens everything). It covers reading,
+// interaction, scrolling, navigation and tab lifecycle; select/check/uncheck/
 // type/upload stay because the refusal messages cite them.
 var curatedMCP = map[string]bool{
 	"open":     true,
@@ -169,10 +170,15 @@ var curatedMCP = map[string]bool{
 	"press":    true,
 	"wait":     true,
 	"waitgone": true,
+	"scroll":   true,
 	"read":     true,
 	"tabs":     true,
 	"tab":      true,
+	"newtab":   true,
+	"closetab": true,
 	"back":     true,
+	"forward":  true,
+	"reload":   true,
 	"shot":     true,
 	"script":   true,
 	"console":  true,
