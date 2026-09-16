@@ -28,7 +28,7 @@ var Specs = []Spec{
 	{Cmd: "clean", Flags: []string{"all"}, Help: "deletes logs and dead sessions (--all includes profiles and browsers)"},
 	{Cmd: "stop", Help: "shuts down the daemon (and the browser, if we started it)"},
 
-	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new"}, Help: "opens/navigates (--new opens in a new tab)"},
+	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new", "force"}, Help: "opens/navigates (--new opens in a new tab; --force leaves a page with unsaved changes)"},
 	{Cmd: "snap", Flags: []string{"refs", "all"}, Help: "reads the screen as text (--refs targets only; --all includes footer and shortcuts)"},
 	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double"}, Help: "clicks the target (ref/css=/text=)"},
 	{Cmd: "hover", Positional: []string{"target"}, Help: "hovers over the target"},
