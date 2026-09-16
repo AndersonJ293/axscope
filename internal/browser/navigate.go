@@ -47,33 +47,43 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 	// page). Opening a URL reuses that seed instead of stranding an empty tab.
 	if url != "about:blank" {
 		if seed := s.takeSeed(); seed != nil {
-			tab, err := s.Select(ctx, seed.TargetID, false)
-			if err != nil {
-				return nil, err
-			}
-			if err := s.Navigate(ctx, tab.SessionID, url, 15*time.Second, false); err != nil {
-				return nil, err
-			}
-			return tab, nil
+			return s.openIn(ctx, seed.TargetID, url)
 		}
 	}
 	var res struct {
 		TargetID string `json:"targetId"`
 	}
 	// background=true: the new tab does not become the focused tab nor raise the
-	// window.
+	// window. It is born blank and then navigated, so the load wait has the blank
+	// document to compare against instead of returning on it.
 	if err := s.client.SendJSON(ctx, "Target.createTarget",
-		map[string]any{"url": url, "background": true}, "", &res); err != nil {
+		map[string]any{"url": "about:blank", "background": true}, "", &res); err != nil {
 		return nil, err
 	}
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if s.has(res.TargetID) {
-			return s.Select(ctx, res.TargetID, false)
+			return s.openIn(ctx, res.TargetID, url)
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("new tab did not become ready")
+}
+
+// openIn makes a target the active one and, when a URL is wanted, navigates it
+// and waits for convergence — the same wait the seed path gets, so `newtab` does
+// not return while the page it opened is still blank.
+func (s *Session) openIn(ctx context.Context, targetID, url string) (*Tab, error) {
+	tab, err := s.Select(ctx, targetID, false)
+	if err != nil {
+		return nil, err
+	}
+	if url != "" && url != "about:blank" {
+		if err := s.Navigate(ctx, tab.SessionID, url, 15*time.Second, false); err != nil {
+			return nil, err
+		}
+	}
+	return tab, nil
 }
 
 // takeSeed returns the boot about:blank page while it is still blank, clearing
