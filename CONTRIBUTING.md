@@ -30,6 +30,9 @@ make install        # → ~/.local/bin/axscope
 - `gofmt -w` your files (the CI checks formatting).
 - `go build ./...`, `go vet ./...` and `go test ./...` must pass.
 - Keep the diff focused: one concern per pull request.
+- If you change anything under `extension/`, bump `version` in
+  `extension/manifest.json`. Chrome only reloads a higher version, and the
+  browser shows it, so the number has to move with the code.
 - If you change a command, a flag or the MCP surface, update the help text in
   `internal/command/command.go` and the README together — they are the source of
   truth for both the CLI and MCP.

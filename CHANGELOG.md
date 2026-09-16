@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `click --dom`, for pages that refuse the real pointer (`pointer-events: none`,
+  a handler that only trusts a programmatic click).
+- `open --force`, which accepts a `beforeunload` so an explicit navigation can
+  leave a page with unsaved changes.
+- `open` and `newtab` name the tab they landed on (`tab: [index] targetId`), no
+  `tabs` round trip needed.
+
 ### Fixed
 
+- The extension stopped grouping tabs after the user removed the group (a dead
+  `groupId` was kept), and adoption is now keyed on the **session**, not the
+  agent name, so two sessions of the same agent get separate groups.
+- A plain `ref` (`e12`) now means the current reading; the generation suffix is
+  optional, and an explicit older one is still refused.
+- The snapshot header reports horizontal scroll when an area scrolls sideways.
+- `open` aborted by a `beforeunload` names the cause and the way out instead of a
+  raw `net::ERR_ABORTED`.
 - `daemon.Run` stats the socket path once instead of twice; the redundant,
   racy check around the stale-socket cleanup is gone.
 
