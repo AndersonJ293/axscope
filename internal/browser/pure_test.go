@@ -468,6 +468,34 @@ func TestParseFields(t *testing.T) {
 	}
 }
 
+// dialog accept arms one dialog; the default dismisses, a beforeunload keeps its
+// own rule (only a forced navigation leaves), and an arming survives a
+// beforeunload it was not meant for.
+func TestDialogDecision(t *testing.T) {
+	s := &Session{}
+	if s.dialogDecision("alert") {
+		t.Error("an unplanned alert must be dismissed")
+	}
+	s.SetNextDialog("accept")
+	if !s.dialogDecision("confirm") {
+		t.Error("dialog accept must accept the next dialog")
+	}
+	if s.dialogDecision("confirm") {
+		t.Error("the arming must be consumed by one dialog")
+	}
+	s.SetNextDialog("accept")
+	if s.dialogDecision("beforeunload") {
+		t.Error("a beforeunload must not be accepted by the arming")
+	}
+	if !s.dialogDecision("confirm") {
+		t.Error("the arming must survive a beforeunload it was not meant for")
+	}
+	s.ForceUnload(true)
+	if !s.dialogDecision("beforeunload") {
+		t.Error("a forced navigation must accept the beforeunload")
+	}
+}
+
 // A scroll whose default scroller is stuck must fall back to the largest
 // scrollable area in view, and the answer must name whichever moved.
 func TestScrollStepsFallback(t *testing.T) {

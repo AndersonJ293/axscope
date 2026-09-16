@@ -37,6 +37,7 @@ var Specs = []Spec{
 	{Cmd: "fill", Positional: []string{"target", "value"}, Help: "replaces the field's content"},
 	{Cmd: "type", Positional: []string{"target", "value"}, Help: "types character by character"},
 	{Cmd: "press", Positional: []string{"key"}, Help: "sends a key/shortcut (Enter, Control+A)"},
+	{Cmd: "dialog", Positional: []string{"action"}, Help: "handles the next native dialog: accept|dismiss (dismiss is the default)"},
 	{Cmd: "select", Positional: []string{"target", "value"}, Help: "chooses an option of <select> or an ARIA listbox (<value> is the option's label)"},
 	{Cmd: "check", Positional: []string{"target"}, Help: "checks checkbox/radio"},
 	{Cmd: "uncheck", Positional: []string{"target"}, Help: "unchecks checkbox/radio"},

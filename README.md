@@ -71,7 +71,7 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **29 of the 32 commands**. The rest are not missing — set
+request): **30 of the 33 commands**. The rest are not missing — set
 `AXSCOPE_MCP_TOOLS=all` to expose every command, and `axscope help` lists them all
 with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
@@ -551,7 +551,9 @@ internal/installer/ Chrome for Testing download
   (see [`docs/BACKLOG.md`](docs/BACKLOG.md)). A **same-origin** iframe is read in
   full, and
   the ref from inside works: the trees of both frames are merged in the snapshot.
-- Native dialogs are always dismissed (`dismiss`), configurable later.
+- Native dialogs are dismissed by default; `dialog accept` arms the next one (a
+  `confirm()` the flow has to say yes to), and the arming is consumed by that one
+  dialog. A `beforeunload` keeps its own rule (`open --force`).
 - `bootstrap` assumes the Chromium target model; alternative engines need their
   own path.
 - **Reading and reaching are not the same set.** `snap` comes from the
