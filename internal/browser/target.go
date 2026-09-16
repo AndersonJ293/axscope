@@ -205,6 +205,25 @@ func DescribeNode(ctx context.Context, client *cdp.Client, session, objectID str
 	}
 }
 
+// ResolveObject resolves a target spec to a node without measuring it, so a
+// hidden element — an `<input type=file>` behind a button — can still be reached.
+// It takes the same forms as ResolveTarget, minus the geometry-based scroll.
+func ResolveObject(ctx context.Context, client *cdp.Client, session string, refs map[string]int, spec string) (string, error) {
+	switch {
+	case strings.HasPrefix(spec, "css="):
+		return dom.EvalObject(ctx, client, session, cssExpression(strings.TrimPrefix(spec, "css=")))
+	case strings.HasPrefix(spec, "text="):
+		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
+		return dom.EvalObject(ctx, client, session, textExpression(want))
+	default:
+		backend, ok := refs[spec]
+		if !ok {
+			return "", fmt.Errorf("ref %q does not exist — run `snap` again (refs are per reading)", spec)
+		}
+		return ResolveBackend(ctx, client, session, backend)
+	}
+}
+
 // jsShortSelector defines `shortSelector(el)`; shared by DescribeNode's sibling
 // and the per-node match, so a target and a listing describe the node the same.
 const jsShortSelector = `

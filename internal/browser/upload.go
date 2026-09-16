@@ -69,6 +69,67 @@ func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, pa
 	return err
 }
 
+// AssociatedFileInput returns the object id of the `<input type=file>` a dropzone
+// or label stands for — its own subtree, the label's control, or the page's first
+// one — or "" when there is none. Setting the file on that input is what the page
+// listens to, and it works while the input is hidden.
+func AssociatedFileInput(ctx context.Context, client *cdp.Client, session, objectID string) (string, error) {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			const pick = (root) => (root && root.querySelector) ? root.querySelector('input[type=file]') : null;
+			let input = pick(this);
+			if (!input && this.closest) {
+				const label = this.closest('label');
+				if (label && label.control && label.control.type === 'file') input = label.control;
+			}
+			if (!input) input = document.querySelector('input[type=file]');
+			return input || null;
+		}`,
+		"returnByValue": false,
+	}, session)
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Result struct {
+			ObjectID string `json:"objectId"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return "", nil
+	}
+	return res.Result.ObjectID, nil
+}
+
+// FileInputCount returns how many files an `<input type=file>` holds and whether
+// it is one at all, so a drop that attached nothing is not answered with `ok`.
+func FileInputCount(ctx context.Context, client *cdp.Client, session, objectID string) (int, bool) {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": objectID,
+		"functionDeclaration": `function () {
+			if (!this || this.tagName !== 'INPUT' || this.type !== 'file') return { input: false, count: 0 };
+			return { input: true, count: this.files ? this.files.length : 0 };
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return 0, false
+	}
+	var res struct {
+		Result struct {
+			Value struct {
+				Input bool `json:"input"`
+				Count int  `json:"count"`
+			} `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return 0, false
+	}
+	return res.Result.Value.Count, res.Result.Value.Input
+}
+
 // DropFile emits a file drag over the target with the real content inside the DataTransfer.
 func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target, path string, p Presenter) error {
 	data, err := os.ReadFile(path)
