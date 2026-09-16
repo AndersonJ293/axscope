@@ -66,7 +66,7 @@ type Session struct {
 	// targetCreated and the bootstrap's explicit attach).
 	attaching map[string]bool
 
-	inflight     map[string]map[string]struct{}
+	inflight     map[string]map[string]string
 	lastActivity map[string]time.Time
 
 	acceptDialogs bool
@@ -91,7 +91,7 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 		Presenter:     presenter,
 		tabs:          make(map[string]*Tab),
 		attaching:     make(map[string]bool),
-		inflight:      make(map[string]map[string]struct{}),
+		inflight:      make(map[string]map[string]string),
 		lastActivity:  make(map[string]time.Time),
 		acceptDialogs: acceptDialogs,
 	}

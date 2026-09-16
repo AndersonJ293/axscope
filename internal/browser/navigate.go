@@ -6,12 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-func (s *Session) startReq(sid, requestID string) {
+func (s *Session) startReq(sid, requestID, url string) {
 	if requestID == "" {
 		return
 	}
@@ -19,10 +20,10 @@ func (s *Session) startReq(sid, requestID string) {
 	defer s.mu.Unlock()
 	set := s.inflight[sid]
 	if set == nil {
-		set = make(map[string]struct{})
+		set = make(map[string]string)
 		s.inflight[sid] = set
 	}
-	set[requestID] = struct{}{}
+	set[requestID] = url
 	s.lastActivity[sid] = time.Now()
 }
 
@@ -206,6 +207,35 @@ func (s *Session) WaitForURL(ctx context.Context, sid string, present bool, matc
 			return last, false
 		}
 		time.Sleep(120 * time.Millisecond)
+	}
+}
+
+// WaitForNetworkIdle waits until no request has been in flight for `idle`, up to
+// `timeout`. It reports whether the network went idle, and on timeout returns the
+// URLs still pending so the refusal can name them. A page that renders in
+// cascades is quiet only after the last fetch, which Settle's short cap misses.
+func (s *Session) WaitForNetworkIdle(ctx context.Context, sid string, idle, timeout time.Duration) ([]string, bool) {
+	deadline := time.Now().Add(timeout)
+	for {
+		s.mu.Lock()
+		pending := make([]string, 0, len(s.inflight[sid]))
+		for _, url := range s.inflight[sid] {
+			pending = append(pending, url)
+		}
+		last := s.lastActivity[sid]
+		s.mu.Unlock()
+		if len(pending) == 0 && time.Since(last) >= idle {
+			return nil, true
+		}
+		if !time.Now().Before(deadline) {
+			sort.Strings(pending)
+			return pending, false
+		}
+		select {
+		case <-ctx.Done():
+			return pending, false
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 }
 

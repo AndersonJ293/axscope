@@ -118,9 +118,12 @@ func (s *Session) initTab(tab *Tab) error {
 		}
 		var p struct {
 			RequestID string `json:"requestId"`
+			Request   struct {
+				URL string `json:"url"`
+			} `json:"request"`
 		}
 		if json.Unmarshal(params, &p) == nil {
-			s.startReq(sid, p.RequestID)
+			s.startReq(sid, p.RequestID, p.Request.URL)
 		}
 	})
 	done := func(params json.RawMessage, s2 string) {

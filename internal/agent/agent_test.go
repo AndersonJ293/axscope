@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 func TestRefGen(t *testing.T) {
@@ -61,6 +63,24 @@ func TestQualifyRef(t *testing.T) {
 	empty := &Agent{}
 	if got := empty.qualifyRef("e1"); got != "e1" {
 		t.Errorf("qualifyRef without a read = %q, want %q", got, "e1")
+	}
+}
+
+// The timeout of a flag-selected wait comes from `timeout=` or from the second
+// positional (which the grammar lands in `text`); a non-number there is refused,
+// not ignored. A text wait keeps its existing positionals.
+func TestWaitTimeout(t *testing.T) {
+	if d, err := waitTimeout(protocol.Request{Args: map[string]any{"timeout": "1500", "text": "3000"}}, "url"); err != nil || d != 1500*time.Millisecond {
+		t.Errorf("timeout= must win: got %v, %v", d, err)
+	}
+	if d, err := waitTimeout(protocol.Request{Args: map[string]any{"text": "2000"}}, "url"); err != nil || d != 2*time.Second {
+		t.Errorf("second positional timeout: got %v, %v", d, err)
+	}
+	if _, err := waitTimeout(protocol.Request{Args: map[string]any{"text": "oops"}}, "network-idle"); err == nil {
+		t.Error("a non-numeric timeout must be refused")
+	}
+	if d, err := waitTimeout(protocol.Request{}, "url"); err != nil || d != navTimeout {
+		t.Errorf("default timeout = %v, %v, want navTimeout", d, err)
 	}
 }
 
