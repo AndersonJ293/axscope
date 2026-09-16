@@ -175,6 +175,20 @@ func TestLinksExpression(t *testing.T) {
 	}
 }
 
+// read must cross open shadow roots: `innerText` stops at a shadow boundary, so
+// a modal rendered in one is otherwise invisible to the reading.
+func TestReadExpression(t *testing.T) {
+	expr := readExpression("#interop-outlet")
+	for _, want := range []string{"querySelector", "innerText", "shadowRoot", "querySelectorAll('*')"} {
+		if !strings.Contains(expr, want) {
+			t.Errorf("the read does not use %q", want)
+		}
+	}
+	if !strings.Contains(expr, strconv.Quote("#interop-outlet")) {
+		t.Error("the scope selector did not enter the expression")
+	}
+}
+
 func TestSplitTokens(t *testing.T) {
 	cases := []struct {
 		name    string
