@@ -393,12 +393,17 @@ axscope stop --all    # all sessions and all browsers
 | `AXSCOPE_CHROME` | Chromium executable |
 | `AXSCOPE_ATTACH` | `host:port` of an already-open Chromium |
 | `AXSCOPE_HEADLESS` | start without a window |
+| `AXSCOPE_FORCE_AX` | `1` enables the accessibility tree when the browser starts (costs memory; the tree is normally enabled on demand) |
 | `AXSCOPE_CURSOR_DELAY` | cursor pause before acting (ms) |
 | `AXSCOPE_AGENT` | agent name for the tab group |
+| `AXSCOPE_BRIDGE_PORT` | first port for the extension bridge (default `8787`) |
 | `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |
 | `AXSCOPE_SPOTLIGHT` | `1` re-enables the target outline |
 
 ## Project layout
+
+For an architectural overview, layer definitions and request flow, see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ```
 cmd/axscope/       entrypoint (client, serve, mcp, install)
@@ -457,7 +462,8 @@ internal/installer/ Chrome for Testing download
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues: see
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Security issues: see
 [`SECURITY.md`](SECURITY.md).
 
 ## License
