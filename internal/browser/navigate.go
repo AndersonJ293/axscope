@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
 func (s *Session) startReq(sid, requestID string) {
@@ -184,6 +186,27 @@ func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration)
 	_ = s.WaitForLoad(ctx, sid, timeout)
 	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
+}
+
+// WaitForURL polls location.href until match agrees with present (`wait` for a
+// match, `waitgone` for its absence) and returns the last URL seen, so a timeout
+// can name it. A SPA changes the URL without any text appearing, so the text
+// wait misses it.
+func (s *Session) WaitForURL(ctx context.Context, sid string, present bool, match func(string) bool, timeout time.Duration) (string, bool) {
+	deadline := time.Now().Add(timeout)
+	last := ""
+	for {
+		if href, err := dom.EvalString(ctx, s.client, sid, "location.href"); err == nil {
+			last = href
+			if match(href) == present {
+				return last, true
+			}
+		}
+		if !time.Now().Before(deadline) {
+			return last, false
+		}
+		time.Sleep(120 * time.Millisecond)
+	}
 }
 
 // WaitForLoad waits for the document to become complete.

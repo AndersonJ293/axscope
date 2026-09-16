@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
@@ -48,9 +50,12 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 // (--enabled/--visible/--gone) for controls that only enable later; `within=`
 // limits the text search so an identical label elsewhere does not match first.
 func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
+	if want, re := req.String("url"), req.String("urlre"); want != "" || re != "" {
+		return a.waitURL(ctx, sess, req, want, re)
+	}
 	asked := req.String("text")
 	if asked == "" {
-		return protocol.Fail(fmt.Errorf("usage: axscope %s <text|target> [timeout] [within=<target>]", req.Cmd))
+		return protocol.Fail(fmt.Errorf("usage: axscope %s <text|target> [timeout] [within=<target>] [url=/urlre=]", req.Cmd))
 	}
 	sid, err := sess.ActiveSID()
 	if err != nil {
@@ -92,6 +97,57 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 		return protocol.Fail(fmt.Errorf("%q did not appear within %s", asked, timeout))
 	}
 	return protocol.Fail(fmt.Errorf("%q did not disappear within %s", asked, timeout))
+}
+
+// waitURL waits for location.href to contain `want` or match `re`, and for
+// `waitgone` for that to stop being true. A URL wait survives the text changing
+// for unrelated reasons, which is what makes it reliable in an SPA.
+func (a *Agent) waitURL(ctx context.Context, sess *browser.Session, req protocol.Request, want, re string) protocol.Response {
+	sid, err := sess.ActiveSID()
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	match, label, err := urlMatcher(want, re)
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	timeout := navTimeout
+	if v := req.Int("timeout", 0); v > 0 {
+		timeout = time.Duration(v) * time.Millisecond
+	} else if rest := strings.TrimSpace(req.String("text")); rest != "" {
+		// `wait url=... 1500` lands the number in the first positional; in URL
+		// mode that is the timeout, and a non-number there is a mistake worth
+		// naming instead of ignoring.
+		v, convErr := strconv.Atoi(rest)
+		if convErr != nil {
+			return protocol.Fail(fmt.Errorf("in url mode the second argument is the timeout in ms, got %q", rest))
+		}
+		timeout = time.Duration(v) * time.Millisecond
+	}
+	present := req.Cmd == "wait"
+	start := time.Now()
+	href, matched := sess.WaitForURL(ctx, sid, present, match, timeout)
+	done, undone := "appeared", "appear"
+	if !present {
+		done, undone = "went away", "go away"
+	}
+	if !matched {
+		return protocol.Fail(fmt.Errorf("url %s did not %s within %s — the URL is now %s", label, undone, timeout, href))
+	}
+	return ok(fmt.Sprintf("ok: url %s %s in %dms", label, done, time.Since(start).Milliseconds()))
+}
+
+// urlMatcher builds the predicate behind `wait url=`/`urlre=` and the label the
+// response shows: a substring by default, a regular expression when asked.
+func urlMatcher(want, re string) (func(string) bool, string, error) {
+	if re != "" {
+		compiled, err := regexp.Compile(re)
+		if err != nil {
+			return nil, "", fmt.Errorf("bad urlre %q: %w", re, err)
+		}
+		return compiled.MatchString, strconv.Quote(re), nil
+	}
+	return func(u string) bool { return strings.Contains(u, want) }, strconv.Quote(want), nil
 }
 
 // requestedState returns the state requested by flag, or "" for a text wait.
