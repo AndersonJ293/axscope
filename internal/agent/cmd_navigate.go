@@ -50,6 +50,9 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 // (--enabled/--visible/--gone) for controls that only enable later; `within=`
 // limits the text search so an identical label elsewhere does not match first.
 func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
+	if req.Bool("network-idle", false) {
+		return a.waitNetworkIdle(ctx, sess, req)
+	}
 	if want, re := req.String("url"), req.String("urlre"); want != "" || re != "" {
 		return a.waitURL(ctx, sess, req, want, re)
 	}
@@ -111,18 +114,9 @@ func (a *Agent) waitURL(ctx context.Context, sess *browser.Session, req protocol
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	timeout := navTimeout
-	if v := req.Int("timeout", 0); v > 0 {
-		timeout = time.Duration(v) * time.Millisecond
-	} else if rest := strings.TrimSpace(req.String("text")); rest != "" {
-		// `wait url=... 1500` lands the number in the first positional; in URL
-		// mode that is the timeout, and a non-number there is a mistake worth
-		// naming instead of ignoring.
-		v, convErr := strconv.Atoi(rest)
-		if convErr != nil {
-			return protocol.Fail(fmt.Errorf("in url mode the second argument is the timeout in ms, got %q", rest))
-		}
-		timeout = time.Duration(v) * time.Millisecond
+	timeout, err := waitTimeout(req, "url")
+	if err != nil {
+		return protocol.Fail(err)
 	}
 	present := req.Cmd == "wait"
 	start := time.Now()
@@ -135,6 +129,54 @@ func (a *Agent) waitURL(ctx context.Context, sess *browser.Session, req protocol
 		return protocol.Fail(fmt.Errorf("url %s did not %s within %s — the URL is now %s", label, undone, timeout, href))
 	}
 	return ok(fmt.Sprintf("ok: url %s %s in %dms", label, done, time.Since(start).Milliseconds()))
+}
+
+// waitNetworkIdle waits for the network to go quiet: a page that renders in
+// cascades (a shell, then data, then a second fetch) is only done after the last
+// response, which the text and URL waits cannot say.
+func (a *Agent) waitNetworkIdle(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
+	sid, err := sess.ActiveSID()
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	timeout, err := waitTimeout(req, "network-idle")
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	start := time.Now()
+	pending, idle := sess.WaitForNetworkIdle(ctx, sid, 500*time.Millisecond, timeout)
+	if idle {
+		return ok(fmt.Sprintf("ok: network idle in %dms", time.Since(start).Milliseconds()))
+	}
+	if len(pending) == 0 {
+		return protocol.Fail(fmt.Errorf("the network did not go idle within %s — recent activity kept it busy", timeout))
+	}
+	shown := pending
+	if len(shown) > 5 {
+		shown = shown[:5]
+	}
+	msg := fmt.Sprintf("the network did not go idle within %s — still in flight:\n%s", timeout, strings.Join(shown, "\n"))
+	if n := len(pending) - len(shown); n > 0 {
+		msg += fmt.Sprintf("\n(... %d more)", n)
+	}
+	return protocol.Fail(fmt.Errorf("%s", msg))
+}
+
+// waitTimeout reads the timeout from `timeout=` or from the second positional,
+// which the grammar puts in `text` once a flag selects the mode; a non-number
+// there is a mistake worth naming instead of ignoring.
+func waitTimeout(req protocol.Request, mode string) (time.Duration, error) {
+	if v := req.Int("timeout", 0); v > 0 {
+		return time.Duration(v) * time.Millisecond, nil
+	}
+	if rest := strings.TrimSpace(req.String("text")); rest != "" {
+		v, err := strconv.Atoi(rest)
+		if err != nil {
+			return 0, fmt.Errorf("in %s mode the second argument is the timeout in ms, got %q", mode, rest)
+		}
+		return time.Duration(v) * time.Millisecond, nil
+	}
+	return navTimeout, nil
 }
 
 // urlMatcher builds the predicate behind `wait url=`/`urlre=` and the label the

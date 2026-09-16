@@ -85,6 +85,7 @@ axscope wait "Dashboard"             # converges, doesn't sleep
 axscope wait "Ready" within=css=#list   # the text, but only inside the container
 axscope wait css=#submit --enabled   # waits for the state, not the text
 axscope wait url=settings/rules      # waits for the URL (a SPA changes it with no new text)
+axscope wait --network-idle          # waits until the requests stop (a page that renders in cascades)
 axscope find css=#submit             # the ref the last snap gave a css=/text= target, without acting
 axscope read --links                 # the links of the page as `label — href` (absolute)
 axscope tabs                         # open tabs (the active one is marked *)
