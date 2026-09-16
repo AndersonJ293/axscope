@@ -192,6 +192,34 @@ criterion. The selector is checked against the page itself and prefers the data
 attribute over the class: a state class (`active`) changes, and a selector that
 carries it breaks on its own.
 
+### Keys and evidence
+
+`press` sends a key or a shortcut to whatever has focus. The named keys are
+`Enter`, `Tab`, `Escape`/`Esc`, `Backspace`, `Delete`, the arrows (`ArrowUp`,
+`ArrowDown`, `ArrowLeft`, `ArrowRight`), `Home`, `End`, `PageUp`, `PageDown`,
+`Space` and `F1`–`F12`; any single printable character is sent as itself.
+Modifiers combine with `+`: `Control`/`Ctrl`, `Alt`, `Shift` and
+`Meta`/`Cmd`/`Command`/`Super`.
+
+```bash
+axscope press Enter
+axscope press Control+A
+axscope press Shift+Tab
+axscope press Escape            # closes a menu or a modal — the usual way out
+```
+
+`shot` captures a PNG and **returns the path it wrote**. Without a path it goes to
+a temporary file (`/tmp/axscope-*.png`); with one, it writes exactly there, with
+the cursor and the spotlight. `--full` captures the whole page, beyond the
+viewport. The path is on the machine running the daemon, so it goes straight into
+an evidence attachment:
+
+```bash
+axscope shot /tmp/evidence.png
+axscope shot /tmp/evidence.png --full
+gh issue comment 42 --body "screenshot of the failure" --attach /tmp/evidence.png
+```
+
 ### Scripts
 
 One step per line, `#` comments, quotes for spaces:
@@ -420,9 +448,10 @@ cursor "arrives" before acting; `0` removes the pause.
 | `~/.local/share/axscope/profiles/` | varies | profile (logins, state) |
 | `~/.local/share/axscope/logs/` | ≤ 2 MB per session | daemon log, truncated on startup |
 
-`axscope shot <file>` writes **exactly where you tell it** — there is no default
-folder and no automatic accumulation. The tool only writes on its own what is
-necessary: profile, downloaded browsers (on `install`) and the log (bounded).
+`axscope shot <file>` writes **exactly where you tell it**; without a path it goes
+to a temporary file (`/tmp/axscope-*.png`). Nothing lands in the project, and the
+tool only writes on its own what is necessary: profile, downloaded browsers (on
+`install`) and the log (bounded).
 
 ```bash
 axscope clean          # logs and dead sessions
