@@ -128,6 +128,19 @@ ok: click text=Fire (dom)
 The default stays the real pointer: `--dom` has no pointer geometry and no
 hit-testing, so it can fire on something the user could not reach.
 
+`select` chooses an option in a native `<select>` **or** a standard ARIA
+combobox/listbox, by the option's visible label; it clicks the `role=option` with
+the real pointer and then checks the choice committed. A widget that highlights
+the option without selecting it is reported, not answered with a bare `ok`:
+
+```
+$ axscope select css=#checks "CI / test"
+ok: select css=#checks = CI / test (the selection did not commit — the option was highlighted but not selected (a custom combobox? try `type` then `press Enter`, or `eval`))
+```
+
+For a widget outside the standard pattern, `type` + `press Enter` or `eval` is the
+escape hatch.
+
 A page with unsaved changes holds back an `open` with `beforeunload`; the refusal
 names that and the way out instead of a raw `net::ERR_ABORTED`:
 

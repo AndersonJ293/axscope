@@ -445,6 +445,20 @@ func TestTargetExpressions(t *testing.T) {
 	}
 }
 
+// The ARIA option search must stay on role=option, cross shadow roots, skip the
+// hidden and carry the requested label.
+func TestAriaOptionExpression(t *testing.T) {
+	expr := ariaOptionExpression("CI / test")
+	for _, want := range []string{"[role=option]", "underShadow", "hidden(el)"} {
+		if !strings.Contains(expr, want) {
+			t.Errorf("the option search does not use %q", want)
+		}
+	}
+	if !strings.Contains(expr, strconv.Quote("CI / test")) {
+		t.Error("the sought label did not enter the expression")
+	}
+}
+
 // nodeByBackend is the bridge from a frame's backend node to a node id in the
 // tree built so far; a miss must be "" so the caller can refuse instead of
 // grafting onto the wrong node.

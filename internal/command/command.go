@@ -37,7 +37,7 @@ var Specs = []Spec{
 	{Cmd: "fill", Positional: []string{"target", "value"}, Help: "replaces the field's content"},
 	{Cmd: "type", Positional: []string{"target", "value"}, Help: "types character by character"},
 	{Cmd: "press", Positional: []string{"key"}, Help: "sends a key/shortcut (Enter, Control+A)"},
-	{Cmd: "select", Positional: []string{"target", "value"}, Help: "chooses an option of <select>"},
+	{Cmd: "select", Positional: []string{"target", "value"}, Help: "chooses an option of <select> or an ARIA listbox (<value> is the option's label)"},
 	{Cmd: "check", Positional: []string{"target"}, Help: "checks checkbox/radio"},
 	{Cmd: "uncheck", Positional: []string{"target"}, Help: "unchecks checkbox/radio"},
 	{Cmd: "scroll", Positional: []string{"dy", "target"}, Optional: []string{"target"}, Flags: []string{"page"}, Help: "scrolls (positive dy goes down; target= scrolls the container; --page forces the document)"},
