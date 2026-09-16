@@ -3,6 +3,7 @@
 package browser
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strconv"
@@ -442,6 +443,14 @@ func TestTargetExpressions(t *testing.T) {
 	if !strings.Contains(cssExpression("#id"), strconv.Quote("#id")) ||
 		!strings.Contains(cssExpression("#id"), "querySelector") {
 		t.Errorf("cssExpression does not carry the selector: %q", cssExpression("#id"))
+	}
+}
+
+// ResolveObject must refuse a ref that is not in the reading before touching the
+// page, so a hidden file input is not the only failure it can report.
+func TestResolveObjectMissingRef(t *testing.T) {
+	if _, err := ResolveObject(context.Background(), nil, "s", map[string]int{"e1#7": 1}, "e9"); err == nil {
+		t.Error("a ref that is not in the reading must be refused")
 	}
 }
 
