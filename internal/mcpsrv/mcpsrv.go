@@ -73,14 +73,15 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 
 	switch req.Method {
 	case "initialize":
-		// The MCP client name (opencode, claude, cursor…) becomes the tab group name.
+		// The MCP client name (opencode, claude, cursor…) names the tab group,
+		// unless AXSCOPE_AGENT is set: an explicit choice wins over auto-detection.
 		var params struct {
 			ClientInfo struct {
 				Name string `json:"name"`
 			} `json:"clientInfo"`
 		}
 		_ = json.Unmarshal(req.Params, &params)
-		if name := displayName(params.ClientInfo.Name); name != "" {
+		if name := displayName(params.ClientInfo.Name); name != "" && os.Getenv("AXSCOPE_AGENT") == "" {
 			_ = os.Setenv("AXSCOPE_AGENT", name)
 		}
 		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{

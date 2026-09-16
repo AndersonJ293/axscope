@@ -1,6 +1,12 @@
 package mcpsrv
 
-import "testing"
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"os"
+	"testing"
+)
 
 // ping/stop/install are settled by the daemon or the CLI and are not browser
 // actions; the switch in tools() must exclude them even with the full catalog
@@ -84,5 +90,32 @@ func TestCatalogCoversCoreInteractions(t *testing.T) {
 func TestCatalogDoesNotGrowByCarelessness(t *testing.T) {
 	if n := len(tools()); n > 30 {
 		t.Errorf("the curated catalog has %d tools — above that the context cost stops paying off", n)
+	}
+}
+
+// initialize(t, client) drives the handshake with the given clientInfo.name; the
+// response is discarded (only the AXSCOPE_AGENT side effect matters here).
+func initialize(t *testing.T, client string) {
+	t.Helper()
+	line := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"` + client + `"}}}`)
+	handleLine(context.Background(), line, bufio.NewWriter(&bytes.Buffer{}))
+}
+
+// The README documents that an explicit AXSCOPE_AGENT names the tab group, with the
+// client name as the fallback. Regression: initialize used to overwrite it.
+func TestInitializeKeepsExplicitAgent(t *testing.T) {
+	t.Setenv("AXSCOPE_AGENT", "Opencode")
+	initialize(t, "cli")
+	if got := os.Getenv("AXSCOPE_AGENT"); got != "Opencode" {
+		t.Errorf("AXSCOPE_AGENT = %q, want %q (an explicit setting must win)", got, "Opencode")
+	}
+}
+
+// Without AXSCOPE_AGENT, the client name still names the group (opencode sends "cli").
+func TestInitializeUsesClientNameWhenAgentUnset(t *testing.T) {
+	t.Setenv("AXSCOPE_AGENT", "")
+	initialize(t, "cli")
+	if got := os.Getenv("AXSCOPE_AGENT"); got != "Cli" {
+		t.Errorf("AXSCOPE_AGENT = %q, want %q", got, "Cli")
 	}
 }
