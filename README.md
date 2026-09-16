@@ -220,6 +220,31 @@ axscope shot /tmp/evidence.png --full
 gh issue comment 42 --body "screenshot of the failure" --attach /tmp/evidence.png
 ```
 
+### Filling rich text
+
+`fill` delivers the text with `Input.insertText`, so on a `contenteditable` a `\n`
+starts a new block and `\n\n` leaves an empty one (the first line is a bare text
+node, the rest become `<div>`s):
+
+```
+$ axscope fill css=#note $'first\nsecond\n\nfourth'
+$ axscope eval 'document.getElementById("note").innerHTML'
+first<div>second</div><div><br></div><div>fourth</div>
+```
+
+On an `<input>`/`<textarea>` the same `\n` stays a line break in the value. A line
+that starts with `-` or `•` is **not** a real list — the editor keeps it as a
+paragraph with the bullet as text (`- alpha<div>- beta</div>`), which is what
+ProseMirror (LinkedIn) does with pasted text. When a real `<ul>`/`<li>` matters,
+insert it with `eval`, replacing the selection:
+
+```bash
+axscope eval '(function(){const ce=document.getElementById("note");ce.focus();const r=document.createRange();r.selectNodeContents(ce);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("insertHTML",false,"<ul><li>alpha</li><li>beta</li></ul>");return ce.innerHTML;})()'
+```
+
+`type` types character by character — it fires the keyboard handlers — and a `\n`
+there is sent as `Enter`, so the editor breaks the block the same way.
+
 ### Scripts
 
 One step per line, `#` comments, quotes for spaces:
