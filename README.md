@@ -95,6 +95,7 @@ axscope read --links                 # the links of the page as `label — href`
 axscope read --table                 # an HTML <table> as aligned rows
 axscope reload --hard                # reloads bypassing the cache — the remedy for a dead UI
 axscope tabs                         # open tabs (the active one is marked *)
+axscope status                       # session, CDP endpoint, active tab, refs
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script
 ```
@@ -303,6 +304,10 @@ coordinate click. There is just no window — so no drawn cursor.
 Attaching still works for any Chromium already open with
 `--remote-debugging-port=PORT` (`AXSCOPE_ATTACH=host:port`), letting you use your
 everyday browser with your logins.
+
+`axscope status` names the endpoint the session is using (`ws://…`), so falling
+back to raw CDP does not mean reconstructing it; in extension mode it says there
+is none, because the CDP runs inside your browser through the extension.
 
 ## The engine: what the research proved
 
