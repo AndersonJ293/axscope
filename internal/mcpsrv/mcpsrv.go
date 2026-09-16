@@ -171,6 +171,7 @@ var curatedMCP = map[string]bool{
 	"uncheck":  true,
 	"upload":   true,
 	"press":    true,
+	"dialog":   true,
 	"wait":     true,
 	"waitgone": true,
 	"scroll":   true,

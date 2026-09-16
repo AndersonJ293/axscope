@@ -36,6 +36,7 @@ func (a *Agent) routes() map[string]route {
 		"fill":     {needsSession: true, handle: a.fillLike},
 		"type":     {needsSession: true, handle: a.fillLike},
 		"press":    {needsSession: true, handle: a.press},
+		"dialog":   {needsSession: true, handle: a.dialog},
 		"select":   {needsSession: true, handle: a.selectOption},
 		"check":    {needsSession: true, handle: a.checkLike},
 		"uncheck":  {needsSession: true, handle: a.checkLike},

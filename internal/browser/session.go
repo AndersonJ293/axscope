@@ -70,6 +70,11 @@ type Session struct {
 	lastActivity map[string]time.Time
 
 	acceptDialogs bool
+	// nextDialog is the action for the next native dialog that is not a
+	// beforeunload: "accept" or "dismiss" (the default). `dialog accept` arms one
+	// and handleDialog consumes it, so a dialog the agent did not plan for is
+	// still dismissed.
+	nextDialog string
 	// forceUnload accepts the next beforeunload dialog (an explicit `open
 	// --force`), so leaving a page with unsaved changes is possible on request.
 	forceUnload bool
@@ -239,6 +244,30 @@ func (s *Session) ForceUnload(on bool) {
 	s.mu.Unlock()
 }
 
+// SetNextDialog arms the action for the next native dialog (accept or dismiss,
+// the default). It is consumed by the next dialog, so it does not linger; a
+// beforeunload keeps its own rule (only a forced navigation leaves).
+func (s *Session) SetNextDialog(action string) {
+	s.mu.Lock()
+	s.nextDialog = action
+	s.mu.Unlock()
+}
+
+// dialogDecision reports whether to accept a dialog of `kind` and consumes a
+// one-shot arming for a dialog that is not a beforeunload. acceptDialogs and
+// forceUnload decide a beforeunload; everything else defaults to dismiss, so a
+// dialog the agent did not plan for never blocks the page.
+func (s *Session) dialogDecision(kind string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if kind == "beforeunload" {
+		return s.forceUnload || s.acceptDialogs
+	}
+	accept := s.acceptDialogs || s.nextDialog == "accept"
+	s.nextDialog = ""
+	return accept
+}
+
 // handleDialog records and handles a native dialog.
 func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	var p struct {
@@ -248,15 +277,8 @@ func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	if json.Unmarshal(params, &p) != nil {
 		return
 	}
+	accept := s.dialogDecision(p.Type)
 	handled := "dismiss"
-	accept := s.acceptDialogs
-	if p.Type == "beforeunload" {
-		// Accepting a beforeunload means leaving the page; dismissing means
-		// staying, which aborts the navigation. Only a forced navigation leaves.
-		s.mu.Lock()
-		accept = s.forceUnload || s.acceptDialogs
-		s.mu.Unlock()
-	}
 	if accept {
 		handled = "accept"
 	}

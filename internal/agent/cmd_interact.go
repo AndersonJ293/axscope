@@ -135,6 +135,23 @@ func (a *Agent) press(ctx context.Context, sess *browser.Session, req protocol.R
 	return ok(a.finish(ctx, sess, sid, "press "+key, before))
 }
 
+// dialog arms the action for the next native dialog. The default (dismiss) needs
+// no arming; `dialog accept` is how an agent accepts a confirm() it is about to
+// trigger. The dialog itself is handled as soon as it opens, so the page does not
+// stay frozen behind it.
+func (a *Agent) dialog(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
+	action := strings.ToLower(strings.TrimSpace(req.String("action")))
+	if action != "accept" && action != "dismiss" {
+		return protocol.Fail(fmt.Errorf("usage: axscope dialog accept|dismiss"))
+	}
+	sess.SetNextDialog(action)
+	verb := "dismissed"
+	if action == "accept" {
+		verb = "accepted"
+	}
+	return ok(fmt.Sprintf("ok: the next dialog will be %s", verb))
+}
+
 func (a *Agent) selectOption(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
 	value := req.String("value")
