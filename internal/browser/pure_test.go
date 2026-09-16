@@ -454,6 +454,20 @@ func TestResolveObjectMissingRef(t *testing.T) {
 	}
 }
 
+// A document reading must not be mistaken for a document when the answer is
+// malformed or still half-written: the wait would then judge on nothing.
+func TestParseFields(t *testing.T) {
+	parts, ok := parseFields(`["123","complete","http://x"]`, 3)
+	if !ok || len(parts) != 3 || parts[1] != "complete" {
+		t.Fatalf("a well-formed answer was not parsed: %#v ok=%v", parts, ok)
+	}
+	for _, bad := range []string{"", "null", `["a"]`, `["a","b"]`, `{"a":1}`, `"complete"`} {
+		if _, ok := parseFields(bad, 3); ok {
+			t.Errorf("parseFields(%q, 3) accepted a malformed answer", bad)
+		}
+	}
+}
+
 // A scroll whose default scroller is stuck must fall back to the largest
 // scrollable area in view, and the answer must name whichever moved.
 func TestScrollStepsFallback(t *testing.T) {
