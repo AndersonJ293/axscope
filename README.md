@@ -71,7 +71,11 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request). To open all of them: `AXSCOPE_MCP_TOOLS=all`.
+request): **29 of the 32 commands**. The rest are not missing — set
+`AXSCOPE_MCP_TOOLS=all` to expose every command, and `axscope help` lists them all
+with their arguments. The server repeats this in the `instructions` of the
+`initialize` handshake, so a client that sees a partial catalog knows it is a
+choice and not an absent capability.
 
 ## Usage
 
