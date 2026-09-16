@@ -146,10 +146,11 @@ func (a *Agent) selectOption(ctx context.Context, sess *browser.Session, req pro
 		return protocol.Fail(err)
 	}
 	before := a.errCount(sess, sid)
-	if err := browser.Select(ctx, a.client(), sid, t, value); err != nil {
-		return protocol.Fail(err)
+	notice, err := browser.Select(ctx, a.client(), sid, t, value, sess.Presenter)
+	if err != nil {
+		return protocol.Fail(fmt.Errorf("select on %s was not sent: %w", target, err))
 	}
-	return ok(a.finish(ctx, sess, sid, fmt.Sprintf("select %s = %s", target, value), before))
+	return ok(a.finish(ctx, sess, sid, withNotice(fmt.Sprintf("select %s = %s", target, value), notice), before))
 }
 
 func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
