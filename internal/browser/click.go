@@ -81,6 +81,37 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	return "", nil
 }
 
+// DOMClick fires a programmatic click on the resolved node (`element.click()`),
+// for pages that only trust synthetic DOM clicks. It has no pointer geometry and
+// no hit-testing, so it also bypasses whatever covers the element — that is the
+// point of the opt-in, and the trade-off to document.
+func DOMClick(ctx context.Context, client *cdp.Client, session string, t *Target) error {
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId": t.ObjectID,
+		"functionDeclaration": `function () {
+			if (typeof this.click !== 'function') return 'not a clickable element';
+			this.click();
+			return '';
+		}`,
+		"returnByValue": true,
+	}, session)
+	if err != nil {
+		return err
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return fmt.Errorf("the DOM click had no readable answer")
+	}
+	if res.Result.Value != "" {
+		return fmt.Errorf("the target does not accept a DOM click (%s) — it may need the real pointer", res.Result.Value)
+	}
+	return nil
+}
+
 // prepareClick arms a click listener on the target so clickReached can tell
 // whether the event actually passed through it (shadow host, iframe included).
 // A failed arm is harmless: clickReached then reports reached.

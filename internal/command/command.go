@@ -30,7 +30,7 @@ var Specs = []Spec{
 
 	{Cmd: "open", Positional: []string{"url"}, Flags: []string{"new", "force"}, Help: "opens/navigates (--new opens in a new tab; --force leaves a page with unsaved changes)"},
 	{Cmd: "snap", Flags: []string{"refs", "all"}, Help: "reads the screen as text (--refs targets only; --all includes footer and shortcuts)"},
-	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double"}, Help: "clicks the target (ref/css=/text=)"},
+	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double", "dom"}, Help: "clicks the target, real pointer by default (--dom fires element.click() for pages that ignore synthetic pointer events)"},
 	{Cmd: "hover", Positional: []string{"target"}, Help: "hovers over the target"},
 	{Cmd: "drag", Positional: []string{"from", "to"}, Flags: []string{"top", "bottom", "type"}, Help: "drags <from> to <to> (--top/--bottom where to drop; type=pointer|html5 forces the family)"},
 	{Cmd: "upload", Positional: []string{"file", "target"}, Optional: []string{"target"}, Help: "sends a file (without target it goes to the first <input type=file>; target= on a dropzone)"},
