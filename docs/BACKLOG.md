@@ -234,6 +234,15 @@ tab ever becoming the active one.
   strict guard costs one extra `snap` and prevents clicking the wrong target —
   and the error is loud, with instructions on what to do. I do not trade safety
   for 0.2s.
+- **A ref that survives a re-read (`snap --pin`).** The pain is real (about six
+  re-reads in one application flow), but a pinned `e12` would keep resolving the
+  node the old reading meant, and a backend node id can be reused after its node
+  is destroyed — the same "old ref, now another element" the generation guard
+  exists to catch. Recorded as the recommendation instead: in a long form, aim by
+  `css=`/`text=` (or `find` to map them to a ref), which are resolved in the
+  reading of the moment. Measured across a growing form: after the re-read the
+  old `e3#1` was refused while `click css=#next` and `click text=Next` kept
+  hitting the field, and `find css=#next` answered the current `e4#2`.
 - **Scroll "until the text appears"** as a command. It is composite (scroll →
   read → repeat) and the agent builds it with what exists.
 - **Target highlight (the purple outline).** Removed by preference: it stayed lit
