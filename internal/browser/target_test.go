@@ -46,6 +46,17 @@ func TestTargetExpressionsCrossShadowRoot(t *testing.T) {
 	}
 }
 
+// Aiming by text must not pick the copy left under an overlay: the tie is broken
+// by a hit test, the same criterion the click uses before it refuses.
+func TestTextExpressionPrefersUncovered(t *testing.T) {
+	expr := textExpression("Easy Apply to this job")
+	for _, want := range []string{"elementFromPoint", "covered(", "betterThan"} {
+		if !strings.Contains(expr, want) {
+			t.Errorf("textExpression does not break the tie by %q", want)
+		}
+	}
+}
+
 // A text target with no visible area must explain the cause — all candidates
 // hidden, for example a closed menu — and how many matched.
 func TestHiddenTextMessage(t *testing.T) {
