@@ -41,6 +41,12 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 	if count == 2 {
 		action = "dblclick"
 	}
+	if req.Bool("dom", false) {
+		if err := browser.DOMClick(ctx, a.client(), sid, t); err != nil {
+			return protocol.Fail(actionFailure(action, target, err))
+		}
+		return ok(a.finish(ctx, sess, sid, action+" "+target+" (dom)", before))
+	}
 	notice, err := browser.Click(ctx, a.client(), sid, t, button, count, sess.Presenter)
 	if err != nil {
 		return protocol.Fail(actionFailure(action, target, err))

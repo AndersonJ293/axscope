@@ -109,6 +109,20 @@ side effect the page gives it. Text that did not make it into the field
 (`the field is still empty`) and a click that was sent but the target never saw
 are also not silently ignored.
 
+A page that ignores synthetic pointer events (`pointer-events: none`, a handler
+that only trusts a programmatic click) is the case for `click --dom`, which
+resolves the same target but fires `element.click()` on the node:
+
+```
+$ axscope click text=Fire
+error: click on text=Fire: the target has pointer-events: none — the pointer cannot reach it
+$ axscope click text=Fire --dom
+ok: click text=Fire (dom)
+```
+
+The default stays the real pointer: `--dom` has no pointer geometry and no
+hit-testing, so it can fire on something the user could not reach.
+
 A page with unsaved changes holds back an `open` with `beforeunload`; the refusal
 names that and the way out instead of a raw `net::ERR_ABORTED`:
 
