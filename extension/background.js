@@ -198,6 +198,12 @@ async function adoptExistingGroup(st) {
     await chrome.storage.local.remove(key);
   }
 
+  // The remembered group is gone (the user ungrouped or closed it): drop the
+  // stale id so the next tab creates a fresh group instead of failing to join a
+  // dead one.
+  st.groupId = null;
+  st.groupTitle = null;
+
   // 2) Otherwise adopt a group whose title matches the agent name.
   try {
     const groups = await chrome.tabGroups.query({});
@@ -229,19 +235,28 @@ async function syncGroupTabs(st) {
 async function addTabToGroup(st, tabId) {
   if (!st.session) return;
   try {
-    if (st.groupId === null || st.groupId === undefined) {
-      const gid = await chrome.tabs.group({ tabIds: [tabId] });
-      st.groupId = gid;
-      if (!st.groupTitle) st.groupTitle = await nextTitleFor(st.agent);
-      await chrome.tabGroups.update(gid, {
-        title: st.groupTitle,
-        color: groupColor(st.agent),
-        collapsed: false,
-      });
-      if (st.session) await chrome.storage.local.set({ [`group:${st.session}`]: gid });
-    } else {
-      await chrome.tabs.group({ tabIds: [tabId], groupId: st.groupId });
+    if (st.groupId !== null && st.groupId !== undefined) {
+      try {
+        await chrome.tabs.group({ tabIds: [tabId], groupId: st.groupId });
+        ownerByTab.set(tabId, st);
+        return;
+      } catch {
+        // The group is gone (the user ungrouped or closed it): forget the dead
+        // id and create a fresh group below, instead of failing to join it
+        // silently forever.
+        st.groupId = null;
+        st.groupTitle = null;
+      }
     }
+    const gid = await chrome.tabs.group({ tabIds: [tabId] });
+    st.groupId = gid;
+    if (!st.groupTitle) st.groupTitle = await nextTitleFor(st.agent);
+    await chrome.tabGroups.update(gid, {
+      title: st.groupTitle,
+      color: groupColor(st.agent),
+      collapsed: false,
+    });
+    await chrome.storage.local.set({ [`group:${st.session}`]: gid });
     ownerByTab.set(tabId, st);
   } catch {
     /* no group permission: the tab stays usable */
