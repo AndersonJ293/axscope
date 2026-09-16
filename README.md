@@ -86,6 +86,7 @@ axscope wait "Ready" within=css=#list   # the text, but only inside the containe
 axscope wait css=#submit --enabled   # waits for the state, not the text
 axscope wait url=settings/rules      # waits for the URL (a SPA changes it with no new text)
 axscope find css=#submit             # the ref the last snap gave a css=/text= target, without acting
+axscope read --links                 # the links of the page as `label — href` (absolute)
 axscope tabs                         # open tabs (the active one is marked *)
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script

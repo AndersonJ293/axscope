@@ -111,6 +111,18 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	if sel == "" {
 		sel = "main, article, [role=main], #content, .content, body"
 	}
+	if req.Bool("links", false) {
+		links, err := dom.EvalString(ctx, a.client(), sid, linksExpression(sel))
+		if err != nil {
+			return protocol.Fail(err)
+		}
+		links = strings.TrimRight(links, "\n")
+		if links == "" {
+			links = "(no links in scope)"
+		}
+		url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
+		return ok(fmt.Sprintf("url: %s\n\n%s", url, links))
+	}
 	expr := fmt.Sprintf(`(() => {
 		const el = document.querySelector(%s) || document.body;
 		return el ? el.innerText : '';
@@ -125,6 +137,32 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	return ok(fmt.Sprintf("url: %s\n\n%s", url, text))
+}
+
+// linksExpression lists the links of the scope as `label — href`, resolving
+// relative URLs (the `href` property is absolute) and dropping `javascript:`
+// and the anchors without an href. Identical label+href pairs are listed once.
+func linksExpression(sel string) string {
+	return fmt.Sprintf(`(() => {
+		const scope = document.querySelector(%s) || document.body;
+		if (!scope) return '';
+		const seen = new Set();
+		const out = [];
+		for (const a of scope.querySelectorAll('a[href]')) {
+			const href = a.href;
+			if (!href || href.startsWith('javascript:')) continue;
+			let label = (a.getAttribute('aria-label') || a.innerText || a.getAttribute('title') || '').trim();
+			label = label.replace(/\s+/g, ' ').slice(0, 80);
+			if (!label) label = href;
+			const line = label + ' — ' + href;
+			if (seen.has(line)) continue;
+			seen.add(line);
+			out.push(line);
+		}
+		const capped = out.slice(0, 200);
+		if (out.length > capped.length) capped.push('(... ' + (out.length - capped.length) + ' more)');
+		return capped.join('\n');
+	})()`, strconv.Quote(sel))
 }
 
 func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
