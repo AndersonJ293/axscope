@@ -295,8 +295,11 @@ func (a *Agent) reload(ctx context.Context, sess *browser.Session, req protocol.
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	if err := sess.Reload(ctx, sid, navTimeout); err != nil {
+	if err := sess.Reload(ctx, sid, navTimeout, req.Bool("hard", false)); err != nil {
 		return protocol.Fail(err)
+	}
+	if req.Bool("hard", false) {
+		return ok("ok: reloaded (cache bypassed)")
 	}
 	return ok("ok: reloaded")
 }

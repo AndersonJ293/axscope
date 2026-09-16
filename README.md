@@ -89,6 +89,7 @@ axscope wait --network-idle          # waits until the requests stop (a page tha
 axscope find css=#submit             # the ref the last snap gave a css=/text= target, without acting
 axscope read --links                 # the links of the page as `label — href` (absolute)
 axscope read --table                 # an HTML <table> as aligned rows
+axscope reload --hard                # reloads bypassing the cache — the remedy for a dead UI
 axscope tabs                         # open tabs (the active one is marked *)
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script

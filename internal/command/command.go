@@ -52,7 +52,7 @@ var Specs = []Spec{
 	{Cmd: "closetab", Positional: []string{"ref"}, Help: "closes the tab"},
 	{Cmd: "back", Help: "goes back in history"},
 	{Cmd: "forward", Help: "goes forward in history"},
-	{Cmd: "reload", Help: "reloads the page"},
+	{Cmd: "reload", Flags: []string{"hard"}, Help: "reloads the page (--hard bypasses the cache — the remedy for a dead UI)"},
 	{Cmd: "console", Flags: []string{"all"}, Help: "console errors/warnings"},
 	{Cmd: "net", Positional: []string{"filter"}, Optional: []string{"filter"}, Help: "network requests"},
 	{Cmd: "shot", Positional: []string{"path"}, Optional: []string{"path"}, Flags: []string{"full"}, Help: "captures PNG (without a path it goes to /tmp)"},
