@@ -400,6 +400,8 @@ axscope stop --all    # all sessions and all browsers
 
 ## Project layout
 
+For an architectural overview, layer definitions, and request flow, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ```
 cmd/axscope/       entrypoint (client, serve, mcp, install)
 cmd/cdpprobe/      CDP engine diagnostic probe
@@ -457,7 +459,7 @@ internal/installer/ Chrome for Testing download
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues: see
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Security issues: see
 [`SECURITY.md`](SECURITY.md).
 
 ## License
