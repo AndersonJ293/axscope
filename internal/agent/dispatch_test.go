@@ -7,15 +7,9 @@ import (
 	"github.com/AndersonJ293/axscope/internal/command"
 )
 
-// cliOnly lists the commands in command.Specs that no agent route serves: they
-// are settled before ever reaching dispatch — install/engines/clean in
-// cmd/axscope, and stop by the daemon's accept loop (it closes the listener
-// instead of dispatching).
-//
-// ping is deliberately NOT in this list: routes() serves it, so it is covered by
-// the routed side of the assertion below. Keeping the list explicit means adding
-// a command to command.Specs without a route fails here instead of reaching the
-// daemon and answering "not handled" only after bringing up a browser.
+// cliOnly lists the commands in command.Specs that no agent route serves:
+// install/engines/clean are settled in cmd/axscope, and stop by the daemon's
+// accept loop. Any new command without a route fails this guard.
 var cliOnly = map[string]bool{
 	"install": true,
 	"engines": true,
