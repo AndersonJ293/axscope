@@ -55,6 +55,9 @@ type Session struct {
 	tabs   map[string]*Tab
 	order  []string
 	active string
+	// seedID is the about:blank page created at boot (some engines are not born
+	// with one). The first NewTab reuses it, so no empty tab is stranded.
+	seedID string
 	// activeFile is where the active tab is remembered, and prefActive what was
 	// stored. A daemon restart cannot swap the active tab under the agent.
 	activeFile string
@@ -178,6 +181,9 @@ func (s *Session) bootstrap(ctx context.Context) error {
 		if err := s.client.SendJSON(ctx, "Target.createTarget",
 			map[string]any{"url": "about:blank", "background": true}, "", &created); err == nil && created.TargetID != "" {
 			s.remember(created.TargetID, "about:blank", "")
+			s.mu.Lock()
+			s.seedID = created.TargetID
+			s.mu.Unlock()
 		}
 	}
 
