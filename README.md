@@ -89,6 +89,9 @@ axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script
 ```
 
+`open` and `newtab` name the tab they landed on (`tab: [2] <targetId>`), so you do
+not need a `tabs` round trip to know where you are.
+
 A target accepts four forms: `e12` (ref), `css=.button`, `text=Sign in` and
 `pos=x,y` (the element under the point — and **the action happens at the
 point**, not at its center, which is what lets you click inside an iframe). Open

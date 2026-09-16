@@ -28,3 +28,18 @@ func TestTakeSeed(t *testing.T) {
 		t.Fatalf("takeSeed on a navigated tab = %v, want nil", got)
 	}
 }
+
+// TabIndex is the `tab <n>` ref a response prints so the caller does not need a
+// `tabs` round trip after `open`/`newtab`.
+func TestTabIndex(t *testing.T) {
+	s := &Session{
+		order: []string{"a", "b", "c"},
+		tabs:  map[string]*Tab{"a": {}, "b": {}, "c": {}},
+	}
+	if idx, ok := s.TabIndex("b"); !ok || idx != 2 {
+		t.Errorf("TabIndex(b) = %d, %v, want 2, true", idx, ok)
+	}
+	if _, ok := s.TabIndex("z"); ok {
+		t.Error("TabIndex(z) reported a tab that is not there")
+	}
+}

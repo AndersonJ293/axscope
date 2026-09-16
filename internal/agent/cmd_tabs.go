@@ -42,6 +42,16 @@ func (a *Agent) switchTab(ctx context.Context, sess *browser.Session, req protoc
 	return ok(fmt.Sprintf("ok: tab %s — %s", tab.TargetID, tab.URL))
 }
 
+// tabRef names a tab in a response: its index (the `tab <n>` ref) and target id,
+// so a caller that just navigated does not need a `tabs` round trip to know
+// where it is.
+func tabRef(sess *browser.Session, targetID string) string {
+	if idx, ok := sess.TabIndex(targetID); ok {
+		return fmt.Sprintf("[%d] %s", idx, targetID)
+	}
+	return targetID
+}
+
 func (a *Agent) newTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	url := req.String("url")
 	if url == "" {
@@ -52,7 +62,7 @@ func (a *Agent) newTab(ctx context.Context, sess *browser.Session, req protocol.
 		return protocol.Fail(err)
 	}
 	sess.UpdateHUD(ctx, "newtab")
-	return ok(fmt.Sprintf("ok: new tab %s — %s", tab.TargetID, url))
+	return ok(fmt.Sprintf("ok: new tab %s — %s", tabRef(sess, tab.TargetID), url))
 }
 
 func (a *Agent) closeTab(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
