@@ -70,6 +70,9 @@ type Session struct {
 	lastActivity map[string]time.Time
 
 	acceptDialogs bool
+	// forceUnload accepts the next beforeunload dialog (an explicit `open
+	// --force`), so leaving a page with unsaved changes is possible on request.
+	forceUnload bool
 }
 
 type targetInfo struct {
@@ -227,6 +230,15 @@ func (s *Session) saveActive() {
 	_ = os.WriteFile(path, []byte(id), 0o644)
 }
 
+// ForceUnload makes the beforeunload dialog of the navigation about to run
+// accept (leave the page) instead of dismiss (stay). `open --force` sets it for
+// the duration of the navigation.
+func (s *Session) ForceUnload(on bool) {
+	s.mu.Lock()
+	s.forceUnload = on
+	s.mu.Unlock()
+}
+
 // handleDialog records and handles a native dialog.
 func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	var p struct {
@@ -238,6 +250,13 @@ func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	}
 	handled := "dismiss"
 	accept := s.acceptDialogs
+	if p.Type == "beforeunload" {
+		// Accepting a beforeunload means leaving the page; dismissing means
+		// staying, which aborts the navigation. Only a forced navigation leaves.
+		s.mu.Lock()
+		accept = s.forceUnload || s.acceptDialogs
+		s.mu.Unlock()
+	}
 	if accept {
 		handled = "accept"
 	}

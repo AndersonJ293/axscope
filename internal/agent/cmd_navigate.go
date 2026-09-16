@@ -28,7 +28,7 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 			return protocol.Fail(err)
 		}
 		sid = tab.SessionID
-	} else if err := sess.Navigate(ctx, sid, url, navTimeout); err != nil {
+	} else if err := sess.Navigate(ctx, sid, url, navTimeout, req.Bool("force", false)); err != nil {
 		return protocol.Fail(err)
 	}
 	sess.UpdateHUD(ctx, "open "+url)

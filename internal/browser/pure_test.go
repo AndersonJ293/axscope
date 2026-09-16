@@ -463,3 +463,35 @@ func TestNodeByBackend(t *testing.T) {
 		t.Errorf("nodeByBackend(nil) = %q, want empty", got)
 	}
 }
+
+// An aborted navigation must not reach the caller as a raw net::ERR_ABORTED:
+// when the page held it back with beforeunload, the refusal has to name the
+// cause and the way out (`open --force`).
+func TestNavigationError(t *testing.T) {
+	start := time.Now()
+	old := DialogEntry{Time: start.Add(-time.Minute), Type: "beforeunload", Handled: "dismiss"}
+	recent := DialogEntry{Time: start.Add(time.Second), Type: "beforeunload", Handled: "dismiss"}
+
+	// Aborted right after a beforeunload: the message names the reason and the flag.
+	err := navigationError([]DialogEntry{recent}, "net::ERR_ABORTED", start)
+	for _, want := range []string{"unsaved changes", "open --force"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message %q does not say %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "net::ERR_ABORTED") {
+		t.Errorf("the raw error leaked: %q", err)
+	}
+
+	// A beforeunload from an earlier navigation is not this one's cause.
+	err = navigationError([]DialogEntry{old}, "net::ERR_ABORTED", start)
+	if !strings.Contains(err.Error(), "navigation failed: net::ERR_ABORTED") {
+		t.Errorf("an unrelated abort should stay generic, got %q", err)
+	}
+
+	// Another error text is not blamed on beforeunload.
+	err = navigationError([]DialogEntry{recent}, "net::ERR_NAME_NOT_RESOLVED", start)
+	if !strings.Contains(err.Error(), "net::ERR_NAME_NOT_RESOLVED") {
+		t.Errorf("a different failure must be reported as is, got %q", err)
+	}
+}

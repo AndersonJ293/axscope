@@ -48,7 +48,7 @@ func (s *Session) NewTab(ctx context.Context, url string) (*Tab, error) {
 			if err != nil {
 				return nil, err
 			}
-			if err := s.Navigate(ctx, tab.SessionID, url, 15*time.Second); err != nil {
+			if err := s.Navigate(ctx, tab.SessionID, url, 15*time.Second, false); err != nil {
 				return nil, err
 			}
 			return tab, nil
@@ -100,21 +100,54 @@ func (s *Session) CloseTab(ctx context.Context, ref string) error {
 	return err
 }
 
-// Navigate goes to a URL and waits for convergence.
-func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Duration) error {
+// Navigate goes to a URL and waits for convergence. force accepts a
+// beforeunload dialog opened by the page (unsaved changes), so an explicit
+// navigation can leave it.
+func (s *Session) Navigate(ctx context.Context, sid, url string, timeout time.Duration, force bool) error {
+	start := time.Now()
+	if force {
+		s.ForceUnload(true)
+	}
 	var res struct {
 		ErrorText string `json:"errorText"`
 	}
-	if err := s.client.SendJSON(ctx, "Page.navigate", map[string]any{"url": url}, sid, &res); err != nil {
+	err := s.client.SendJSON(ctx, "Page.navigate", map[string]any{"url": url}, sid, &res)
+	if force {
+		s.ForceUnload(false)
+	}
+	if err != nil {
 		return err
 	}
 	if res.ErrorText != "" {
-		return fmt.Errorf("navigation failed: %s", res.ErrorText)
+		return navigationError(s.Observe.Dialogs(sid), res.ErrorText, start)
 	}
 	// The load wait is advisory; Settle caps the total wait below.
 	_ = s.WaitForLoad(ctx, sid, timeout)
 	s.Settle(ctx, sid, 300*time.Millisecond)
 	return nil
+}
+
+// navigationError names the cause when a beforeunload dialog aborted the
+// navigation: a raw net::ERR_ABORTED hides both the reason and the way out.
+func navigationError(dialogs []DialogEntry, errorText string, since time.Time) error {
+	if errorText == "net::ERR_ABORTED" && beforeUnloadSince(dialogs, since) {
+		return fmt.Errorf("the page has unsaved changes and blocked the navigation — leave it with `open --force`")
+	}
+	return fmt.Errorf("navigation failed: %s", errorText)
+}
+
+// beforeUnloadSince reports whether a beforeunload dialog was registered at or
+// after `since` (the moment the navigation started).
+func beforeUnloadSince(dialogs []DialogEntry, since time.Time) bool {
+	for i := len(dialogs) - 1; i >= 0; i-- {
+		if dialogs[i].Time.Before(since) {
+			break
+		}
+		if dialogs[i].Type == "beforeunload" {
+			return true
+		}
+	}
+	return false
 }
 
 // HistoryMove moves through the history (-1 back, +1 forward).

@@ -109,6 +109,16 @@ side effect the page gives it. Text that did not make it into the field
 (`the field is still empty`) and a click that was sent but the target never saw
 are also not silently ignored.
 
+A page with unsaved changes holds back an `open` with `beforeunload`; the refusal
+names that and the way out instead of a raw `net::ERR_ABORTED`:
+
+```
+$ axscope open https://example.com/next
+error: the page has unsaved changes and blocked the navigation — leave it with `open --force`
+$ axscope open https://example.com/next --force
+ok: https://example.com/next
+```
+
 The snapshot header says where you are, including inside a scrollable area:
 
 ```
