@@ -151,6 +151,114 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	return t, nil
 }
 
+// ResolveBackend resolves a backend node id to an object id, the reverse of the
+// ref branch of ResolveTarget.
+func ResolveBackend(ctx context.Context, client *cdp.Client, session string, backendID int) (string, error) {
+	var res struct {
+		Object struct {
+			ObjectID string `json:"objectId"`
+		} `json:"object"`
+	}
+	if err := client.SendJSON(ctx, "DOM.resolveNode",
+		map[string]any{"backendNodeId": backendID}, session, &res); err != nil {
+		return "", err
+	}
+	return res.Object.ObjectID, nil
+}
+
+// DescribeNode returns the backend node id behind a resolved object and a short
+// selector (`tag#id.class`), so a target found by css=/text= can be matched back
+// to the ref the reading gave it.
+func DescribeNode(ctx context.Context, client *cdp.Client, session, objectID string) (int, string) {
+	var res struct {
+		Node struct {
+			BackendNodeID int      `json:"backendNodeId"`
+			NodeName      string   `json:"nodeName"`
+			Attributes    []string `json:"attributes"`
+		} `json:"node"`
+	}
+	if err := client.SendJSON(ctx, "DOM.describeNode",
+		map[string]any{"objectId": objectID}, session, &res); err != nil {
+		return 0, ""
+	}
+	name := strings.ToLower(res.Node.NodeName)
+	id := ""
+	var classes []string
+	for i := 0; i+1 < len(res.Node.Attributes); i += 2 {
+		switch res.Node.Attributes[i] {
+		case "id":
+			id = res.Node.Attributes[i+1]
+		case "class":
+			classes = strings.Fields(res.Node.Attributes[i+1])
+		}
+	}
+	switch {
+	case id != "":
+		return res.Node.BackendNodeID, name + "#" + id
+	case len(classes) > 0:
+		if len(classes) > 2 {
+			classes = classes[:2]
+		}
+		return res.Node.BackendNodeID, name + "." + strings.Join(classes, ".")
+	default:
+		return res.Node.BackendNodeID, name
+	}
+}
+
+// jsShortSelector defines `shortSelector(el)`; shared by DescribeNode's sibling
+// and the per-node match, so a target and a listing describe the node the same.
+const jsShortSelector = `
+	const shortSelector = (el) => {
+		const tag = (el.tagName || '?').toLowerCase();
+		if (el.id) return tag + '#' + el.id;
+		const cls = [...(el.classList || [])].slice(0, 2);
+		return cls.length ? tag + '.' + cls.join('.') : tag;
+	};`
+
+// SelectorIfMatches says whether a resolved node matches a css=/text= target,
+// returning its short selector when it does and "" otherwise. The text side
+// shares the naming helper with textExpression, so the two agree.
+func SelectorIfMatches(ctx context.Context, client *cdp.Client, session, objectID, spec string) string {
+	var decl string
+	var args []any
+	switch {
+	case strings.HasPrefix(spec, "css="):
+		decl = `function (sel) {` + jsShortSelector + `
+			if (!this.matches || !this.matches(sel)) return '';
+			return shortSelector(this);
+		}`
+		args = []any{map[string]any{"value": strings.TrimPrefix(spec, "css=")}}
+	case strings.HasPrefix(spec, "text="):
+		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
+		decl = `function (want) {` + jsElementText + jsShortSelector + `
+			const t = text(this);
+			if (!t || !(t === want || t.includes(want))) return '';
+			return shortSelector(this);
+		}`
+		args = []any{map[string]any{"value": want}}
+	default:
+		return ""
+	}
+	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
+		"objectId":            objectID,
+		"functionDeclaration": decl,
+		"arguments":           args,
+		"returnByValue":       true,
+	}, session)
+	if err != nil {
+		return ""
+	}
+	var res struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(raw, &res) != nil {
+		return ""
+	}
+	return res.Result.Value
+}
+
 // underShadow walks inside open shadow roots too: the accessibility tree
 // flattens shadow DOM, so a ref reaches the button while a DOM search must cross
 // the shadow boundary to reach it.

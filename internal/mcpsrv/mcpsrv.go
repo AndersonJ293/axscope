@@ -173,6 +173,7 @@ var curatedMCP = map[string]bool{
 	"waitgone": true,
 	"scroll":   true,
 	"read":     true,
+	"find":     true,
 	"tabs":     true,
 	"tab":      true,
 	"newtab":   true,

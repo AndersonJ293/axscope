@@ -44,6 +44,7 @@ var Specs = []Spec{
 	{Cmd: "wait", Positional: []string{"text", "timeout", "within", "url", "urlre"}, Optional: []string{"text", "timeout", "within", "url", "urlre"}, Flags: []string{"enabled", "visible", "gone"}, Help: "waits for the text to appear (within= limits the container; --enabled/--visible/--gone wait for that state of the target, and then the first argument is the target; url=/urlre= wait for the URL)"},
 	{Cmd: "waitgone", Positional: []string{"text", "timeout", "within", "url", "urlre"}, Optional: []string{"text", "timeout", "within", "url", "urlre"}, Help: "waits for the text to disappear (timeout in ms; within= limits the container; url=/urlre= wait for the URL to change)"},
 	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Help: "reads the page's main text"},
+	{Cmd: "find", Positional: []string{"target"}, Flags: []string{"all"}, Help: "shows the ref the last snap gave a css=/text= target, without acting (--all lists every matching ref)"},
 	{Cmd: "eval", Positional: []string{"js"}, Flags: []string{"raw"}, Help: "evaluates JavaScript on the page (--raw prints the exact CDP JSON)"},
 	{Cmd: "tabs", Help: "lists the tabs"},
 	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "switches to the tab (index or targetId; --focus brings the window to the front)"},

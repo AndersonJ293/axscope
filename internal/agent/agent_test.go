@@ -97,6 +97,37 @@ func TestURLMatcher(t *testing.T) {
 	}
 }
 
+// A css=/text= target is matched back to the reading's ref by its backend node
+// id; without one the caller is told so instead of getting a wrong ref.
+func TestRefForBackend(t *testing.T) {
+	refs := map[string]int{"e1#7": 11, "e2#7": 22}
+	if got := refForBackend(refs, 22); got != "e2#7" {
+		t.Errorf("refForBackend(22) = %q, want e2#7", got)
+	}
+	if got := refForBackend(refs, 99); got != "" {
+		t.Errorf("refForBackend(unknown) = %q, want empty", got)
+	}
+	if got := refForBackend(refs, 0); got != "" {
+		t.Errorf("refForBackend(0) = %q, want empty", got)
+	}
+}
+
+// find --all lists refs in reading order (e2 before e10), not lexicographically.
+func TestRefIndex(t *testing.T) {
+	for _, c := range []struct {
+		ref  string
+		want int
+	}{
+		{"e2#7", 2},
+		{"e10#7", 10},
+		{"e1", 1},
+	} {
+		if got := refIndex(c.ref); got != c.want {
+			t.Errorf("refIndex(%q) = %d, want %d", c.ref, got, c.want)
+		}
+	}
+}
+
 func TestSplitTokens(t *testing.T) {
 	cases := []struct {
 		name    string
