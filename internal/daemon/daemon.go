@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/AndersonJ293/axscope/internal/agent"
@@ -43,7 +44,7 @@ func capLog(session string) {
 }
 
 // listenUnix opens the daemon socket owned by the current user only. The mode
-// cannot be left to the umask: on the temp-dir fallback the socket would be
+// cannot be left to the umask: if the socket ever ends up writable it becomes
 // reachable by other local users.
 func listenUnix(socketPath string) (net.Listener, error) {
 	ln, err := net.Listen("unix", socketPath)
@@ -57,17 +58,39 @@ func listenUnix(socketPath string) (net.Listener, error) {
 	return ln, nil
 }
 
+// ensureRuntimeDir creates the directory that holds the socket and refuses one
+// it does not exclusively own: the temp fallback is a shared, predictable path,
+// and a directory controlled by another user lets them replace the socket the
+// clients connect to.
+func ensureRuntimeDir(dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("runtime directory %s is not a directory", dir)
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Getuid() {
+		return fmt.Errorf("runtime directory %s is owned by another user", dir)
+	}
+	if info.Mode().Perm() != 0o700 {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return fmt.Errorf("runtime directory %s is not owner-only: %w", dir, err)
+		}
+	}
+	return nil
+}
+
 // Run brings up the daemon and only returns when it is terminated.
 func Run(ctx context.Context, opts Options) error {
 	capLog(opts.Session)
 	socketPath := paths.SocketPath(opts.Session)
-	// The socket lives in the runtime directory, which must stay owner-only: a
-	// world-readable directory on the temp-dir fallback would expose the daemon.
-	runtimeDir := filepath.Dir(socketPath)
-	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+	if err := ensureRuntimeDir(filepath.Dir(socketPath)); err != nil {
 		return err
 	}
-	_ = os.Chmod(runtimeDir, 0o700) // best effort: an existing directory is kept
 	if err := os.MkdirAll(filepath.Join(paths.StateDir(), "sessions"), 0o755); err != nil {
 		return err
 	}

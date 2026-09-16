@@ -10,8 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - The daemon socket is created with mode `0600` and its runtime directory with
-  `0700`, so other local users cannot drive the browser session on the temp-dir
-  fallback.
+  `0700`. When there is no `XDG_RUNTIME_DIR`, the fallback directory is now
+  per-user (`$TMPDIR/axscope-<uid>`), and the daemon refuses a runtime directory
+  that is a symlink or owned by another user — closing the local squatting path.
 
 ### Removed
 
