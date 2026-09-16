@@ -67,14 +67,8 @@ func TestSplitTokens(t *testing.T) {
 	}
 }
 
-// Regression (lab v2): a click that does not arrive answered `ok` the same way
-// as a click that worked — and it could still land on the top layer, with
-// whatever side effect the page chose to give it. Now it is refused, and the
-// message carries the reason and the next step.
-// The wait scan has to cross shadow root and same-origin iframe — the read shows
-// the content of both, and before, the wait saw neither: `wait "Iframe zone"` and
-// `wait "SHADOW-321"` timed out although the snap showed the text. The test pins
-// both boundaries.
+// The wait scan must cross shadow roots and same-origin iframes: the read shows
+// their content, so the wait has to see it too. The test pins both boundaries.
 func TestTextLocator(t *testing.T) {
 	expr := textLocator("Iframe zone")
 	for _, want := range []string{"shadowRoot", "contentDocument", "IFRAME", "inside iframe"} {
@@ -90,6 +84,9 @@ func TestTextLocator(t *testing.T) {
 	}
 }
 
+// Regression: a click that does not arrive used to answer `ok` like a working
+// click while still possibly landing on the top layer. It is now refused with the
+// reason and the next step.
 func TestActionFailure(t *testing.T) {
 	err := actionFailure("click", "text=Gostei 20", fmt.Errorf("the target is covered by div.modal-backdrop — to click the point anyway, use pos=x,y"))
 	got := err.Error()
@@ -100,9 +97,8 @@ func TestActionFailure(t *testing.T) {
 	}
 }
 
-// Regression: the read did not say where one is in an area that scrolls — the
-// accessibility tree does not carry scroll state, and "scroll to item 777 of
-// 1000" became a guess or a napkin count. The read header now says it.
+// Regression: the accessibility tree does not carry scroll state, so the read
+// header now reports where in a scrolling area the agent is.
 func TestScrollLine(t *testing.T) {
 	if got := scrollLine(&browser.Snapshot{}); got != "" {
 		t.Errorf("with nothing scrolling the header should not change: %q", got)

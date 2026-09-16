@@ -132,12 +132,8 @@ func Run(ctx context.Context, opts Options) error {
 	}
 }
 
-// idleTimeout reads AXSCOPE_IDLE_MINUTES (default 0 = disabled).
-//
-// Disabled by default on purpose: closing the browser on its own makes the next
-// call start a new Chrome, and starting Chrome brings the window to the front —
-// which is exactly what gets in the way. Anyone who wants the shutdown turns it
-// on explicitly.
+// idleTimeout reads AXSCOPE_IDLE_MINUTES (default 0 = disabled). It is off by
+// default because closing the browser makes the next call start a new Chrome.
 func idleTimeout() time.Duration {
 	minutes := 0
 	if v := os.Getenv("AXSCOPE_IDLE_MINUTES"); v != "" {
@@ -153,9 +149,8 @@ func idleTimeout() time.Duration {
 
 func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()) {
 	defer conn.Close()
-	// A panic in a command must not bring down the whole daemon (and the
-	// browser with it). It becomes an error in the response, with the panic
-	// text shown.
+	// A panic must not bring down the daemon and the browser: it becomes an
+	// error in the response, with the panic text.
 	defer func() {
 		if r := recover(); r != nil {
 			writeResponse(conn, protocol.Fail(fmt.Errorf("panic in daemon: %v", r)))
@@ -190,7 +185,7 @@ func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()
 func writeResponse(conn net.Conn, resp protocol.Response) {
 	data, err := json.Marshal(resp)
 	if err != nil {
-		return
+		return // unreachable: Response has only scalar fields
 	}
 	_, _ = conn.Write(append(data, '\n'))
 }
@@ -218,6 +213,7 @@ func cleanup(socketPath, session string) {
 
 func writeInfo(session, socketPath string) {
 	pid := os.Getpid()
+	// Primitive values only, so marshal cannot fail.
 	data, _ := json.MarshalIndent(map[string]any{
 		"session": session,
 		"socket":  socketPath,

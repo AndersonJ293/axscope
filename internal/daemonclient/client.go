@@ -44,7 +44,7 @@ func EnsureDaemon() (string, error) {
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("starting daemon: %w", err)
 	}
-	// We do not wait for the process; it is orphaned by design (Setsid).
+	// Do not wait for the process; Setsid orphans it by design.
 	_ = cmd.Process.Release()
 
 	deadline := time.Now().Add(20 * time.Second)
@@ -89,9 +89,7 @@ func AgentName() string {
 	return "axscope"
 }
 
-// SendTo talks directly to a socket, without starting any daemon. This is what
-// `stop --all` uses: ensuring the daemon there would resurrect what we want to
-// shut down.
+// SendTo talks directly to a socket without starting a daemon; `stop --all` uses it to avoid resurrecting what is being shut down.
 func SendTo(socketPath string, req protocol.Request) (protocol.Response, error) {
 	conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
 	if err != nil {

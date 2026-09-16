@@ -60,19 +60,16 @@ func (Presenter) MoveCursor(ctx context.Context, c *cdp.Client, session string, 
 	return call(ctx, c, session, "cursor", x, y)
 }
 
-// Press animates cursor + ripple at the point (what the person sees).
-func (Presenter) Press(ctx context.Context, c *cdp.Client, session string, x, y float64, kind string) error {
+// PressCursor animates cursor + ripple at the point (what the person sees).
+func (Presenter) PressCursor(ctx context.Context, c *cdp.Client, session string, x, y float64, kind string) error {
 	if kind == "" {
 		kind = "left"
 	}
 	return call(ctx, c, session, "press", x, y, kind)
 }
 
-// Spotlight highlights the target rectangle; nil clears it.
-//
-// Off by default. The outline on the target polluted more than it helped: it
-// stayed lit after the action and, when the page scrolled, pointed at nothing.
-// Anyone who wants it back turns it on with AXSCOPE_SPOTLIGHT=1.
+// Spotlight highlights the target rectangle; nil clears it. Off by default,
+// since the outline could stay lit after the action; AXSCOPE_SPOTLIGHT=1 turns it on.
 func (Presenter) Spotlight(ctx context.Context, c *cdp.Client, session string, rect *dom.Rect) error {
 	enabled, _ := strconv.Atoi(os.Getenv("AXSCOPE_SPOTLIGHT"))
 	if enabled <= 0 {

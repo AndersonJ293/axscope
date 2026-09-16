@@ -10,13 +10,9 @@ import (
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
-// upload sends a file to the page.
-//
-// Two paths, because the web receives a file in two ways: the `<input
-// type=file>` — a form path, almost always hidden behind a button — and the
-// dropzone, which only understands dragging. The target decides which; without a
-// target the first `<input type=file>` holds, which is the guess that usually
-// gets it right.
+// upload sends a file to the page: to the target when given (input or dropzone),
+// otherwise to the first `<input type=file>`. The two receive a file differently
+// — an input takes the path, a dropzone only understands a drag gesture.
 func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	filePath := req.String("file")
 	if filePath == "" {
@@ -41,7 +37,7 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 			return protocol.Fail(err)
 		}
 	} else {
-		sid, err = a.activeSID(sess)
+		sid, err = sess.ActiveSID()
 		if err != nil {
 			return protocol.Fail(err)
 		}

@@ -1,8 +1,5 @@
-// Minimal Chrome DevTools Protocol client over WebSocket.
-//
-// The protocol is JSON-RPC with `id`. With `flatten: true`, each tab becomes a
-// "session" identified by `sessionId`, so a single connection at the browser
-// level covers all tabs.
+// Minimal Chrome DevTools Protocol client over WebSocket: JSON-RPC with `id`
+// and, with flatten, a per-tab `sessionId` multiplexed over a single connection.
 package cdp
 
 import (
@@ -83,9 +80,7 @@ func Dial(ctx context.Context, url string, timeout time.Duration) (*Client, erro
 	return FromConn(conn), nil
 }
 
-// FromConn adopts an already-open connection (e.g., the extension that
-// connected to the daemon) and starts reading events. This way the rest of the
-// driver does not know — nor needs to know — where the CDP comes from.
+// FromConn adopts an already-open connection, starts reading events and hides where CDP comes from.
 func FromConn(conn *websocket.Conn) *Client {
 	// Screenshots in base64 can be large.
 	conn.SetReadLimit(256 << 20)
@@ -112,6 +107,7 @@ func (c *Client) readLoop() {
 		}
 		var msg message
 		if err := json.Unmarshal(data, &msg); err != nil {
+			// A malformed frame cannot be answered; drop it and keep reading.
 			continue
 		}
 		if msg.ID != nil {
@@ -306,6 +302,7 @@ func (c *Client) Close() {
 	if already {
 		return
 	}
+	// The close frame is best-effort; fail below publishes the closure locally.
 	_ = c.conn.Close(websocket.StatusNormalClosure, "")
 	c.fail(fmt.Errorf("closed by client"))
 }

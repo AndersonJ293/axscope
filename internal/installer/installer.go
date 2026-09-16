@@ -1,8 +1,5 @@
-// Downloads Chrome for Testing (and the headless-shell) and stores the path of
-// the executable.
-//
-// Uses the official Chrome for Testing endpoint, which is versioned and lets us
-// pin the version — no "latest" that changes under our feet.
+// Downloads Chrome for Testing (and chrome-headless-shell) from the official
+// versioned endpoint, pinning the version rather than a mutable "latest".
 package installer
 
 import (
@@ -117,7 +114,6 @@ func Install(ctx context.Context, opts Options) (string, error) {
 	if err := os.MkdirAll(paths.BrowsersDir(), 0o755); err != nil {
 		return "", err
 	}
-	// Marks the path of the installed product (chrome or chrome-headless-shell).
 	if err := markInstalled(opts.Product, exe); err != nil {
 		return "", err
 	}
@@ -217,6 +213,7 @@ func unzip(src, dest string) error {
 
 	for _, f := range r.File {
 		target := filepath.Join(dest, f.Name)
+		// Reject zip entries whose path escapes dest (zip-slip).
 		if !strings.HasPrefix(target, filepath.Clean(dest)+string(os.PathSeparator)) {
 			return fmt.Errorf("suspicious path in zip: %s", f.Name)
 		}
@@ -249,7 +246,6 @@ func unzip(src, dest string) error {
 	return nil
 }
 
-// findExecutable looks for the binary inside the extracted directory.
 func findExecutable(dir, product string) (string, bool) {
 	var wanted []string
 	switch runtime.GOOS {
@@ -267,6 +263,7 @@ func findExecutable(dir, product string) (string, bool) {
 		}
 	}
 	var found string
+	// Best-effort walk: a read error just means the binary is not found here.
 	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil

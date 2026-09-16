@@ -5,9 +5,8 @@ import (
 	"testing"
 )
 
-// Regression (lab v2): `fill` on a `<select>` answered ok and the value stayed
-// the previous one; `fill` on a `<label>` answered ok without having anywhere to
-// write. The refusal must state the command that does what was wanted.
+// `fill` on a `<select>` or a `<label>` would answer ok and write nothing; the
+// refusal must state the command that does what was wanted.
 func TestClassifyField(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -40,9 +39,8 @@ func TestClassifyField(t *testing.T) {
 	}
 }
 
-// Regression (lab v3): `press Enter` fired the handler and did not break the
-// line — the CDP only inserts with `text` in keyDown, and Enter was left out.
-// "first" + Enter + "second" became "firstsecond".
+// The CDP only inserts with `text` in keyDown; without it Enter fires the handler
+// and does not break the line.
 func TestKeyText(t *testing.T) {
 	if got := keyText("Enter"); got != "\r" {
 		t.Errorf("Enter must insert the line break, and it inserts %q", got)
@@ -57,9 +55,8 @@ func TestKeyText(t *testing.T) {
 	}
 }
 
-// Regression (lab v3): typing a line break inserted nothing — `type` sent the
-// character as text, and text with `\n` does not enter the field. "alfa\nbeta"
-// became "alfabeta", silently.
+// Typing a line break must become the Enter key: text with `\n` does not enter
+// the field.
 func TestKeyForAndLineBreaks(t *testing.T) {
 	for _, r := range []rune{'\n', '\r'} {
 		if key := keyFor(r); key != "Enter" {

@@ -86,10 +86,8 @@ func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Re
 
 func (a *Agent) fillLike(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	target := req.String("target")
-	// The argument is called `value`, not `text`, because `text=` is a target
-	// selector: with the name `text` the parser swallowed `text=Label` as a
-	// key=value pair and the target became the content. They were precisely the
-	// two commands in which one most wants to aim by text.
+	// The argument is `value`, not `text`: `text=` is a target selector and would
+	// otherwise be swallowed as a key=value pair, making the target the content.
 	text := req.String("value")
 	if target == "" {
 		return protocol.Fail(fmt.Errorf("usage: axscope %s <target> <value>", req.Cmd))
@@ -120,7 +118,7 @@ func (a *Agent) press(ctx context.Context, sess *browser.Session, req protocol.R
 	if key == "" {
 		return protocol.Fail(fmt.Errorf("usage: axscope press <key>"))
 	}
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -170,8 +168,8 @@ func (a *Agent) checkLike(ctx context.Context, sess *browser.Session, req protoc
 	return ok(a.finish(ctx, sess, sid, withNotice(label, notice), before))
 }
 
-// withNotice adds to the label what the action could not do — the click that was
-// sent and did not reach the target.
+// withNotice appends what the action could not do — the click that was sent and
+// did not reach the target.
 func withNotice(label, notice string) string {
 	if notice == "" {
 		return label
@@ -179,23 +177,15 @@ func withNotice(label, notice string) string {
 	return label + " (" + notice + ")"
 }
 
-// actionFailure wraps the reason the action was not sent.
-//
-// The refusal has to say what to do — that is why it replaced the silent `ok`:
-// whoever reads the response learns the next step (wait for it to enable, remove
-// what covers it, or click by point with `pos=x,y`).
+// actionFailure wraps the reason an action was not sent; the refusal names the
+// next step (wait for enable, remove the cover, or click by point with `pos=x,y`).
 func actionFailure(action, target string, err error) error {
 	return fmt.Errorf("%s on %s was not sent: %w", action, target, err)
 }
 
-// scroll scrolls. Without a target, it scrolls whatever is under the center of
-// the screen; with `target=<ref|text|css>`, it scrolls the container of that
-// target.
-//
-// The target exists because "scroll" has two possible owners: the page and a box
-// that scrolls inside it. The lab's infinite scroll list showed the difference —
-// scrolling the page does not load the next batch, and the target is the only
-// way to say which box to scroll.
+// scroll scrolls whatever is under the center of the screen, or the container
+// of `target` — a box that scrolls inside the page is not scrolled by scrolling
+// the page, so the target is the only way to say which box to move.
 func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	raw := req.String("dy")
 	if raw == "" {
@@ -205,7 +195,7 @@ func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.
 	if err != nil {
 		return protocol.Fail(fmt.Errorf("invalid dy: %q", raw))
 	}
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}

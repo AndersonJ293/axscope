@@ -50,8 +50,7 @@ func DaemonInfoPath(session string) string {
 	return filepath.Join(StateDir(), "sessions", session+".json")
 }
 
-// ActiveTabPath remembers which tab was active, so restarting the daemon does
-// not switch the tab under the agent.
+// ActiveTabPath remembers the active tab across daemon restarts so it does not switch under the agent.
 func ActiveTabPath(session string) string {
 	return filepath.Join(StateDir(), "sessions", session+".active")
 }
@@ -64,8 +63,7 @@ func BrowsersDir() string {
 	return filepath.Join(StateDir(), "browsers")
 }
 
-// BrowserExecutableMarker points to the Chromium downloaded by `axscope install`,
-// per product (chrome or chrome-headless-shell).
+// BrowserExecutableMarker points to the Chromium installed by `axscope install` for a product.
 func BrowserExecutableMarker(product string) string {
 	return filepath.Join(BrowsersDir(), "executable-"+product)
 }

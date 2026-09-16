@@ -1,5 +1,5 @@
-// Screen reading: the accessibility tree becomes readable lines, with a stable
-// `ref` to act on. It walks, decides what is noise and what is a target.
+// Screen reading: the accessibility tree becomes readable lines with a stable
+// `ref` to act on.
 package browser
 
 import (
@@ -18,9 +18,8 @@ type Snapshot struct {
 	Title     string
 	URL       string
 	Truncated bool
-	// Page is the scroll state of the document, and ScrollAreas are the areas
-	// that scroll inside it. They come from the DOM: the accessibility tree does
-	// not carry scrolling.
+	// Page is the scroll state of the document and ScrollAreas the areas that
+	// scroll inside it; both come from the DOM.
 	Page             *ScrollArea
 	ScrollAreas      []ScrollArea
 	ScrollAreasTotal int
@@ -40,8 +39,7 @@ type SnapshotOptions struct {
 }
 
 // noiseNameRe recognizes the "page chrome": skip-navigation blocks, a WAI-ARIA
-// pattern present on practically every site and useless to whoever acts by ref.
-// It is not a hardcoded site name — it is the accessibility pattern.
+// pattern present on almost every site and useless to whoever acts by ref.
 
 type snapBuilder struct {
 	nodes       map[string]*axNode
@@ -83,9 +81,8 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	snap.Title, snap.URL = meta.Title, meta.URL
 	snap.Page, snap.ScrollAreas, snap.ScrollAreasTotal = meta.Page, meta.ScrollAreas, meta.Total
 
-	// Targets that the tree does not mark (a div with a click handler) enter as
-	// a section at the end: without them, the agent has to guess a selector for
-	// half the buttons of a real app.
+	// Targets the tree does not mark (a div with a click handler) enter as a
+	// section at the end, or the agent must guess a selector for half the buttons.
 	clickables, total := readClickables(ctx, client, session)
 	if section := clickablesSection(clickables, total); section != "" {
 		snap.Text += "\n" + section
@@ -94,11 +91,9 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 	return snap, nil
 }
 
-// buildText is the pure part of the reading: it turns the raw accessibility tree
-// into lines and refs, without touching the CDP. It is kept separate from
-// TakeSnapshot because that is where all the noise cut lives — the most fragile
-// logic in the project — and it is what can be tested with a fixture.
-
+// buildText turns the raw accessibility tree into lines and refs without the
+// CDP, kept separate because the noise cut — the most fragile logic here — is
+// what can be tested with a fixture.
 func buildText(nodes []axNode, opts SnapshotOptions) *Snapshot {
 	if opts.MaxNodes <= 0 {
 		opts.MaxNodes = 1500

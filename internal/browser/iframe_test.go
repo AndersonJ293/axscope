@@ -2,9 +2,8 @@ package browser
 
 import "testing"
 
-// Regression (mission 13): the reading showed the iframe as a single line — the
-// inner document is another accessibility tree, and without joining the two the
-// agent never learned that a button exists there.
+// The reading shows the iframe as a single line; grafting the inner accessibility
+// tree is what reveals that a button exists there.
 func TestGraftFrame_PutsContentInsideIframe(t *testing.T) {
 	parent := []axNode{
 		ax("root", "", "RootWebArea", "", 0),

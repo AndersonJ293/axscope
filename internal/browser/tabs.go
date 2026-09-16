@@ -8,6 +8,7 @@ import (
 	"sort"
 )
 
+// remember registers a tab without attaching to it.
 func (s *Session) remember(targetID, url, title string) *Tab {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -36,14 +37,12 @@ func (s *Session) remember(targetID, url, title string) *Tab {
 
 // canActivate decides whether the tab can become active: only the one that was
 // stored, or any one when there is no preference.
-
 func (s *Session) canActivate(targetID string) bool {
 	return s.active == "" && (s.prefActive == "" || targetID == s.prefActive)
 }
 
-// SetActiveFile points to where the active tab is remembered and loads what is
-// there.
-
+// attachTarget attaches to a registered tab a single time; it blocks on a Send,
+// so never call it from the read loop.
 func (s *Session) attachTarget(targetID, url, title string) {
 	s.mu.Lock()
 	tab := s.tabs[targetID]
@@ -179,7 +178,6 @@ func (s *Session) removeBySession(sessionID string) {
 }
 
 // Tabs lists the tabs in the order they appeared.
-
 func (s *Session) Tabs() []TabInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -202,7 +200,6 @@ func (s *Session) Tabs() []TabInfo {
 }
 
 // activeTab returns the active tab without waiting for attachment.
-
 func (s *Session) activeTab() (*Tab, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -224,7 +221,6 @@ func (s *Session) activeTab() (*Tab, error) {
 }
 
 // attachIfNeeded attaches the tab if it is not attached yet.
-
 func (s *Session) attachIfNeeded(tab *Tab) {
 	s.mu.Lock()
 	need := tab.SessionID == ""
@@ -236,7 +232,6 @@ func (s *Session) attachIfNeeded(tab *Tab) {
 }
 
 // Active returns the active tab already ready, attaching only it if needed.
-
 func (s *Session) Active() (*Tab, error) {
 	tab, err := s.activeTab()
 	if err != nil {
@@ -251,7 +246,6 @@ func (s *Session) Active() (*Tab, error) {
 }
 
 // ActiveSID returns the sessionId of the active tab.
-
 func (s *Session) ActiveSID() (string, error) {
 	tab, err := s.Active()
 	if err != nil {
@@ -261,7 +255,6 @@ func (s *Session) ActiveSID() (string, error) {
 }
 
 // Find locates a tab by targetId or by 1-based index.
-
 func (s *Session) Find(ref string) (*Tab, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -277,11 +270,8 @@ func (s *Session) Find(ref string) (*Tab, error) {
 	return nil, fmt.Errorf("tab %q does not exist (use `axscope tabs`)", ref)
 }
 
-// Select switches the active tab. `activate` brings the window forward — by
-// default we do NOT do that: stealing focus on every command gets in the way of
-// whoever is working in another window. The driver's active tab does not depend
-// on the system focus.
-
+// Select switches the active tab; `activate` also brings the window forward.
+// By default it does not, so it does not steal focus on every command.
 func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, error) {
 	tab, err := s.Find(ref)
 	if err != nil {
@@ -304,6 +294,3 @@ func (s *Session) Select(ctx context.Context, ref string, activate bool) (*Tab, 
 	}
 	return tab, nil
 }
-
-// NewTab opens a tab and waits for it to be ready, without bringing the window
-// forward.

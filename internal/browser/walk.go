@@ -34,11 +34,9 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		}
 	}
 
-	// A table row whose content is only text fits in a single line. A table is
-	// content, not noise: what weighs is the format — one line per cell costs
-	// five lines per data row (measured: 305 of the 508 reading lines in a
-	// 60-row table). With a target inside, the expansion stays, because it is
-	// what carries the ref.
+	// A table row whose content is only text fits in a single line — one line per
+	// cell costs far more for a data table. With a target inside, the expansion
+	// stays, because it is what carries the ref.
 	if role == "row" && name == "" && !b.refsOnly {
 		if compact, ok := b.rowLine(nodeID); ok {
 			b.emit(depth, "- row: "+compact)
@@ -67,8 +65,7 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		return
 	}
 
-	// An image inside an already named target (a link with an image) is
-	// redundant.
+	// An image inside an already named target (a link with an image) is redundant.
 	if (role == "img" || role == "image") && parentName != "" {
 		return
 	}
@@ -100,10 +97,8 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	if name != "" {
 		line += " " + strconv.Quote(name)
 	} else if !b.refsOnly && !frameRoles[role] {
-		// The iframe stays out of the collection: it has no text of its own,
-		// and what the collection would fish is the text of the inner document
-		// — which already appears right below, in the tree that was grafted
-		// onto it.
+		// The iframe stays out: it has no text of its own, and its inner text
+		// already appears below in the tree grafted onto it.
 		if text, owners := b.containerText(nodeID); text != "" && len(text) <= summaryText && !repeatOf(text, parentName) {
 			line += ": " + text
 			hadText = true
@@ -113,8 +108,7 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		}
 	}
 
-	// Anonymous wrapper (no name, no text of its own, no target): it does not
-	// become a line — it vanishes, and the children rise in its place.
+	// Anonymous wrapper (no name, no text, no target) vanishes; children rise.
 	if name == "" && !hadText && ref == "" && anonRoles[role] {
 		for _, c := range b.children[nodeID] {
 			b.walk(c, depth, parentName)
@@ -133,10 +127,8 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	// said again.
 	b.walkChildren(nodeID, name, depth+1, parentName)
 
-	// A container that yielded no child line drops out — but only scaffolding,
-	// and only when it itself said nothing. A line with a name says content (it
-	// is the case of the "Candidate 413" label, whose text child is suppressed
-	// as an echo of the parent's name): erasing it was erasing the whole label.
+	// A container that yielded no child line drops out, but only scaffolding and
+	// only when it said nothing itself: a line with a name is content and stays.
 	if ref == "" && name == "" && !hadText && len(b.out) == before {
 		if scaffoldRoles[role] || landmarkRoles[role] {
 			b.out = b.out[:len(b.out)-1]
@@ -145,17 +137,8 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 }
 
 // walkChildren walks the children at `depth`, summarizing identical siblings
-// (same role and name) into a single line.
-//
-// It is a method, and not a loose loop inside walk, so that it also holds at the
-// root level — before, the seen map only came to life in there, and two
-// identical targets that were children of the root both appeared.
-//
-// The first sibling stays and the others become a count on its line. Deleting in
-// silence would hide a target: two buttons with the same label are different
-// nodes, at different positions. This way the agent knows there is more than one
-// — and reaches the other by css/pos.
-
+// (same role and name) into a single line. Deleting in silence would hide a
+// target, so the first sibling stays and the others become a count.
 func (b *snapBuilder) walkChildren(nodeID, name string, depth int, parentName string) {
 	childParent := parentName
 	if name != "" {
@@ -199,9 +182,7 @@ func (b *snapBuilder) walkChildren(nodeID, name string, depth int, parentName st
 }
 
 // childIDs returns the children to walk, skipping wrappers that only repeat the
-// parent's name — the classic `link "X" > generic "X" > paragraph: X`. The
-// target is already said; the grandchildren rise into the wrapper's place.
-
+// parent's name; their grandchildren rise into the wrapper's place.
 func (b *snapBuilder) childIDs(nodeID, name string) []string {
 	var out []string
 	for _, cid := range b.children[nodeID] {
@@ -217,9 +198,6 @@ func (b *snapBuilder) childIDs(nodeID, name string) []string {
 	}
 	return out
 }
-
-// repeatOf says whether a text is only an echo of the ancestor's name (already
-// said above).
 
 func (b *snapBuilder) emit(depth int, line string) {
 	if len(b.out) >= b.max {

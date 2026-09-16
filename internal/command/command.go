@@ -1,11 +1,5 @@
-// Command parser shared by the CLI, the daemon (script) and MCP.
-//
-// Simple, unambiguous grammar:
-//
-//	<command> [positional] [key=value] [--flag]
-//
-// The first positional maps to the first name in the spec, and so on.
-// Flags are boolean; values use key=value or positional.
+// Command parser shared by CLI, daemon (script) and MCP, for the grammar
+// `<command> [positional] [key=value] [--flag]`; first positional maps to first spec name.
 package command
 
 import (
@@ -61,7 +55,6 @@ var Specs = []Spec{
 	{Cmd: "console", Flags: []string{"all"}, Help: "console errors/warnings"},
 	{Cmd: "net", Positional: []string{"filter"}, Optional: []string{"filter"}, Help: "network requests"},
 	{Cmd: "shot", Positional: []string{"path"}, Optional: []string{"path"}, Flags: []string{"full"}, Help: "captures PNG (without a path it goes to /tmp)"},
-	{Cmd: "dialog", Positional: []string{"action"}, Help: "accept|dismiss the next dialog"},
 	{Cmd: "script", Positional: []string{"path"}, Help: "runs a script (file or - for stdin)"},
 }
 

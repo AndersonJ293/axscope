@@ -1,8 +1,5 @@
-// MCP server over stdio, talking to the same daemon as the CLI — so MCP and CLI
-// share a single browser and a single set of refs.
-//
-// JSON-RPC 2.0 per line (the MCP stdio transport), implemented by hand to pull
-// in no dependency.
+// MCP server over stdio talking to the same daemon as the CLI, so both share one
+// browser and one set of refs; JSON-RPC 2.0 per line, hand-rolled for zero deps.
 package mcpsrv
 
 import (
@@ -76,8 +73,7 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 
 	switch req.Method {
 	case "initialize":
-		// The MCP client name (opencode, claude, cursor…) becomes the tab group
-		// name in the browser. Without configuring anything.
+		// The MCP client name (opencode, claude, cursor…) becomes the tab group name.
 		var params struct {
 			ClientInfo struct {
 				Name string `json:"name"`
@@ -155,16 +151,9 @@ type toolDef struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// curatedMCP is the lean set exposed by default: high frequency, and the rest
-// via `script`. A tool schema costs context on every request, so fewer tools is
-// better — `AXSCOPE_MCP_TOOLS=all` opens everything.
-//
-// `select`, `check`, `uncheck`, `type` and `upload` are here because the refusal
-// messages themselves point to them: when `fill` finds a `<select>` the response
-// says "use `axscope select`". Saying that and not exposing the command is
-// telling the agent to use what it cannot call — measured in lab v3, and the
-// agent had to resort to `eval`. The context cost is smaller than the
-// contradiction.
+// curatedMCP is the lean set exposed by default (fewer schemas means less context
+// per request; `AXSCOPE_MCP_TOOLS=all` opens everything). select/check/uncheck/
+// type/upload stay because the refusal messages cite them.
 var curatedMCP = map[string]bool{
 	"open":     true,
 	"snap":     true,

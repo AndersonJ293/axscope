@@ -1,6 +1,5 @@
-// DOM and page runtime access: a single place to evaluate JavaScript, measure
-// elements and scroll. Everything that talks to Runtime/DOM on behalf of the
-// domain goes through here, so there aren't three copies of the same evaluation.
+// DOM and page runtime access: one place for JavaScript evaluation, element
+// measurement and scrolling, so callers do not duplicate Runtime/DOM calls.
 package dom
 
 import (

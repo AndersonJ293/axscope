@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- The `dialog` command from the command surface. It was declared in the catalog
+  but never implemented; native dialogs are always dismissed (as documented).
+
+### Changed
+
+- Readability pass: comments reduced to a few high-value lines, with no internal
+  history. Documentation moved to `docs/` (`ARCHITECTURE.md`, `BACKLOG.md`).
+- Tests now run with the race detector in CI.
+
 ## [0.1.0] - 2026-09-15
 
 First public release.

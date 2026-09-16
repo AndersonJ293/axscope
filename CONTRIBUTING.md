@@ -36,8 +36,9 @@ make install        # → ~/.local/bin/axscope
 
 ## Design conventions
 
-- **Comments explain *why*, not *what*.** This is the project convention; a
-  comment that restates the code is noise.
+- **Comments are few and high-value.** State a non-obvious *why* in at most 2–3
+  lines. No history, no first person, no restating the code; prefer readable code
+  over explanatory comments.
 - **One responsibility per file**, around 400 lines as a ceiling.
 - **No new dependencies without justification.** The binary is static and light
   on purpose.

@@ -22,20 +22,18 @@ type Tab struct {
 	Title     string
 	ready     chan struct{}
 	initErr   error
-	// tried marks that we already tried to attach (successfully or not), so as
-	// not to try again and close the channel twice.
+	// tried marks that an attach was already attempted (successfully or not), so
+	// it is not retried and the channel is not closed twice.
 	tried bool
 	once  sync.Once
 }
 
 // finish closes the ready channel exactly once.
-
 func (t *Tab) finish() {
 	t.once.Do(func() { close(t.ready) })
 }
 
 // TabInfo is what the agent sees in `tabs`.
-
 type TabInfo struct {
 	Index    int    `json:"index"`
 	TargetID string `json:"targetId"`
@@ -45,7 +43,6 @@ type TabInfo struct {
 }
 
 // Session keeps the tabs alive and the convergence state.
-
 type Session struct {
 	ctx     context.Context
 	client  *cdp.Client
@@ -58,9 +55,8 @@ type Session struct {
 	tabs   map[string]*Tab
 	order  []string
 	active string
-	// activeFile is where the active tab is remembered, and prefActive is what
-	// was stored. Restarting the daemon cannot swap the active tab under the
-	// agent — the first command after would go to the wrong tab.
+	// activeFile is where the active tab is remembered, and prefActive what was
+	// stored. A daemon restart cannot swap the active tab under the agent.
 	activeFile string
 	prefActive string
 	// attaching avoids attaching twice to the same target (a race between
@@ -81,7 +77,6 @@ type targetInfo struct {
 }
 
 // NewSession wires target discovery and the existing tabs.
-
 func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, presenter Presenter) (*Session, error) {
 	s := &Session{
 		ctx:           ctx,
@@ -103,9 +98,8 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 }
 
 func (s *Session) wireTargets() {
-	// We attach from targetCreated (discover), and not from setAutoAttach:
-	// autoAttach + explicit attach created two sessions for the same target and
-	// the command went to the wrong session (Page.enable hung).
+	// Attach from targetCreated (discover), not setAutoAttach: autoAttach plus an
+	// explicit attach created two sessions for the same target.
 	s.client.On("Target.targetCreated", func(params json.RawMessage, _ string) {
 		var p struct {
 			TargetInfo targetInfo `json:"targetInfo"`
@@ -113,8 +107,8 @@ func (s *Session) wireTargets() {
 		if json.Unmarshal(params, &p) != nil || p.TargetInfo.Type != "page" {
 			return
 		}
-		// The handler runs on the read loop: it cannot block on a Send, and
-		// here we only register — the attachment happens on demand.
+		// The handler runs on the read loop: it cannot block on a Send, so it
+		// only registers — the attachment happens on demand.
 		s.remember(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title)
 	})
 
@@ -166,10 +160,8 @@ func (s *Session) bootstrap(ctx context.Context) error {
 	if err := s.client.SendJSON(ctx, "Target.getTargets", map[string]any{}, "", &got); err != nil {
 		return err
 	}
-	// We know all the tabs, but we only attach to the one that is really used.
-	// In the user's browser that can be dozens of tabs; attaching to all of them
-	// would be invasive (a debugging bar on each one, overhead, conflict with
-	// the open DevTools).
+	// All pages are registered, but only the one really used is attached; in a
+	// user browser that can be dozens of tabs, and attaching to all is invasive.
 	for _, ti := range got.TargetInfos {
 		if ti.Type != "page" {
 			continue
@@ -196,8 +188,7 @@ func (s *Session) bootstrap(ctx context.Context) error {
 	return nil
 }
 
-// remember registers a tab without attaching to it.
-
+// SetActiveFile points to where the active tab is remembered and loads it.
 func (s *Session) SetActiveFile(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -220,7 +211,6 @@ func (s *Session) SetActiveFile(path string) {
 
 // saveActive stores the active tab (outside the lock: a disk error does not
 // block the rest).
-
 func (s *Session) saveActive() {
 	s.mu.Lock()
 	path, id := s.activeFile, s.active
@@ -231,9 +221,7 @@ func (s *Session) saveActive() {
 	_ = os.WriteFile(path, []byte(id), 0o644)
 }
 
-// attachTarget attaches to a registered tab, a single time. It blocks on a Send:
-// never call it from the read loop without a goroutine.
-
+// handleDialog records and handles a native dialog.
 func (s *Session) handleDialog(sid string, params json.RawMessage) {
 	var p struct {
 		Type    string `json:"type"`
@@ -253,12 +241,12 @@ func (s *Session) handleDialog(sid string, params json.RawMessage) {
 		Message: p.Message,
 		Handled: handled,
 	})
+	// Best effort: a failed dialog command has no recovery.
 	_, _ = s.client.Send(s.ctx, "Page.handleJavaScriptDialog",
 		map[string]any{"accept": accept}, sid)
 }
 
 // UpdateHUD shows tabs + the last action's label in the overlay.
-
 func (s *Session) UpdateHUD(ctx context.Context, label string) {
 	tab, err := s.Active()
 	if err != nil {

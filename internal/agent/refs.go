@@ -42,11 +42,10 @@ func (a *Agent) currentRefs() map[string]int {
 	return a.refs
 }
 
-// resolve turns a target (ref/css/text/pos) into a Target, refusing a ref from
-// an old read: using an old generation does not err with a warning — it points to
-// what today occupies that position.
+// resolve turns a target (ref/css/text/pos) into a Target and refuses a ref from
+// an older read, which would otherwise point to whatever now occupies that position.
 func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target string) (*browser.Target, string, error) {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return nil, "", err
 	}

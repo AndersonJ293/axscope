@@ -13,9 +13,8 @@ func (b *snapBuilder) eligibleRef(n *axNode) bool {
 	return interactiveRoles[role] || b.focusable(n)
 }
 
-// refFor gives the node the next ref, with the reading's generation in the name.
-// The generation is what makes an old reading's ref be refused instead of
-// silently pointing at another element.
+// refFor gives the node the next ref, with the reading's generation in the name,
+// so an old reading's ref is refused instead of silently pointing elsewhere.
 func (b *snapBuilder) refFor(n *axNode) string {
 	if !b.eligibleRef(n) {
 		return ""
@@ -29,9 +28,8 @@ func (b *snapBuilder) refFor(n *axNode) string {
 	return ref
 }
 
-// focusable asks the tree whether the node receives focus — it is what makes a
-// focusable element without an interactive role (tabindex, contenteditable)
-// become a target.
+// focusable asks the tree whether the node receives focus, making a tabindex or
+// contenteditable element a target without an interactive role.
 func (b *snapBuilder) focusable(n *axNode) bool {
 	for _, p := range n.Properties {
 		if p.Name == "focusable" {

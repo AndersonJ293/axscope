@@ -1,15 +1,5 @@
-// File upload: the two paths the web uses to receive one.
-//
-// A `<input type=file>` the browser fills on the user's behalf
-// (`DOM.setFileInputFiles` fires input/change as if the file had been chosen).
-// It is the form path, and the input is usually hidden behind a button —
-// invisible in the reading, and still the right target.
-//
-// A dropzone only understands a file coming from a drag: there the content
-// becomes a `File` inside the page, inside a real `DataTransfer`, and the drop is
-// emitted over the target. `DataTransfer.files` is read-only by assignment, but
-// `items.add(File)` populates it — that is what brought down the assumption that
-// a file cannot be forged in JavaScript.
+// File upload: `<input type=file>` via DOM.setFileInputFiles, or a dropzone that
+// takes an in-page File in a DataTransfer (`items.add`, since `files` is read-only).
 package browser
 
 import (
@@ -24,10 +14,8 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
-// FirstFileInput returns the first `<input type=file>` on the page.
-//
-// It exists because, without a target, it is the one wanted: it is usually
-// hidden, and it is the path the browser accepts without any dialog.
+// FirstFileInput returns the first `<input type=file>` on the page, the target the
+// browser accepts without a dialog when none is given.
 func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
 		"expression":    "document.querySelector('input[type=file]')",
@@ -47,8 +35,7 @@ func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (st
 	return res.Result.ObjectID, nil
 }
 
-// IsFileInput says whether the element is an `<input type=file>` (it accepts the
-// file directly) or anything else (it only accepts by drag).
+// IsFileInput says whether the element is an `<input type=file>` or a dropzone.
 func IsFileInput(ctx context.Context, client *cdp.Client, session, objectID string) (bool, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
@@ -71,11 +58,9 @@ func IsFileInput(ctx context.Context, client *cdp.Client, session, objectID stri
 	return res.Result.Value, nil
 }
 
-// SetFileInput delivers `path` to the `<input type=file>`.
-//
-// The path is read by the browser, not by us: it holds when the two are on the
-// same machine (the extension case). Outside that, the path does not exist on the
-// other side — there the path is the dropzone, which travels in bytes.
+// SetFileInput delivers `path` to the `<input type=file>`. The browser reads the
+// path, so it only holds when both are on the same machine; otherwise the
+// dropzone is the path, which travels in bytes.
 func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, path string) error {
 	_, err := client.Send(ctx, "DOM.setFileInputFiles", map[string]any{
 		"files":    []string{path},
@@ -84,8 +69,7 @@ func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, pa
 	return err
 }
 
-// DropFile emits a file drag over the target, with the real content inside the
-// DataTransfer.
+// DropFile emits a file drag over the target with the real content inside the DataTransfer.
 func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target, path string, p Presenter) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -139,11 +123,9 @@ func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target
 	return nil
 }
 
-// dropFileScript builds the file inside the page and emits the drag.
-//
-// The order matters to whoever listens: dragenter warns that something arrived,
-// dragover is usually where the dropzone marks itself as a target (and where it
-// calls preventDefault to allow the drop), and only then the drop delivers.
+// dropFileScript builds the file inside the page and emits the drag. The order
+// matters: dragenter warns, dragover is where the dropzone calls preventDefault,
+// and only then the drop delivers.
 const dropFileScript = `function (name, kind, b64, x, y) {
 	const bin = atob(b64);
 	const bytes = new Uint8Array(bin.length);

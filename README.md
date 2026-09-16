@@ -418,7 +418,8 @@ internal/installer/ Chrome for Testing download
 - **Cross-origin iframe (OOPIF) is not read**: `snap` shows the frame as a single
   line (`- Iframe`, no content), because that accessibility tree lives in the
   other site's process — reaching it requires a separate CDP session per frame
-  (see [`BACKLOG.md`](BACKLOG.md)). A **same-origin** iframe is read in full, and
+  (see [`docs/BACKLOG.md`](docs/BACKLOG.md)). A **same-origin** iframe is read in
+  full, and
   the ref from inside works: the trees of both frames are merged in the snapshot.
 - Native dialogs are always dismissed (`dismiss`), configurable later.
 - `bootstrap` assumes the Chromium target model; alternative engines need their

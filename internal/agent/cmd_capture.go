@@ -22,7 +22,7 @@ func (a *Agent) shot(ctx context.Context, sess *browser.Session, req protocol.Re
 		path = f.Name()
 		_ = f.Close()
 	}
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -77,7 +77,7 @@ func (a *Agent) runScript(ctx context.Context, _ *browser.Session, req protocol.
 			fmt.Fprintf(&b, "%s\n", res.Text)
 		} else {
 			fmt.Fprintf(&b, "!! %s\n", res.Error)
-			break // stops at the first error: script interrupted
+			break // script stops at the first error
 		}
 	}
 	return ok(strings.TrimRight(b.String(), "\n"))

@@ -1,21 +1,5 @@
-// Clickables that the accessibility tree does not mark.
-//
-// A good part of the targets in a real app have no role at all: it is a `div`
-// with a click handler and `cursor: pointer`. The reading comes from the
-// accessibility tree, and it does not see them — they become neither a line nor
-// a target. Measured in lab v3: the conversations are `<div class="thread">`,
-// and `snap --refs` brought six targets, none of them a conversation. The agent
-// had to guess the CSS selector.
-//
-// Here a pass over the DOM finds them and gives each one a short selector, which
-// the agent uses directly in `click css=...` — without depending on a ref, which
-// is per reading.
-//
-// The criterion is narrow on purpose: only a container that **has no target
-// inside**. A card that wraps buttons already has targets, and listing it would
-// be noise; the line that matters is the one that only exists as a target — the
-// conversation, the clickable list item. With the broad criterion (pure
-// `cursor:pointer`) the same page gave 249 candidates; with this one, three.
+// Clickables that the accessibility tree does not mark: a `div` with a click
+// handler and `cursor: pointer` becomes neither a line nor a target.
 package browser
 
 import (
@@ -34,14 +18,13 @@ type Clickable struct {
 	Label    string `json:"label"`
 }
 
-// maxClickables is how much enters the reading. It is a warning, not an
-// inventory: beyond that, the page has more target without a role than the
-// reading should carry.
+// maxClickables caps how many enter the reading; the rest becomes a count.
 const maxClickables = 12
 
-// clickablesJS finds the clickable containers without a role and returns a
-// selector for each — checked against the page itself before leaving here,
-// because a selector that does not resolve is good for nothing.
+// clickablesJS finds containers with no role and gives each a checked selector.
+// The criterion is narrow on purpose: only a container with no target inside,
+// since a card that wraps buttons is noise.
+
 const clickablesJS = `(() => {
 	const interactive = 'button,a,input,select,textarea,[role],[tabindex]';
 	const candidates = [...document.querySelectorAll('*')].filter(el => {
@@ -49,8 +32,7 @@ const clickablesJS = `(() => {
 		if (el.matches(interactive)) return false;
 		// Inside a target that already exists (the text of a button, for
 		// example) it is not a new target: the span of "Liked 20" has an
-		// inherited pointer cursor and became a list item until this line
-		// existed.
+		// inherited pointer cursor.
 		if (el.closest && el.closest(interactive)) return false;
 		if (el.querySelector(interactive)) return false;
 		if (!el.getClientRects().length) return false;
@@ -118,9 +100,8 @@ func readClickables(ctx context.Context, client *cdp.Client, session string) ([]
 	return res.Items, res.Total
 }
 
-// clickablesSection builds the block that enters at the end of the reading. It
-// is kept separate from its caller because it is the part that can be tested
-// without a browser.
+// clickablesSection builds the block appended to the reading, kept separate so
+// it can be tested without a browser.
 func clickablesSection(items []Clickable, total int) string {
 	if len(items) == 0 {
 		return ""

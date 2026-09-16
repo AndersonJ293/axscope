@@ -1,7 +1,5 @@
-// Bridge to the extension: the daemon opens a local WebSocket and the extension
-// connects to it. From the point of view of the rest of the driver, it is the
-// same CDP connection as always — the extension only synthesizes the Target
-// domain (tabs) and forwards the rest to chrome.debugger.
+// Bridge to the extension: the daemon opens a local WebSocket, the extension
+// connects and forwards CDP to chrome.debugger while synthesizing the Target domain.
 package bridge
 
 import (
@@ -36,8 +34,7 @@ type Server struct {
 	conns    chan *cdp.Client
 }
 
-// SetLabel changes the displayed name (e.g., "Opencode") and notifies the
-// extension, which renames the tab group while keeping the number it already had.
+// SetLabel changes the displayed agent name and notifies the extension, which renames the tab group.
 func (s *Server) SetLabel(label string) {
 	s.mu.Lock()
 	if label == "" || s.label == label {
@@ -60,12 +57,7 @@ func (s *Server) currentLabel() string {
 	return s.label
 }
 
-// Start brings up the server on 127.0.0.1 (never exposed outside the machine)
-// and announces to the extension which session it belongs to — that is what
-// defines the tab group.
-//
-// Each session takes one port in the range: this way several agents run at the
-// same time, each with its own tab group, without fighting over a port.
+// Start brings up the server on 127.0.0.1 and tells the extension which session it owns; each session takes one port.
 func Start(session string, basePort int) (*Server, error) {
 	if basePort <= 0 {
 		basePort = DefaultPort
@@ -94,8 +86,8 @@ func Start(session string, basePort int) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/cdp", func(w http.ResponseWriter, r *http.Request) {
-		// We only listen on loopback; the extension's origin is
-		// chrome-extension://, which would not match the default Origin check.
+		// Only listen on loopback; the chrome-extension:// origin would fail the
+		// default Origin check.
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 		if err != nil {
 			return
@@ -126,6 +118,7 @@ func Start(session string, basePort int) (*Server, error) {
 	})
 
 	s.http = &http.Server{Handler: mux}
+	// Serve returns net.ErrClosed after Close; the error is not actionable.
 	go func() { _ = s.http.Serve(ln) }()
 	return s, nil
 }

@@ -57,7 +57,7 @@ without any `eval`.
 
 ## 2. A table row cost 4 snapshot lines — resolved
 
-**Measured before** (60-row table of the test page): **305 of the 508 lines** of
+**Measured before** (60-row table of the harness page): **305 of the 508 lines** of
 the snapshot, 60%. Each data row cost five: the row and its four cells.
 
 **Done:** a row whose cells are **text only** becomes one line —
@@ -92,7 +92,7 @@ The two become one, hung on the iframe node:
 
 The ref from inside **works**: it resolves by `backendNodeId` and the geometry
 from `DOM.getBoxModel` already comes in the page coordinate system — measured,
-the click by ref closes check 13 of the test page. So the scenario stopped
+the click by ref closes check 13 of the harness. So the scenario stopped
 depending on hand-calculated `pos=x,y`.
 
 Three details the implementation demanded:
@@ -111,7 +111,7 @@ The cost stays with whoever has an iframe: without an `Iframe` role node in the
 tree, nothing is fetched.
 
 **What remains (OOPIF):** a different origin still shows `- Iframe` with no
-content. Measured with a test page (`file://` with an iframe to
+content. Measured with the harness (`file://` with an iframe to
 `https://example.com`): the tree does not come, because it lives in the other
 site's process. Reaching it requires its own CDP session per frame
 (`Target.setAutoAttach`, with the sessions the client already knows how to use) —
@@ -119,7 +119,7 @@ a model change, not a detail.
 
 ---
 
-## 4. File upload (scenario 11 of the test page) — resolved
+## 4. File upload (scenario 11 of the harness) — resolved
 
 The correction stayed here, because the forecast I had written was **wrong**:
 "`DataTransfer.files` cannot be filled by JS". It can. Direct assignment is what
@@ -136,13 +136,13 @@ receives a file in two ways:
   `DataTransfer`, and `dragenter`/`dragover`/`drop` are emitted over the target.
   The `Input.dispatchDragEvent` I had planned was not needed.
 
-Both measured on the test page: `[input]` and `[dropzone]`, each marking check 11.
+Both measured on the harness: `[input]` and `[dropzone]`, each marking check 11.
 On the dropzone path the hidden input ends up with `files.length = 0` — it is the
 proof that the file came by drag and not underneath.
 
 ---
 
-## 5. Shadow DOM (scenario 12 of the test page) — resolved
+## 5. Shadow DOM (scenario 12 of the harness) — resolved
 
 Two assumptions of mine fell at once, and the correction stayed recorded here
 because the tool's design leans on what was learned:
@@ -184,7 +184,7 @@ even says when it found it inside an iframe:
 
 ## 7. The click that did not arrive: three stacked defects — resolved
 
-Found while **redoing the second test round** after fixing the test page bug.
+Found while **redoing the second test round** after fixing a harness bug.
 The agent that tested had concluded it needed `eval` for the virtualized list;
 the investigation showed three of my defects in the click path:
 
@@ -233,9 +233,9 @@ redid (2, 8, 11, 12, 17, 18, 19, 20) all came out with a first-class command.
 
 ---
 
-## Test page: scenarios
+## Harness: scenarios
 
-All **16** done. The test page's scoreboard does not reflect this because the
+All **16** done. The harness scoreboard does not reflect this because the
 *Reset state* button erases the completed ones on each use — that is its design.
 
 The ones that asked for a change in the tool are in the items above, with what

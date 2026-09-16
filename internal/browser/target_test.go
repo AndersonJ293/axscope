@@ -7,10 +7,8 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-// Regression (mission 13 of the lab): `pos=x,y` resolved the element under the
-// point and then acted on its **center**. Over an iframe that is the iframe's
-// center — dozens of pixels from the requested button — and the click hit
-// nothing.
+// `pos=x,y` must act at the requested point, not at the element's center: over an
+// iframe the center is the iframe's and drifts from the requested button.
 func TestTargetByPositionActsAtRequestedPoint(t *testing.T) {
 	target := &Target{
 		Rect:  dom.Rect{X: 279, Y: 428, Width: 628, Height: 170},
@@ -29,10 +27,8 @@ func TestTargetByPositionActsAtRequestedPoint(t *testing.T) {
 	}
 }
 
-// Regression (mission 12 of the lab): the accessibility tree **flattens** shadow
-// DOM, so the reading shows the button that is inside a shadow root — with name
-// and ref, and the ref even reaches it. Aiming by DOM walked only in the light
-// document: the reading showed it and the `text=` did not find it.
+// The accessibility tree flattens shadow DOM, so the reading shows the button
+// inside a shadow root with name and ref; aiming by DOM must cross the shadow.
 func TestTargetExpressionsCrossShadowRoot(t *testing.T) {
 	if expr := textExpression("Button in Shadow DOM"); !strings.Contains(expr, "shadowRoot") {
 		t.Error("textExpression does not cross shadow root — the reading shows what is inside and the aim does not reach it")
@@ -50,10 +46,8 @@ func TestTargetExpressionsCrossShadowRoot(t *testing.T) {
 	}
 }
 
-// Regression (lab v2): a text target with no visible area yielded only "no
-// visible area" — and whoever reads was left not knowing that the cause was the
-// menu being closed, nor how many candidates existed. Six "Hide post" matched
-// and none was in view.
+// A text target with no visible area must explain the cause — all candidates
+// hidden, for example a closed menu — and how many matched.
 func TestHiddenTextMessage(t *testing.T) {
 	got := hiddenTextMessage("Hide post", 6)
 	for _, wanted := range []string{"6", `"Hide post"`, "hidden", "open what reveals them"} {

@@ -1,14 +1,5 @@
-// CDP engine diagnostic probe.
-//
-// It answers, with measurement and not guesswork:
-//  1. which CDP domains the endpoint implements;
-//  2. whether it supports several independent pages/targets (headless tabs);
-//  3. whether there is geometry (getBoxModel / getBoundingClientRect) — without
-//     it, action by coordinate does not exist;
-//  4. whether the accessibility tree carries backendDOMNodeId and whether it can
-//     be resolved back into a DOM node (which is what our `ref` require).
-//
-// Usage: go run ./cmd/cdpprobe [ws://host:port/]
+// CDP engine diagnostic probe: reports the endpoint's CDP domains, independent
+// tabs, geometry and ref support. Usage: go run ./cmd/cdpprobe [ws://host:port/]
 package main
 
 import (
@@ -118,7 +109,9 @@ func main() {
 		} `json:"nodes"`
 	}
 	if raw, err := c.Send(ctx, "Accessibility.getFullAXTree", map[string]any{}, s1); err == nil {
-		_ = json.Unmarshal(raw, &tree)
+		if err := json.Unmarshal(raw, &tree); err != nil {
+			fmt.Println("Accessibility.getFullAXTree decode ERROR:", err)
+		}
 		withBackend := 0
 		roles := map[string]int{}
 		var firstBackend int

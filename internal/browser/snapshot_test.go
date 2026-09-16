@@ -127,11 +127,8 @@ func TestBuildText_GenerationInRef(t *testing.T) {
 }
 
 // A table row whose content is only text becomes a single line; with a target
-// inside, it stays as it always was — one line per cell, which is what carries
-// the ref.
-//
-// The image case covers the other side: a role that carries structure of its own
-// is not flattened, otherwise the reading would lose that an image exists there.
+// inside it stays expanded (one line per cell, which carries the ref), and a role
+// with structure of its own — image, nested table — is not flattened.
 func TestBuildText_FlattensTableRow(t *testing.T) {
 	nodes := []axNode{
 		ax("root", "", "RootWebArea", "", 0),
@@ -183,10 +180,8 @@ func TestBuildText_FlatteningDoesNotLeakInRefsOnly(t *testing.T) {
 	}
 }
 
-// Regression (lab v2): the summary of a container swallowed the items' label.
-// The virtual list became fourteen "Open" buttons without an owner, because the
-// text "Candidate 413" was consumed by the summary of the container above — and
-// on top of that cut in display, vanishing from the reading for good.
+// A container's summary must not swallow an item's label: the "Candidate 413"
+// text next to an "Open" button would be consumed and the button left ownerless.
 func TestBuildText_DoesNotStealItemLabel(t *testing.T) {
 	nodes := []axNode{
 		ax("root", "", "RootWebArea", "", 0),
@@ -205,9 +200,8 @@ func TestBuildText_DoesNotStealItemLabel(t *testing.T) {
 	}
 }
 
-// A summary that does not fit is not a summary: before, it was built, cut at 220
-// characters for display, and still consumed everything it had gathered — the
-// rest vanished from the reading without appearing anywhere.
+// A summary that does not fit is not a summary: it must not consume the nodes it
+// gathered, or the rest vanishes from the reading without appearing anywhere.
 func TestBuildText_SummaryThatDoesNotFitDoesNotConsume(t *testing.T) {
 	nodes := []axNode{
 		ax("root", "", "RootWebArea", "", 0),
@@ -241,10 +235,9 @@ func TestBuildText_RefsOnly(t *testing.T) {
 	}
 }
 
-// Without MaxNodes, the default ceiling is 1500; with a low ceiling, the reading
-// truncates. Distinct names on purpose: equal names would be summarized into a
-// single line, and then there would be nothing to truncate — this test's target
-// is the ceiling, not the summary.
+// Without MaxNodes the default ceiling is 1500; with a low ceiling the reading
+// truncates. The names are distinct on purpose: equal names would collapse into a
+// single line and leave nothing to truncate.
 func TestBuildText_Truncates(t *testing.T) {
 	nodes := []axNode{ax("root", "", "RootWebArea", "", 0)}
 	for i := 0; i < 5; i++ {
@@ -259,9 +252,8 @@ func TestBuildText_Truncates(t *testing.T) {
 	}
 }
 
-// Regression: a named landmark whose child only repeats the name cannot vanish.
-// The child is suppressed as an echo, and zero lines were left — the pruning then
-// erased the whole landmark, and the reading lost that a banner exists there.
+// A named landmark whose child only repeats the name cannot vanish: the child is
+// suppressed as an echo, but pruning a line with a name would lose the landmark.
 func TestBuildText_NamedLandmarkSurvivesWithoutChildren(t *testing.T) {
 	nodes := []axNode{
 		ax("root", "", "RootWebArea", "", 0),
@@ -275,9 +267,8 @@ func TestBuildText_NamedLandmarkSurvivesWithoutChildren(t *testing.T) {
 	}
 }
 
-// Regression: the identical-sibling cut must also hold at the root. The seen map
-// only came to life inside the walk, so two identical children of the root both
-// appeared.
+// The identical-sibling cut must also hold at the root, or two identical children
+// of the root both appear.
 func TestBuildText_DedupeAtRoot(t *testing.T) {
 	nodes := []axNode{
 		ax("root", "", "RootWebArea", "", 0),

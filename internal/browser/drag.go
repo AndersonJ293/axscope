@@ -1,5 +1,5 @@
-// Drag: the two families that coexist on the web (HTML5 and pointer), the
-// detection of which to use and the check that something actually changed.
+// Drag: the HTML5 and pointer families, the detection of which to use and the
+// check that something actually changed.
 package browser
 
 import (
@@ -14,9 +14,8 @@ import (
 
 // DragOptions tunes the drag.
 type DragOptions struct {
-	// DropAt says where to drop onto the target: "" (center), "top" (25% from
-	// the top) or "bottom" (75%). It matters when the target decides
-	// before/after by position.
+	// DropAt says where to drop onto the target: "" (center), "top" (25%) or
+	// "bottom" (75%). It matters when the target decides before/after by position.
 	DropAt string
 	// Type forces the drag family: "html5" or "pointer". Empty detects.
 	Type string
@@ -24,13 +23,8 @@ type DragOptions struct {
 	Steps int
 }
 
-// toRow swaps the target for the "row" that contains it — the nearest list or
-// table item.
-//
-// Discovered in the LinkedIn reorder: aiming at the paragraph (≈20px, centered
-// on the 48px row) or the whole row changes the drop point — and the library
-// inserts at the index of the row under the pointer. Three attempts missed the
-// position because of that; aiming at the row, it hit on the first try.
+// toRow swaps the target for the nearest list or table item, which is what
+// defines the drop point for libraries that insert at the row under the pointer.
 func toRow(ctx context.Context, client *cdp.Client, session string, t *Target) {
 	if t == nil || t.ObjectID == "" {
 		return
@@ -88,26 +82,21 @@ func signatureOf(ctx context.Context, client *cdp.Client, session, objectID stri
 	return res.Result.Value
 }
 
-// Drag drags `from` to `to`.
-//
-// Two drag families coexist on the web and do not talk to each other:
-//
-//   - HTML5 (`draggable`, dragstart/dragover/drop): an injected mouse does NOT
-//     start the gesture — Chrome only creates the dragstart from real user
-//     input. Here the drag is built on the page, with a real DataTransfer.
-//   - pointer (pointerdown/move/up moving the element, e.g. dnd-kit): it is the
-//     opposite — what works is a real mouse, and a synthetic event is ignored.
-//
-// The origin with `draggable="true"` (on it or on an ancestor) says which family
-// it is. `type=pointer|html5` forces it, if the detection misses.
+// showCursor draws the cursor at the point; both calls are best effort.
+func showCursor(ctx context.Context, client *cdp.Client, session string, p Presenter, rect *dom.Rect, x, y float64) {
+	_ = p.Spotlight(ctx, client, session, rect)
+	_ = p.MoveCursor(ctx, client, session, x, y)
+}
+
+// Drag drags `from` to `to`, detecting the family: HTML5 (built on the page with
+// a real DataTransfer) or pointer (a real mouse). `type` forces detection.
 func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) (string, bool, error) {
 	// The row, not the text: it is what defines the drop point.
 	toRow(ctx, client, session, from)
 	toRow(ctx, client, session, to)
 
-	// It stores where the origin was, to be able to say whether something
-	// actually changed — a gesture that does not take usually ends in a click,
-	// with no warning at all.
+	// Stores where the origin was, to say whether something changed: a gesture
+	// that does not take usually ends in a click, with no warning at all.
 	before := signatureOf(ctx, client, session, from.ObjectID)
 
 	kind := opts.Type
@@ -134,11 +123,9 @@ func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Tar
 	return kind, changed, nil
 }
 
-// dragKind says which family the drag is: "html5" or "pointer".
-//
-// The signal is the explicit `draggable="true"` attribute — the `draggable`
-// property alone does not serve, because image and link are already draggable by
-// default and would mark as HTML5 any click on them.
+// dragKind reports "html5" or "pointer", keyed on the explicit
+// `draggable="true"` attribute: the `draggable` property alone is true for image
+// and link by default and would mark any click on them as HTML5.
 func dragKind(ctx context.Context, client *cdp.Client, session, objectID string) string {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
@@ -161,23 +148,19 @@ func dragKind(ctx context.Context, client *cdp.Client, session, objectID string)
 	return "html5"
 }
 
-// dragHTML5 builds the drag on the page. It is the HTML5 family path, which
-// ignores an injected mouse: we emit dragstart/dragenter/dragover/drop/dragend
-// with a real DataTransfer, over the element under the drop point (the event
-// bubbles, so whoever listens on the container also receives it).
+// dragHTML5 builds the drag on the page with a real DataTransfer, since an
+// injected mouse does not create a dragstart.
 func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
 	fx, fy := from.actionPoint()
 	tx, ty := dropPoint(to, opts.DropAt)
 
 	// The cursor travels to the destination: whoever watches needs to see the
 	// drag happen.
-	_ = p.Spotlight(ctx, client, session, &from.Rect)
-	_ = p.MoveCursor(ctx, client, session, fx, fy)
+	showCursor(ctx, client, session, p, &from.Rect, fx, fy)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
-	_ = p.Spotlight(ctx, client, session, &to.Rect)
-	_ = p.MoveCursor(ctx, client, session, tx, ty)
+	showCursor(ctx, client, session, p, &to.Rect, tx, ty)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
@@ -219,9 +202,9 @@ func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to
 	return nil
 }
 
-// dragPointer drags with a real mouse: it is what the pointer family understands
-// (pointerdown/move/up). If the page ignores the gesture, a click is left over —
-// that is why this path is only used when the origin is NOT `draggable`.
+// dragPointer drags with a real mouse (pointerdown/move/up). A page that ignores
+// the gesture leaves a click behind, so it is used only when the origin is not
+// `draggable`.
 func dragPointer(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) error {
 	if opts.Steps <= 0 {
 		opts.Steps = 16
@@ -229,8 +212,7 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 	fx, fy := from.actionPoint()
 	tx, ty := dropPoint(to, opts.DropAt)
 
-	_ = p.Spotlight(ctx, client, session, &from.Rect)
-	_ = p.MoveCursor(ctx, client, session, fx, fy)
+	showCursor(ctx, client, session, p, &from.Rect, fx, fy)
 	if d := visualDelay(); d > 0 {
 		time.Sleep(d)
 	}
@@ -259,8 +241,7 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 		time.Sleep(14 * time.Millisecond)
 	}
 
-	_ = p.Spotlight(ctx, client, session, &to.Rect)
-	_ = p.MoveCursor(ctx, client, session, tx, ty)
+	showCursor(ctx, client, session, p, &to.Rect, tx, ty)
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseReleased", "x": tx, "y": ty,
 		"button": "left", "buttons": 0, "clickCount": 1,

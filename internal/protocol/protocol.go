@@ -13,8 +13,7 @@ type Request struct {
 	ID   int64          `json:"id,omitempty"`
 	Cmd  string         `json:"cmd"`
 	Args map[string]any `json:"args,omitempty"`
-	// Agent identifies who is driving (e.g. "Opencode"), to name the tab
-	// group in the browser. It comes from the MCP client or from AXSCOPE_AGENT.
+	// Agent identifies the driver (MCP client or AXSCOPE_AGENT), naming the browser tab group.
 	Agent string `json:"agent,omitempty"`
 }
 
@@ -52,6 +51,7 @@ func (r Request) String(key string) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
+	// Non-string values fall back to their JSON text.
 	b, _ := json.Marshal(v)
 	return string(b)
 }
@@ -83,8 +83,7 @@ func (r Request) Int(key string, def int) int {
 			return int(n)
 		}
 	case string:
-		// A value coming from `k=v` or positional arrives as a string (CLI and
-		// MCP send text). Without this, a numeric option was inert.
+		// CLI and MCP send options as text; without this a numeric option is inert.
 		n, err := strconv.Atoi(strings.TrimSpace(v))
 		if err == nil {
 			return n

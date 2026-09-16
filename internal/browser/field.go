@@ -1,10 +1,5 @@
 // Text field: who accepts what one wants to write, and what to check afterward.
-//
-// Measured in lab v2: `fill` on a `<select>` answered ok and the value stayed
-// the previous one; `fill` on a `<label>` answered ok without having anywhere to
-// write. Text that does not go in is worse than an error — the agent goes on as
-// if it had filled, and only discovers the opposite when checking the result.
-// That is why the refusal states the command that does what was wanted.
+// The refusal states the command that does what was wanted.
 package browser
 
 import (
@@ -23,9 +18,8 @@ type fieldDescriptor struct {
 	Role     string `json:"role"`
 }
 
-// describeField asks the page what the target is. It fails silently: without a
-// description, the field is treated as accepted — what blocks the wrong one is
-// the warning at the end, not a guess of ours.
+// describeField asks the page what the target is. Without a description the
+// field is treated as accepted, and the end warning catches a failed fill.
 func describeField(ctx context.Context, client *cdp.Client, session, objectID string) fieldDescriptor {
 	var d fieldDescriptor
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
@@ -48,6 +42,7 @@ func describeField(ctx context.Context, client *cdp.Client, session, objectID st
 			Value fieldDescriptor `json:"value"`
 		} `json:"result"`
 	}
+	// A failed read leaves the zero descriptor, which is treated as accepted.
 	_ = json.Unmarshal(raw, &res)
 	return res.Result.Value
 }
@@ -79,10 +74,8 @@ func classifyField(d fieldDescriptor) (bool, string) {
 	}
 }
 
-// fillWarning says when the text did not go in.
-//
-// A masked field changes the value on purpose (the phone becomes "(77) 9 9999…"),
-// so a difference is a sign of nothing. Staying empty is: nothing went in.
+// fillWarning reports when the text did not go in: a mask may change the value
+// on purpose, but only an empty field means nothing was written.
 func fillWarning(sent, value string) string {
 	if sent != "" && strings.TrimSpace(value) == "" {
 		return "the field is still empty — the text did not go in"
@@ -90,19 +83,15 @@ func fillWarning(sent, value string) string {
 	return ""
 }
 
-// normalizeNewlines swaps CRLF for LF: the text comes from wherever it comes
-// from (Windows, a file, the agent), and the field has nothing to do with the
-// leftover `\r`.
+// normalizeNewlines swaps CRLF for LF: the text may come from Windows or a file,
+// and a leftover `\r` has no use for the field.
 func normalizeNewlines(text string) string {
 	return strings.ReplaceAll(text, "\r\n", "\n")
 }
 
-// keyFor returns the named key that represents the character — or "", when the
-// character goes as text itself.
-//
-// It is only the line break, and it matters: sending `\n` as text inserts
-// nothing, so the character vanished silently when typing character by character
-// — measured in lab v3, `alfa\nbeta` became `alfabeta`.
+// keyFor returns the named key that represents the character, or "" when the
+// character goes as text itself. Only the line break matters: text with `\n`
+// inserts nothing, so it would vanish silently when typing character by character.
 func keyFor(r rune) string {
 	if r == '\n' || r == '\r' {
 		return "Enter"

@@ -1,7 +1,5 @@
-// Passive capture of console, network and dialogs, per session (tab).
-//
-// It stays in circular buffers: the agent reads on demand with `console`/`net`,
-// and the errors stay available even after the event has passed.
+// Passive capture of console, network and dialogs, per session (tab): the agent
+// reads on demand with `console`/`net`.
 package browser
 
 import (
@@ -136,8 +134,7 @@ func (o *Observe) addDialog(session string, e DialogEntry) {
 	o.dialogs[session] = appendCapped(o.dialogs[session], e, o.max)
 }
 
-// Wire registers the console, network and exception handlers (once per
-// connection).
+// Wire registers the console, network and exception handlers (once per connection).
 func (o *Observe) Wire(c *cdp.Client) {
 	c.On("Runtime.consoleAPICalled", func(params json.RawMessage, sid string) {
 		var p struct {

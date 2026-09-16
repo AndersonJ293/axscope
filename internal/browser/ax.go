@@ -12,28 +12,22 @@ import (
 
 var noiseNameRe = regexp.MustCompile(`(?i)^(skip (to|navigation)|close jump menu)`)
 
-// scaffoldRoles are pure groupers: with no ref, no text of their own and no
-// visible child, the line says nothing and drops out. That is the case of
-// "Skip navigation menu".
-
+// scaffoldRoles are pure groupers: with no ref, no text and no visible child,
+// they say nothing and drop out.
 var scaffoldRoles = map[string]bool{
 	"generic": true, "group": true, "none": true, "": true,
 }
 
-// landmarkRoles are page landmarks. Empty, they are only worth it when they
-// have a name: the name is the information. Without that, a
-// `<div role="banner" aria-label="Top">` whose child only repeats "Top" vanished
-// entirely — the fact that a banner exists there was lost.
-
+// landmarkRoles are page landmarks: empty, they are worth a line only when
+// named, and the name is the information. A named banner whose child echoes the
+// name must not vanish, or the banner's existence is lost.
 var landmarkRoles = map[string]bool{
 	"banner": true, "navigation": true, "main": true, "region": true,
 	"complementary": true, "contentinfo": true, "form": true, "search": true,
 }
 
-// anonRoles are anonymous wrappers: with no name, no text of their own and no
-// target, they are not worth a line — they vanish and the children rise in their
-// place.
-
+// anonRoles are anonymous wrappers: with no name, no text and no target they
+// vanish, and the children rise in their place.
 var anonRoles = map[string]bool{
 	"": true, "none": true, "generic": true, "paragraph": true,
 }
@@ -52,17 +46,14 @@ var interactiveRoles = map[string]bool{
 // frameRoles are the roles of the element that hosts a separate document.
 var frameRoles = map[string]bool{"Iframe": true, "iframe": true}
 
-// skipRoles are roles that never enter the reading (pure noise).
-
+// skipRoles never enter the reading (pure noise).
 var skipRoles = map[string]bool{
 	"ListMarker": true, "LineBreak": true, "none": true, "presentation": true,
 	"InlineTextBox": true,
 }
 
-// layoutRoles are layout containers: they pass through without emitting a line,
-// even if they have a "name" (that is the case of the LayoutTableCell of layout
-// tables).
-
+// layoutRoles are layout containers: they pass through without a line, even when
+// named (the LayoutTableCell of layout tables).
 var layoutRoles = map[string]bool{
 	"LayoutTable": true, "LayoutTableRow": true, "LayoutTableCell": true,
 	"LayoutTableColumn": true, "Row": true,
@@ -96,8 +87,7 @@ var textualRoles = map[string]bool{
 	"cell": true, "gridcell": true, "columnheader": true, "rowheader": true,
 }
 
-// cellRoles are the roles the table row needs to have as children to fit in a
-// single line.
+// cellRoles are the child roles a row needs to fit in a single line.
 var cellRoles = map[string]bool{
 	"cell": true, "gridcell": true, "columnheader": true, "rowheader": true,
 }
@@ -215,5 +205,3 @@ func axRawString(raw json.RawMessage) string {
 	}
 	return strings.Trim(string(raw), `"`)
 }
-
-// norm collapses spaces/newlines and trims leading/trailing spaces.

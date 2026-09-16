@@ -18,7 +18,7 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 	if url == "" {
 		return protocol.Fail(fmt.Errorf("usage: axscope open <url> [--new]"))
 	}
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -36,24 +36,15 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 	return ok(fmt.Sprintf("ok: %s\n%s", url, title))
 }
 
-// wait waits for something to happen: a text to appear (or disappear, in
-// waitgone), or a target to reach a state.
-//
-// The state exists because waiting for text does not cover the most common case
-// of a real app: the button that only enables later. In lab v3, "Enviar
-// candidatura" is released ~1.1s after appearing, without changing its text —
-// and without this the way out was to inject setTimeout via eval.
-//
-// `within=` limits the text search to a container. Without a scope, text that
-// also appears in an always-visible side menu matches before what is expected:
-// measured in v3, waiting for a role came back in 2ms, with the search dropdown
-// still closed.
+// wait waits for text to appear/disappear, or for a target to reach a state
+// (--enabled/--visible/--gone) for controls that only enable later; `within=`
+// limits the text search so an identical label elsewhere does not match first.
 func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
 	asked := req.String("text")
 	if asked == "" {
 		return protocol.Fail(fmt.Errorf("usage: axscope %s <text|target> [timeout] [within=<target>]", req.Cmd))
 	}
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -95,8 +86,7 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 	return protocol.Fail(fmt.Errorf("%q did not disappear within %s", asked, timeout))
 }
 
-// requestedState returns the state requested by flag, or "" when the wait is for
-// text.
+// requestedState returns the state requested by flag, or "" for a text wait.
 func requestedState(req protocol.Request) string {
 	for _, s := range []string{"enabled", "visible", "gone"} {
 		if req.Bool(s, false) {
@@ -106,8 +96,8 @@ func requestedState(req protocol.Request) string {
 	return ""
 }
 
-// searchRoot returns the objectId where the text search starts: the container
-// requested in `within=`, or the document.
+// searchRoot returns the objectId where the text search starts: the `within=`
+// container, or the document.
 func (a *Agent) searchRoot(ctx context.Context, sess *browser.Session, sid, within string) (string, error) {
 	if within == "" {
 		return dom.EvalObject(ctx, a.client(), sid, "document")
@@ -119,9 +109,8 @@ func (a *Agent) searchRoot(ctx context.Context, sess *browser.Session, sid, with
 	return t.ObjectID, nil
 }
 
-// waitForState waits for the target to reach the requested state: "enabled"
-// (accepts a click), "visible" (exists and has a box on screen) or "gone" (it
-// stopped resolving).
+// waitForState waits for the target to reach "enabled" (clickable), "visible"
+// (exists with a box) or "gone" (stopped resolving).
 func (a *Agent) waitForState(ctx context.Context, sess *browser.Session, sid, target, state string, start, deadline time.Time) protocol.Response {
 	if state == "gone" {
 		// Check that it exists first: otherwise a misspelled target "goes away"
@@ -180,7 +169,7 @@ func stateBase(state string) string {
 }
 
 func (a *Agent) history(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -196,7 +185,7 @@ func (a *Agent) history(ctx context.Context, sess *browser.Session, req protocol
 }
 
 func (a *Agent) reload(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -206,20 +195,9 @@ func (a *Agent) reload(ctx context.Context, sess *browser.Session, req protocol.
 	return ok("ok: reloaded")
 }
 
-// pageHasText says whether the page body contains the requested text.
-// locateText says whether the text is on the page and, if so, describes where.
-//
-// Returning only "found" misleads: the text may already exist elsewhere and the
-// wait come back in 1ms. It happened in lab mission 3, waiting for "Barreiras" —
-// which the mission list itself already mentioned. Saying where it found it lets
-// the agent check whether it is the place it wanted.
-// textLocator searches for the text starting from the object where the function
-// runs — the document, or the scope requested in `within=` — and describes where
-// it found it.
-//
-// It scans open shadow roots and same-origin iframes: the read already shows the
-// content of both, so the wait sees the same — otherwise the agent sees the text
-// and cannot wait for it.
+// textLocator searches for the text from where the function runs (document or
+// `within=` scope), describes where it found it, and scans open shadow roots and
+// same-origin iframes to match what read shows.
 func textLocator(want string) string {
 	return `function () {
 		const want = ` + strconv.Quote(want) + `;
@@ -260,9 +238,8 @@ func textLocator(want string) string {
 	}`
 }
 
-// locateText runs the search starting from the given root (the document, from
-// Runtime.evaluate, or the container from `within=`) and returns the description
-// of where it found it — empty when it did not find it.
+// locateText runs the search from the given root (the document or the `within=`
+// container) and returns where it found it, empty when it did not.
 func locateText(ctx context.Context, client *cdp.Client, session, want, root string) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            root,

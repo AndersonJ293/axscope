@@ -1,5 +1,5 @@
-// Agent: runs the commands over the browser session and returns text for the
-// AI agent to read. It is the same dispatcher for CLI, daemon (script) and MCP.
+// Agent runs commands over a browser session and returns text for an AI agent
+// to read; it is the shared dispatcher for CLI, daemon (script) and MCP.
 package agent
 
 import (
@@ -11,9 +11,8 @@ import (
 
 	"github.com/AndersonJ293/axscope/internal/bridge"
 	"github.com/AndersonJ293/axscope/internal/browser"
-	// cdp is here only to load the *cdp.Client type: whoever speaks the protocol
-	// is browser/dom. The conscious exception is the extension bridge, which
-	// returns a ready CDP client.
+	// cdp is imported only for the *cdp.Client type; the protocol owner is
+	// browser/dom, except the extension bridge, which returns a ready client.
 	"github.com/AndersonJ293/axscope/internal/cdp"
 	"github.com/AndersonJ293/axscope/internal/paths"
 	"github.com/AndersonJ293/axscope/internal/protocol"
@@ -38,16 +37,15 @@ type Agent struct {
 	handle *browser.Handle
 	sess   *browser.Session
 	refs   map[string]int
-	// snapGen is the generation of the last read. Every ref carries the
-	// generation it was born in (e12#7): a ref from an old read is refused,
-	// instead of clicking what today occupies that position.
+	// snapGen is the last read's generation; a ref born in an older generation
+	// is refused rather than clicking whatever now occupies that position.
 	snapGen   int
 	bridge    *bridge.Server
 	extClient *cdp.Client
 	agent     string
 }
 
-// Close shuts down the browser (if we started it) and the connection.
+// Close shuts down the connection and the browser, unless it was attached.
 func (a *Agent) Close() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -61,9 +59,8 @@ func (a *Agent) Close() {
 	a.sess = nil
 }
 
-// degraded says whether the browser we have is no longer good (it died or the
-// connection dropped). Without this, a dead browser would leave the daemon
-// alive answering errors forever.
+// degraded reports whether the browser died or the connection dropped; without
+// it a dead browser would leave the daemon answering errors forever.
 func (a *Agent) degraded() bool {
 	if a.handle == nil || a.sess == nil {
 		return true
@@ -126,7 +123,7 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 	case a.Attach != "":
 		handle, err = browser.Attach(ctx, a.Attach)
 	case a.Engine == browser.EngineExt:
-		// We do not launch any browser: the extension in Brave connects to us.
+		// No browser is launched: the extension in Brave connects to the daemon.
 		var client *cdp.Client
 		client, err = a.extension(ctx)
 		if err == nil {
@@ -162,8 +159,8 @@ func (a *Agent) client() *cdp.Client {
 	return a.handle.Client
 }
 
-// setAgent records who is driving and notifies the extension again, which
-// renames the tab group (keeping the number it already had).
+// setAgent records who is driving; the extension renames the tab group, keeping
+// the number it already had.
 func (a *Agent) setAgent(name string) {
 	a.mu.Lock()
 	if name == "" || a.agent == name {
@@ -185,11 +182,6 @@ func (a *Agent) Run(ctx context.Context, req protocol.Request) protocol.Response
 
 	a.setAgent(req.Agent)
 	return a.dispatch(ctx, req)
-}
-
-// activeSID returns the sessionId of the session's active tab.
-func (a *Agent) activeSID(sess *browser.Session) (string, error) {
-	return sess.ActiveSID()
 }
 
 func (a *Agent) mustSess() *browser.Session {

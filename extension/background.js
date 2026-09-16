@@ -1,11 +1,5 @@
-// Bridge between the axscope daemons and the browser.
-//
-// Each axscope session takes a port in the 8787..8802 range and gets its own
-// tab group. The extension keeps one connection per port and translates only
-// the `Target` domain to the tabs API; everything else goes to chrome.debugger.
-//
-// Consequence: several agents run at once, each seeing only the tabs in its own
-// group — the user's personal tabs stay untouched.
+// One connection + tab group per axscope session (ports 8787..8802), so agents
+// see only their own tabs. Only the `Target` domain is emulated; rest goes to chrome.debugger.
 
 const BASE_PORT = 8787;
 const PORT_SPAN = 16;
@@ -25,11 +19,6 @@ let heartbeatTimer = null;
 // ------------------------------------------------------------------- context
 
 const AGENT_DEFAULT = 'axscope';
-
-// groupTitle is what shows in the tab strip: "<Agent> <N>".
-function groupTitle(st) {
-  return st.groupTitle || `${st.agent || AGENT_DEFAULT} 1`;
-}
 
 /** Next free number for an agent ("Opencode 1", "Opencode 2", …). */
 async function nextTitleFor(agent) {
@@ -53,14 +42,6 @@ function groupColor(agent) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
   return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
-}
-
-function connectedCount() {
-  let n = 0;
-  for (const st of conns.values()) {
-    if (st.ws && st.ws.readyState === WebSocket.OPEN) n++;
-  }
-  return n;
 }
 
 function refreshStatus() {
@@ -110,7 +91,6 @@ function connectPort(port) {
     for (const tabId of st.tabBySession.values()) {
       chrome.debugger.detach({ tabId }).catch(() => {});
     }
-    // The session went down: release its tabs from the owner map.
     for (const [tabId, owner] of ownerByTab) {
       if (owner === st) ownerByTab.delete(tabId);
     }

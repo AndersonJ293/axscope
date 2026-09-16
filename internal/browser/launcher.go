@@ -1,9 +1,5 @@
-// Finds, starts and connects to Chromium.
-//
-// Two ways in:
-//  1. Launch: starts a Chrome for Testing (or the system one) with its own
-//     persistent profile, headed by default, and reads the CDP URL from stderr.
-//  2. Attach: connects to a Chromium already open with --remote-debugging-port.
+// Finds, starts and connects to Chromium: `Launch` starts a browser with its own
+// profile and reads the CDP URL from stderr, `Attach` connects to an open one.
 package browser
 
 import (
@@ -172,9 +168,8 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 	if opts.Headless || opts.Engine == EngineShell {
 		args = append(args, "--disable-gpu")
 	}
-	// The accessibility tree is turned on on demand by the Accessibility
-	// domain. Forcing it at startup costs memory in every process; we only turn
-	// it on if requested.
+	// The Accessibility domain turns the tree on on demand; forcing it at startup
+	// costs memory in every process.
 	if envBool("AXSCOPE_FORCE_AX", false) {
 		args = append(args, "--force-renderer-accessibility")
 	}
@@ -182,8 +177,8 @@ func buildArgs(opts LaunchOptions, profile string) []string {
 	return args
 }
 
-// ensureProfilePrefs makes startup deterministic: without restoring the tabs of
-// previous runs, which only pollute the window of whoever is watching.
+// ensureProfilePrefs makes startup deterministic, without restoring the previous
+// runs' tabs.
 func ensureProfilePrefs(profile string) {
 	prefsPath := filepath.Join(profile, "Default", "Preferences")
 	if err := os.MkdirAll(filepath.Dir(prefsPath), 0o755); err != nil {
@@ -192,7 +187,7 @@ func ensureProfilePrefs(profile string) {
 	prefs := map[string]any{}
 	if data, err := os.ReadFile(prefsPath); err == nil {
 		if err := json.Unmarshal(data, &prefs); err != nil {
-			return // do not touch JSON we do not understand
+			return // leave JSON that cannot be parsed untouched
 		}
 	}
 	prefs["profile"] = withKey(prefs["profile"], "exit_type", "Normal")
@@ -201,6 +196,7 @@ func ensureProfilePrefs(profile string) {
 	if err != nil {
 		return
 	}
+	// Writing the prefs is best effort; a failure only loses the customization.
 	_ = os.WriteFile(prefsPath, out, 0o600)
 }
 
@@ -226,8 +222,7 @@ func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
 	ensureProfilePrefs(profile)
 
 	cmd := exec.Command(executable, buildArgs(opts, profile)...)
-	// Its own process group: it is possible to terminate the whole browser at
-	// once.
+	// Its own process group, so the whole browser can be terminated at once.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -244,6 +239,7 @@ func Launch(ctx context.Context, opts LaunchOptions) (*Handle, error) {
 
 	client, err := cdp.Dial(ctx, wsURL, 15*time.Second)
 	if err != nil {
+		// Best effort: the process may already be gone.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		return nil, err
 	}
@@ -263,9 +259,8 @@ func waitForDevTools(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration)
 	var mu sync.Mutex
 	var tail strings.Builder
 
-	// The end of stderr is the sign that the process died: this way we do not
-	// need to call cmd.Wait() in parallel with the reading (which would close
-	// the pipe).
+	// The end of stderr signals that the process died, so cmd.Wait() need not run
+	// in parallel with the reading (which would close the pipe).
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -300,9 +295,11 @@ func waitForDevTools(stderr io.ReadCloser, cmd *exec.Cmd, timeout time.Duration)
 		go func() { _ = cmd.Wait() }() // reap when the browser exits
 		return url, nil
 	case err := <-errCh:
+		// Best effort: the real error is returned below.
 		_ = cmd.Wait()
 		return "", fmt.Errorf("%v. stderr:\n%s", err, snapshotTail())
 	case <-time.After(timeout):
+		// Best effort: the process is abandoned on timeout.
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		_ = cmd.Wait()
 		return "", fmt.Errorf("Chrome did not start within %s. stderr:\n%s", timeout, snapshotTail())
@@ -348,16 +345,17 @@ func Attach(ctx context.Context, target string) (*Handle, error) {
 	return &Handle{Client: client, WSURL: wsURL, Executable: "(attached)", Attached: true}, nil
 }
 
-// Exited reports whether the browser process we started has already died.
+// Exited reports whether the browser process started here has already died.
 func (h *Handle) Exited() bool {
 	return h.Cmd != nil && h.Cmd.ProcessState != nil && h.Cmd.ProcessState.Exited()
 }
 
-// Kill terminates the whole browser (only when we were the ones who started it).
+// Kill terminates the whole browser started here.
 func (h *Handle) Kill() {
 	if h.Cmd == nil || h.Cmd.Process == nil {
 		return
 	}
+	// Best effort: the process may already be gone.
 	_ = syscall.Kill(-h.Cmd.Process.Pid, syscall.SIGTERM)
 }
 

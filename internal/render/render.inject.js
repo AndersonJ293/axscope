@@ -1,12 +1,5 @@
-// Overlay injected into the page: rendered cursor, click ripple, optional
-// spotlight and a HUD with tabs/action.
-//
-// Deliberate care, because it runs on real and hostile pages:
-//   - no innerHTML (pages with Trusted Types would refuse it);
-//   - CSS via adoptedStyleSheets (not blocked by `style-src`);
-//   - positioning via CSSOM (el.style.*), not via the style attribute;
-//   - shadow DOM + pointer-events:none: it intercepts nothing on the page;
-//   - aria-hidden: it does not pollute the accessibility tree (the `snap`).
+// Overlay injected into the page: rendered cursor, click ripple, spotlight and
+// HUD. Built with createElement/CSSOM/adoptedStyleSheets, never innerHTML.
 (() => {
   if (window.__axscope && window.__axscope.__v) return;
 
@@ -35,9 +28,8 @@
     .cursor.press svg { transform: scale(.74); }
 
     /* ---- click ripple ---- */
-    /* The click is the only moment that asks for attention: the cursor sinks
-       and a short ring confirms the point. No halo around the pointer — the
-       purple glow that followed the mouse left the scene. */
+    /* The click is the only attention moment: the cursor sinks and a short ring
+       confirms the point. */
     .ripple {
       width: 20px; height: 20px; margin: -10px 0 0 -10px; z-index: 2;
       border-radius: 50%;
@@ -52,9 +44,8 @@
       100% { opacity: 0;  transform: scale(2.6); }
     }
 
-    /* Pure outline: it highlights the target without covering the content. No
-       background — the gradient-border trick requires an opaque interior and
-       painted the middle. */
+    /* Pure outline, no background: a gradient border needs an opaque interior
+       and would cover the content. */
     .spotlight {
       z-index: 0; border-radius: 10px;
       border: 2px solid rgba(129,140,248,.95);
@@ -68,6 +59,7 @@
     .spotlight.on { opacity: 1; transform: scale(1); }
 
     /* ---- HUD ---- */
+    /* top:auto cancels the shared top:0 so the bottom anchor applies. */
     .hud {
       top: auto; left: 14px; bottom: 14px; z-index: 6;
       display: flex; align-items: center; gap: 10px;
@@ -143,6 +135,8 @@
       'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;' +
       'pointer-events:none;contain:style;';
 
+    // Shadow DOM isolates the overlay styles; pointer-events:none on the host
+    // keeps it from intercepting page clicks.
     try {
       root = host.attachShadow({ mode: 'open' });
     } catch {
@@ -233,6 +227,7 @@
     if (hudEl) hudEl.style.display = hudVisible ? '' : 'none';
   }
 
+  // CSSOM positioning via el.style, never the style attribute.
   function place(el, x, y) {
     el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
@@ -249,9 +244,8 @@
     rippleEl.classList.remove('on');
     void rippleEl.offsetWidth; // restarts the animation
     rippleEl.classList.add('on');
-    // The final state cannot depend on the animation having run: in a
-    // background tab the browser freezes the animation, and the element stayed
-    // stuck on the first frame — a purple dot frozen in place of the last click.
+    // Do not rely on the animation finishing: a background tab freezes it, so
+    // clear the class after a fixed timeout.
     clearTimeout(rippleTimer);
     rippleTimer = setTimeout(() => rippleEl && rippleEl.classList.remove('on'), 520);
   }

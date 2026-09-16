@@ -103,10 +103,8 @@ func TestParse_FillTargetsByText(t *testing.T) {
 	}
 }
 
-// Regression: `scroll` had no way to target a container. The lab's infinite
-// scroll list showed the gap: scrolling the page does not load the next batch,
-// and the gesture without a target scrolled whatever was under the center of
-// the screen.
+// Regression: `scroll` must accept a container target — scrolling the page does
+// not load the next batch of an inner scrolling list.
 func TestParse_ScrollWithTarget(t *testing.T) {
 	req, err := Parse([]string{"scroll", "200", "target=text=Infinite item 3"})
 	if err != nil {
@@ -125,10 +123,9 @@ func TestParse_ScrollWithTarget(t *testing.T) {
 	}
 }
 
-// Regression: `upload` declares the positional as `target`, and the handler
-// reads `target`. The name has to match: when it did not, the target fell into
-// the void and the command always picked the first `<input type=file>` — and the
-// lab accepted it by accident, because its dropzone has a hidden input inside.
+// Regression: `upload` declares the positional as `target` and the handler reads
+// `target`; when the names did not match, the target fell into the void and the
+// first `<input type=file>` was always picked.
 func TestParse_UploadWithTarget(t *testing.T) {
 	req, err := Parse([]string{"upload", "/tmp/a.txt"})
 	if err != nil {
@@ -174,10 +171,9 @@ func TestParse_WaitWithTimeout(t *testing.T) {
 	}
 }
 
-// Regression (lab v3): `wait` by text matched anywhere on the page — waiting for
-// a role that also appeared in the sidebar came back in 2ms, with the search
-// dropdown still closed. `within=` limits the search; and the state flags wait
-// for a target that only enables later.
+// Regression: `wait` by text matched anywhere on the page, so a label that also
+// appeared in a sidebar matched in 2ms with the target still closed. `within=`
+// limits the search; the state flags wait for a target that only enables later.
 func TestParse_WaitWithScopeAndState(t *testing.T) {
 	req, err := Parse([]string{"wait", "Senior Recruiter", "5000", "within=css=#suggest"})
 	if err != nil {

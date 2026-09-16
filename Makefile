@@ -6,7 +6,7 @@
 PREFIX ?= $(HOME)/.local/bin
 NAME    = axscope
 
-.PHONY: build install uninstall vet
+.PHONY: build install uninstall vet test test-race cover check
 
 build:
 	go build -o $(NAME) ./cmd/axscope
@@ -20,3 +20,17 @@ uninstall:
 
 vet:
 	go vet ./...
+
+test:
+	go test ./...
+
+test-race:
+	go test -race ./...
+
+cover:
+	go test -cover ./...
+
+check:
+	test -z "$$(gofmt -l .)"
+	go vet ./...
+	go test ./...

@@ -33,7 +33,7 @@ func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Reque
 }
 
 func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -60,13 +60,8 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	return ok(b.String())
 }
 
-// scrollLine summarizes, for the read header, where the areas that scroll are —
-// how far they have scrolled and how much still fits.
-//
-// It is empty when there is nothing to say: a page that does not scroll and no
-// box with scroll. It exists because the accessibility tree does not carry
-// scroll state: without this the agent sees the lines and does not know where it
-// is in them.
+// scrollLine summarizes where the scrolling areas are, how far they scrolled
+// and how much fits; the accessibility tree does not carry scroll state.
 func scrollLine(snap *browser.Snapshot) string {
 	var parts []string
 	if p := snap.Page; p != nil && p.Max > 1 {
@@ -88,12 +83,11 @@ func scrollLine(snap *browser.Snapshot) string {
 	return line
 }
 
-// maxScrollAreas is how many areas enter the header before the "+N" summary: the
-// header is a warning, not an inventory.
+// maxScrollAreas is how many areas enter the header before the "+N" summary.
 const maxScrollAreas = 5
 
 func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -122,7 +116,7 @@ func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Re
 	if js == "" {
 		return protocol.Fail(fmt.Errorf("usage: axscope eval <js>"))
 	}
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -138,7 +132,7 @@ func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Re
 }
 
 func (a *Agent) console(_ context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -167,7 +161,7 @@ func (a *Agent) console(_ context.Context, sess *browser.Session, req protocol.R
 }
 
 func (a *Agent) net(_ context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
-	sid, err := a.activeSID(sess)
+	sid, err := sess.ActiveSID()
 	if err != nil {
 		return protocol.Fail(err)
 	}
