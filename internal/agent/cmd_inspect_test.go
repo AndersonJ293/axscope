@@ -3,7 +3,32 @@ package agent
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/AndersonJ293/axscope/internal/browser"
 )
+
+// status names where the session's CDP lives, so a QA agent can fall back to raw
+// CDP without reconstructing it. Extension mode has no endpoint, and attach is
+// marked so it is not confused with a browser axscope launched.
+func TestCDPEndpoint(t *testing.T) {
+	cases := []struct {
+		name   string
+		handle *browser.Handle
+		want   string
+	}{
+		{"extension", &browser.Handle{Executable: "(extension)", Attached: true},
+			"inside the browser through the extension (no external endpoint)"},
+		{"launched", &browser.Handle{WSURL: "ws://127.0.0.1:9222/devtools/browser/x"},
+			"ws://127.0.0.1:9222/devtools/browser/x"},
+		{"attached", &browser.Handle{WSURL: "ws://127.0.0.1:9222/devtools/browser/x", Attached: true},
+			"ws://127.0.0.1:9222/devtools/browser/x (attached)"},
+	}
+	for _, c := range cases {
+		if got := cdpEndpoint(c.handle); got != c.want {
+			t.Errorf("%s: cdpEndpoint = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
 
 // eval used to print CDP's result.value verbatim, so a JavaScript string came
 // back double-serialized (quotes and escaped newlines). prettyValue presents it.

@@ -15,6 +15,7 @@ import (
 func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Request) protocol.Response {
 	a.mu.Lock()
 	booted := a.sess != nil
+	handle := a.handle
 	a.mu.Unlock()
 	if !booted {
 		return ok(fmt.Sprintf("session %q: browser not started yet", a.Session))
@@ -26,11 +27,27 @@ func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Reque
 	title, _ := dom.EvalString(ctx, a.client(), sid, "document.title")
 	var b strings.Builder
 	fmt.Fprintf(&b, "session: %s\n", a.Session)
+	if handle != nil {
+		fmt.Fprintf(&b, "cdp: %s\n", cdpEndpoint(handle))
+	}
 	fmt.Fprintf(&b, "url: %s\n", url)
 	fmt.Fprintf(&b, "title: %s\n", title)
 	fmt.Fprintf(&b, "tabs: %d\n", len(tabs))
 	fmt.Fprintf(&b, "active refs: %d\n", len(a.currentRefs()))
 	return ok(strings.TrimRight(b.String(), "\n"))
+}
+
+// cdpEndpoint names where the session's CDP lives, so an agent that wants to fall
+// back to raw CDP does not have to reconstruct it. Extension mode has none: the
+// CDP runs inside the user's browser through the extension.
+func cdpEndpoint(h *browser.Handle) string {
+	if h.WSURL == "" {
+		return "inside the browser through the extension (no external endpoint)"
+	}
+	if h.Attached {
+		return h.WSURL + " (attached)"
+	}
+	return h.WSURL
 }
 
 func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {

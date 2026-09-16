@@ -22,7 +22,7 @@ type Spec struct {
 // Specs is the canonical table. Order does not matter.
 var Specs = []Spec{
 	{Cmd: "ping", Help: "checks whether the daemon responds"},
-	{Cmd: "status", Help: "URL, title, tabs and overlay state"},
+	{Cmd: "status", Help: "URL, title, tabs, CDP endpoint and overlay state"},
 	{Cmd: "install", Flags: []string{"engine"}, Help: "downloads engines (--engine chrome|shell|all)"},
 	{Cmd: "engines", Help: "lists installed engines"},
 	{Cmd: "clean", Flags: []string{"all"}, Help: "deletes logs and dead sessions (--all includes profiles and browsers)"},
