@@ -95,3 +95,39 @@ func TestEnsureRuntimeDirRejectsFile(t *testing.T) {
 		t.Error("regular file accepted as runtime directory, want refusal")
 	}
 }
+
+// TestRemoveStaleSocket keeps a live socket and anything that is not a socket,
+// and removes only a socket left behind by a dead daemon.
+func TestRemoveStaleSocket(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dead.sock")
+
+	removeStaleSocket(path) // nothing there: no-op
+
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	removeStaleSocket(path)
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("regular file was removed: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	ln, err := listenUnix(path)
+	if err != nil {
+		t.Fatalf("listenUnix: %v", err)
+	}
+	removeStaleSocket(path)
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("live socket was removed: %v", err)
+	}
+
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	removeStaleSocket(path)
+	if _, err := os.Stat(path); err == nil {
+		t.Error("stale socket was kept")
+	}
+}
