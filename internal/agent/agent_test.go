@@ -34,6 +34,36 @@ func TestRefGen(t *testing.T) {
 	}
 }
 
+func TestQualifyRef(t *testing.T) {
+	a := &Agent{snapGen: 7, refs: map[string]int{"e12#7": 5, "e46#3": 9}}
+	cases := []struct{ in, want string }{
+		// A plain ref is the current reading, as the docs show.
+		{"e12", "e12#7"},
+		// An explicit generation is kept for resolve to validate.
+		{"e12#7", "e12#7"},
+		{"e12#3", "e12#3"},
+		// A ref that is not in the current reading is left as-is, so the error
+		// still names what the caller typed.
+		{"e99", "e99"},
+		{"e46", "e46"}, // e46#3 exists, but not in the current reading
+		// The other target forms pass through untouched.
+		{"css=#id", "css=#id"},
+		{"text=Sign in", "text=Sign in"},
+		{"pos=10,20", "pos=10,20"},
+	}
+	for _, c := range cases {
+		if got := a.qualifyRef(c.in); got != c.want {
+			t.Errorf("qualifyRef(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+
+	// Before the first read there is no generation to complete with.
+	empty := &Agent{}
+	if got := empty.qualifyRef("e1"); got != "e1" {
+		t.Errorf("qualifyRef without a read = %q, want %q", got, "e1")
+	}
+}
+
 func TestSplitTokens(t *testing.T) {
 	cases := []struct {
 		name    string

@@ -42,6 +42,30 @@ func (a *Agent) currentRefs() map[string]int {
 	return a.refs
 }
 
+// qualifyRef completes a plain ref with the current reading's generation, so
+// `click e12` keeps working as the docs show: `snap` prints `e12#7`, but the
+// caller does not have to repeat the suffix it just read. An explicit
+// generation is left alone for resolve to validate, and anything that is not a
+// bare ref (css=, text=, pos=) passes through untouched.
+func (a *Agent) qualifyRef(spec string) string {
+	if strings.HasPrefix(spec, "css=") || strings.HasPrefix(spec, "text=") || strings.HasPrefix(spec, "pos=") {
+		return spec
+	}
+	if _, _, ok := refGen(spec); ok {
+		return spec
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.snapGen <= 0 {
+		return spec
+	}
+	full := spec + "#" + strconv.Itoa(a.snapGen)
+	if _, ok := a.refs[full]; ok {
+		return full
+	}
+	return spec
+}
+
 // resolve turns a target (ref/css/text/pos) into a Target and refuses a ref from
 // an older read, which would otherwise point to whatever now occupies that position.
 func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target string) (*browser.Target, string, error) {
@@ -49,6 +73,7 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 	if err != nil {
 		return nil, "", err
 	}
+	target = a.qualifyRef(target)
 	if !strings.HasPrefix(target, "css=") && !strings.HasPrefix(target, "text=") {
 		if _, gen, ok := refGen(target); ok {
 			a.mu.Lock()

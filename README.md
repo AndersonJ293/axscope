@@ -95,6 +95,11 @@ point**, not at its center, which is what lets you click inside an iframe). Open
 shadow roots are traversed: the accessibility tree flattens them — the snapshot
 shows what is inside, with a ref — and aiming by `text=`/`css=` reaches in too.
 
+`snap` prints each ref with the reading's generation (`e12#7`), because an old
+ref can point at whatever now occupies that position. You do not have to repeat
+it: a plain `e12` means the **current** reading, and an explicit older
+generation (`e12#3` after a new `snap`) is refused with the current one named.
+
 When the target refuses the action, the action **is not sent** and the response
 says why and what to do next: the target is disabled (`wait --enabled`), the
 target is covered (`to click the point anyway, use pos=x,y`), or the target is
