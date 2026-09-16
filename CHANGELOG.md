@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A tab the page opens (`target=_blank`, `window.open`) that is born already in
+  the session's group is now reported to the daemon: the extension claims it by
+  its group on creation, instead of only on a group change (which never comes).
 - Input (and `IntersectionObserver`) now reaches a background tab: each tab
   emulates focus (`Emulation.setFocusEmulationEnabled`), so `click`/`scroll` no
   longer need `tab --focus`, which brought the browser forward and stole the tab

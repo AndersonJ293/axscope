@@ -367,8 +367,19 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
-  // A new tab only concerns the session whose group it joins (set later).
-  const st = ownerByTab.get(tab.id);
+  // A tab the page opens (target=_blank, window.open) can be born already in the
+  // session's group, so onUpdated never reports a group change; claim it by its
+  // group here. Without this the daemon only learns about it on a restart.
+  let st = ownerByTab.get(tab.id);
+  if (!st && tab.groupId !== undefined && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+    for (const s of conns.values()) {
+      if (s.groupId !== null && s.groupId !== undefined && s.groupId === tab.groupId) {
+        ownerByTab.set(tab.id, s);
+        st = s;
+        break;
+      }
+    }
+  }
   if (!st) return;
   sendOn(st, { method: 'Target.targetCreated', params: { targetInfo: toTargetInfo(st, tab) } });
 });
