@@ -22,8 +22,9 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
+	var tab *browser.Tab
 	if req.Bool("new", false) {
-		tab, err := sess.NewTab(ctx, url)
+		tab, err = sess.NewTab(ctx, url)
 		if err != nil {
 			return protocol.Fail(err)
 		}
@@ -33,7 +34,14 @@ func (a *Agent) open(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 	sess.UpdateHUD(ctx, "open "+url)
 	title, _ := dom.EvalString(ctx, a.client(), sid, "document.title")
-	return ok(fmt.Sprintf("ok: %s\n%s", url, title))
+	line := fmt.Sprintf("ok: %s\n%s", url, title)
+	if tab == nil {
+		tab, _ = sess.Active()
+	}
+	if tab != nil {
+		line += "\ntab: " + tabRef(sess, tab.TargetID)
+	}
+	return ok(line)
 }
 
 // wait waits for text to appear/disappear, or for a target to reach a state

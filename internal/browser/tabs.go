@@ -231,6 +231,18 @@ func (s *Session) attachIfNeeded(tab *Tab) {
 	}
 }
 
+// TabIndex returns the 1-based index of a tab (its `tab <n>` ref).
+func (s *Session) TabIndex(targetID string) (int, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, id := range s.order {
+		if id == targetID {
+			return i + 1, true
+		}
+	}
+	return 0, false
+}
+
 // Active returns the active tab already ready, attaching only it if needed.
 func (s *Session) Active() (*Tab, error) {
 	tab, err := s.activeTab()
