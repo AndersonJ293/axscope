@@ -179,8 +179,10 @@ func (s *Session) HistoryMove(ctx context.Context, sid string, delta int, timeou
 }
 
 // Reload reloads the page.
-func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration) error {
-	if _, err := s.client.Send(ctx, "Page.reload", map[string]any{}, sid); err != nil {
+// Reload reloads the page. hard bypasses the cache, the standard remedy for a
+// dead UI.
+func (s *Session) Reload(ctx context.Context, sid string, timeout time.Duration, hard bool) error {
+	if _, err := s.client.Send(ctx, "Page.reload", map[string]any{"ignoreCache": hard}, sid); err != nil {
 		return err
 	}
 	// The load wait is advisory; Settle caps the total wait below.
