@@ -9,10 +9,6 @@ nothing here is a guess.
 - **Iframe from another origin (OOPIF)** is not read: that accessibility tree
   lives in the other site's process and requires its own CDP session per frame
   (item 3).
-- **Content that loads via `IntersectionObserver` does not advance in a hidden
-  tab.** It is not the tool's fault — it is the browser's — and the way out is
-  `tab <n> --focus`; `scroll` warns when it reaches the end under that condition.
-  It is in the README.
 
 The rest below is history: what closed, with what it taught.
 
@@ -208,6 +204,27 @@ right after.
 **Measured in the test round:** `snap` → ref of Candidate 413's "Open" → click →
 `CHECK 17`, without `eval` and without selector math. And the eight checks I
 redid (2, 8, 11, 12, 17, 18, 19, 20) all came out with a first-class command.
+
+---
+
+## 8. Input only reached the active tab — resolved
+
+**What was missing:** Chrome delivers `Input.dispatchMouseEvent` only to the tab
+the window is showing, so a background tab received nothing and the click
+answered `the click did not reach the target` while the page never saw a
+`mousedown`. The only way out was `tab <n> --focus`, which brings the browser
+forward and steals the tab the user is on.
+
+**Done:** every tab is initialized with `Emulation.setFocusEmulationEnabled`, so
+the page is simulated as focused and active. A background tab now accepts input
+and `scroll` works on it; `document.hidden` reports false, so an
+`IntersectionObserver` fires too. `tab <n> --focus` stays for when the user wants
+to watch the tab.
+
+**Measured:** before the change, a `click` on a background tab produced no
+`mousedown` in the page; after it, `click text=One` navigated to `#one` and a
+sentinel observed with `IntersectionObserver` reported `intersected`, without the
+tab ever becoming the active one.
 
 ---
 

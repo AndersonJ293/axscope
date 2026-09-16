@@ -103,6 +103,11 @@ func (s *Session) initTab(tab *Tab) error {
 			return fmt.Errorf("%s: %w", method, err)
 		}
 	}
+	// A background tab receives no Input events, so a click would silently answer
+	// "did not reach"; emulating focus lets it accept input without activating the
+	// tab, which would steal the tab the user is on. Best effort: an engine
+	// without the domain still works, only with the old limitation.
+	_, _ = s.client.Send(s.ctx, "Emulation.setFocusEmulationEnabled", map[string]any{"enabled": true}, sid)
 	if err := s.Presenter.Install(s.ctx, s.client, sid); err != nil {
 		return fmt.Errorf("overlay: %w", err)
 	}

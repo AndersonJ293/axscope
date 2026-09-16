@@ -496,12 +496,11 @@ internal/installer/ Chrome for Testing download
   word.** The response says where it found it (`in p.desc`), which is how you
   notice, and the way out is to wait for text that only exists on the target
   (`waitgone "Not yet"`).
-- **A background tab freezes anything that depends on a frame.** With the
-  document hidden (`document.hidden`), `IntersectionObserver` does not fire: a
-  page that loads content that way — infinite feed, lazy image — does not advance
-  no matter how much you scroll. `scroll` warns when it reaches the end in that
-  condition, and the way out is `axscope tab <n> --focus` (bring the tab to the
-  front) or `eval` calling the page's own function.
+- **A background tab is driven without stealing the tab you are on.** The session
+  emulates focus (`Emulation.setFocusEmulationEnabled`), so `click` and `scroll`
+  work on a tab the browser is not showing, and `document.hidden` reports false —
+  which also lets `IntersectionObserver` advance an infinite feed or a lazy image.
+  `axscope tab <n> --focus` stays for when you want to watch the tab.
 - `upload` through `<input type=file>` sends the **path**, which the browser
   reads — valid for browser and daemon on the same machine (the extension case).
   In a dropzone the content travels as bytes, so the path does not matter.
