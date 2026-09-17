@@ -139,7 +139,7 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	sess, err := browser.NewSession(ctx, handle.Client, false, render.Presenter{})
+	sess, err := browser.NewSession(ctx, handle.Client, false, render.Logged{Presenter: render.Presenter{}})
 	if err != nil {
 		handle.Client.Close()
 		return nil, err
