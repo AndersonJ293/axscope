@@ -7,8 +7,63 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
+
+// The auto session is a filesystem path component, so the prefix has to be safe
+// and short: anything outside [a-z0-9-] becomes a dash and ".." cannot survive.
+func TestSessionPrefix(t *testing.T) {
+	cases := []struct {
+		client, want string
+	}{
+		{"opencode", "opencode"},
+		{"Claude Desktop", "claude-desktop"},
+		{"cursor/../etc", "cursor----etc"},
+		{"", "mcp"},
+		{"../..", "mcp"},
+		{"verylongclientnamehere", "verylongclientnamehe"},
+	}
+	for _, c := range cases {
+		if got := sessionPrefix(c.client); got != c.want {
+			t.Errorf("sessionPrefix(%q) = %q, want %q", c.client, got, c.want)
+		}
+	}
+}
+
+// The id shape is the contract the README shows (`opencode-a1b2`).
+func TestAutoSessionShape(t *testing.T) {
+	got := autoSession("OpenCode")
+	if !strings.HasPrefix(got, "opencode-") || len(got) != len("opencode-")+4 {
+		t.Errorf("autoSession = %q, want opencode- plus 4 chars", got)
+	}
+	if a, b := autoSession("x"), autoSession("x"); a == b {
+		t.Errorf("two auto sessions collided: %q", a)
+	}
+}
+
+// An MCP instance that was not told a session gets one of its own, so it does
+// not share the browser, the tabs and the refs with the CLI by accident. The
+// once is reset here because it is process-wide by design.
+func TestEnsureSessionAutoProvisions(t *testing.T) {
+	sessionOnce, sessionID = sync.Once{}, ""
+	t.Setenv("AXSCOPE_SESSION", "")
+	if got := ensureSession("opencode"); !strings.HasPrefix(got, "opencode-") {
+		t.Errorf("ensureSession = %q, want an opencode- id", got)
+	}
+	if os.Getenv("AXSCOPE_SESSION") == "" {
+		t.Error("ensureSession must export the id, so the daemon inherits it")
+	}
+}
+
+// An explicit AXSCOPE_SESSION is used as is: that is the shared mode.
+func TestEnsureSessionKeepsExplicit(t *testing.T) {
+	sessionOnce, sessionID = sync.Once{}, ""
+	t.Setenv("AXSCOPE_SESSION", "work")
+	if got := ensureSession("opencode"); got != "work" {
+		t.Errorf("ensureSession = %q, want work", got)
+	}
+}
 
 // stop/install/sessions are settled by the daemon or the CLI and are not browser
 // actions; the switch in tools() must exclude them even with the full catalog
