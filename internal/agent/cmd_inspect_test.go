@@ -30,6 +30,22 @@ func TestCDPEndpoint(t *testing.T) {
 	}
 }
 
+// status says how the session drives the browser; attach wins over the engine.
+func TestEngineName(t *testing.T) {
+	cases := []struct {
+		attach, engine, want string
+	}{
+		{"", "", "ext"},
+		{"", "chrome", "chrome"},
+		{"host:9222", "ext", "attached (host:9222)"},
+	}
+	for _, c := range cases {
+		if got := (&Agent{Attach: c.attach, Engine: c.engine}).engineName(); got != c.want {
+			t.Errorf("engineName(attach=%q, engine=%q) = %q, want %q", c.attach, c.engine, got, c.want)
+		}
+	}
+}
+
 // eval used to print CDP's result.value verbatim, so a JavaScript string came
 // back double-serialized (quotes and escaped newlines). prettyValue presents it.
 func TestPrettyValue(t *testing.T) {

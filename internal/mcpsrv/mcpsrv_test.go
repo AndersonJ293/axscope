@@ -10,16 +10,17 @@ import (
 	"testing"
 )
 
-// ping/stop/install are settled by the daemon or the CLI and are not browser
-// actions; the switch in tools() must exclude them even with the full catalog
-// requested (AXSCOPE_MCP_TOOLS=all), where the curated filter is out of the way.
+// stop/install are settled by the daemon or the CLI and are not browser actions;
+// the switch in tools() must exclude them even with the full catalog requested
+// (AXSCOPE_MCP_TOOLS=all), where the curated filter is out of the way. `ping`
+// stays exposed: it is the client's liveness check.
 func TestCatalogExcludesCLIOnlyCommandsWithAll(t *testing.T) {
 	t.Setenv("AXSCOPE_MCP_TOOLS", "all")
 	exposed := map[string]bool{}
 	for _, td := range tools() {
 		exposed[td.Name] = true
 	}
-	for _, cmd := range []string{"ping", "stop", "install"} {
+	for _, cmd := range []string{"stop", "install"} {
 		if exposed[cmd] {
 			t.Errorf("%q must not be exposed as an MCP tool", cmd)
 		}
@@ -88,9 +89,10 @@ func TestCatalogCoversCoreInteractions(t *testing.T) {
 }
 
 // The catalog remains a lean set: if it grows by carelessness, this is where it
-// is noticed (each schema costs context on every request).
+// is noticed (each schema costs context on every request). status and ping came
+// in because a client needs to ask what the state is when a connection drops.
 func TestCatalogDoesNotGrowByCarelessness(t *testing.T) {
-	if n := len(tools()); n > 30 {
+	if n := len(tools()); n > 35 {
 		t.Errorf("the curated catalog has %d tools — above that the context cost stops paying off", n)
 	}
 }

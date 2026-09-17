@@ -27,14 +27,47 @@ func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Reque
 	title, _ := dom.EvalString(ctx, a.client(), sid, "document.title")
 	var b strings.Builder
 	fmt.Fprintf(&b, "session: %s\n", a.Session)
+	fmt.Fprintf(&b, "engine: %s\n", a.engineName())
 	if handle != nil {
+		fmt.Fprintf(&b, "connection: %s\n", connectionState(handle))
 		fmt.Fprintf(&b, "cdp: %s\n", cdpEndpoint(handle))
 	}
 	fmt.Fprintf(&b, "url: %s\n", url)
 	fmt.Fprintf(&b, "title: %s\n", title)
 	fmt.Fprintf(&b, "tabs: %d\n", len(tabs))
+	for _, t := range tabs {
+		marker := " "
+		if t.Active {
+			marker = "*"
+		}
+		label := t.Title
+		if label == "" {
+			label = "(untitled)"
+		}
+		fmt.Fprintf(&b, "%s[%d] %s — %s\n", marker, t.Index, label, t.URL)
+	}
 	fmt.Fprintf(&b, "active refs: %d\n", len(a.currentRefs()))
 	return ok(strings.TrimRight(b.String(), "\n"))
+}
+
+// engineName says how the session drives the browser, for status.
+func (a *Agent) engineName() string {
+	if a.Attach != "" {
+		return "attached (" + a.Attach + ")"
+	}
+	if a.Engine == "" {
+		return browser.EngineExt
+	}
+	return a.Engine
+}
+
+// connectionState reports whether the CDP connection is still alive, and names
+// the recovery when it is not.
+func connectionState(h *browser.Handle) string {
+	if h.Client.Err() != nil || h.Exited() {
+		return "down (the next command rebuilds the session)"
+	}
+	return "ok"
 }
 
 // cdpEndpoint names where the session's CDP lives, so an agent that wants to fall

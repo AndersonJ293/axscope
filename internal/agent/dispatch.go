@@ -71,7 +71,7 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 	}
 	sess, err := a.ensure(ctx)
 	if err != nil {
-		return protocol.Fail(err)
+		return protocol.Fail(sessionError(err))
 	}
 	if !found {
 		return protocol.Fail(fmt.Errorf("command %q is not handled by the daemon", req.Cmd))
@@ -81,4 +81,11 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 
 func (a *Agent) ping(_ context.Context, _ *browser.Session, _ protocol.Request) protocol.Response {
 	return ok("pong")
+}
+
+// sessionError adds the way out when the session could not be brought up, so a
+// dropped browser connection does not read as a dead end: the next command
+// rebuilds the session, and `status` names the state.
+func sessionError(err error) error {
+	return fmt.Errorf("%w — the session could not be brought up; run `axscope status` for its state (the next command retries)", err)
 }
