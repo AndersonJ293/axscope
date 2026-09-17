@@ -65,6 +65,11 @@ type Session struct {
 	// attaching avoids attaching twice to the same target (a race between
 	// targetCreated and the bootstrap's explicit attach).
 	attaching map[string]bool
+	// booted is set once the session has registered the tabs that already
+	// existed; bootSet holds them, because setDiscoverTargets re-announces every
+	// open tab and those must not steal the active tab.
+	booted  bool
+	bootSet map[string]bool
 
 	inflight     map[string]map[string]string
 	lastActivity map[string]time.Time
@@ -96,6 +101,7 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 		Presenter:     presenter,
 		tabs:          make(map[string]*Tab),
 		attaching:     make(map[string]bool),
+		bootSet:       make(map[string]bool),
 		inflight:      make(map[string]map[string]string),
 		lastActivity:  make(map[string]time.Time),
 		acceptDialogs: acceptDialogs,
@@ -120,7 +126,9 @@ func (s *Session) wireTargets() {
 		}
 		// The handler runs on the read loop: it cannot block on a Send, so it
 		// only registers — the attachment happens on demand.
-		s.remember(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title)
+		if tab, created := s.rememberNew(p.TargetInfo.TargetID, p.TargetInfo.URL, p.TargetInfo.Title); created {
+			s.pageOpened(tab.TargetID)
+		}
 	})
 
 	s.client.On("Target.detachedFromTarget", func(params json.RawMessage, _ string) {
@@ -173,12 +181,20 @@ func (s *Session) bootstrap(ctx context.Context) error {
 	}
 	// All pages are registered, but only the one really used is attached; in a
 	// user browser that can be dozens of tabs, and attaching to all is invasive.
+	pages := make([]string, 0, len(got.TargetInfos))
 	for _, ti := range got.TargetInfos {
 		if ti.Type != "page" {
 			continue
 		}
 		s.remember(ti.TargetID, ti.URL, ti.Title)
+		pages = append(pages, ti.TargetID)
 	}
+	s.mu.Lock()
+	for _, id := range pages {
+		s.bootSet[id] = true
+	}
+	s.booted = true
+	s.mu.Unlock()
 
 	// Engines like chrome-headless-shell are not born with a page: it must be
 	// created. Without that the daemon stays alive with no tab at all.
