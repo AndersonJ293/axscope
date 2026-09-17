@@ -71,7 +71,7 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **30 of the 33 commands**. The rest are not missing — set
+request): **30 of the 34 commands**. The rest are not missing — set
 `AXSCOPE_MCP_TOOLS=all` to expose every command, and `axscope help` lists them all
 with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
@@ -91,6 +91,7 @@ axscope wait css=#submit --enabled   # waits for the state, not the text
 axscope wait url=settings/rules      # waits for the URL (a SPA changes it with no new text)
 axscope wait --network-idle          # waits until the requests stop (a page that renders in cascades)
 axscope find css=#submit             # the ref the last snap gave a css=/text= target, without acting
+axscope download e7                  # saves the file a target offers, returns its path
 axscope read --links                 # the links of the page as `label — href` (absolute)
 axscope read --table                 # an HTML <table> as aligned rows
 axscope reload --hard                # reloads bypassing the cache — the remedy for a dead UI
@@ -583,6 +584,12 @@ internal/installer/ Chrome for Testing download
 - `upload` through `<input type=file>` sends the **path**, which the browser
   reads — valid for browser and daemon on the same machine (the extension case).
   In a dropzone the content travels as bytes, so the path does not matter.
+- `download <target>` returns the path of the file the page offers. A link is
+  fetched by the browser through the extension (`chrome.downloads`, no prompt), so
+  the session's cookies apply; a button or a blob only exists in the page and goes
+  through a real click. In extension mode the file lands in the browser's download
+  folder — if the browser is set to **ask where to save each file**, an unattended
+  run will prompt, so turn that setting off.
 - Linux-first: the daemon uses a unix socket and the banner workaround is a
   `.desktop` override. macOS and Windows are not verified yet.
 

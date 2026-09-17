@@ -5,6 +5,7 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -493,6 +494,36 @@ func TestDialogDecision(t *testing.T) {
 	s.ForceUnload(true)
 	if !s.dialogDecision("beforeunload") {
 		t.Error("a forced navigation must accept the beforeunload")
+	}
+}
+
+// A finished download is a new file without the .crdownload suffix; a file that
+// only started (still .crdownload) must not be reported as the download, and an
+// empty directory must not be answered with a path.
+func TestWaitForDownload(t *testing.T) {
+	dir := t.TempDir()
+	before := map[string]bool{"old.txt": true}
+	for name, data := range map[string]string{
+		"old.txt":                        "x",       // was already there
+		"report.pdf.crdownload":          "partial", // still being written (old naming)
+		".org.chromium.Chromium.AbC1234": "partial", // still being written (Chromium temp)
+		"report.pdf":                     "done",    // finished
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := waitForDownload(dir, before, 2*time.Second)
+	if err != nil {
+		t.Fatalf("waitForDownload: %v", err)
+	}
+	if filepath.Base(got) != "report.pdf" {
+		t.Errorf("waitForDownload = %q, want the finished file report.pdf", got)
+	}
+
+	empty := t.TempDir()
+	if _, err := waitForDownload(empty, map[string]bool{}, 300*time.Millisecond); err == nil {
+		t.Error("an empty directory must not report a download")
 	}
 }
 
