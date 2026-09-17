@@ -10,6 +10,12 @@ import (
 
 // remember registers a tab without attaching to it.
 func (s *Session) remember(targetID, url, title string) *Tab {
+	tab, _ := s.rememberNew(targetID, url, title)
+	return tab
+}
+
+// rememberNew registers a tab and reports whether the session had not seen it.
+func (s *Session) rememberNew(targetID, url, title string) (*Tab, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if tab, ok := s.tabs[targetID]; ok {
@@ -19,7 +25,7 @@ func (s *Session) remember(targetID, url, title string) *Tab {
 		if title != "" {
 			tab.Title = title
 		}
-		return tab
+		return tab, false
 	}
 	tab := &Tab{
 		TargetID: targetID,
@@ -32,7 +38,21 @@ func (s *Session) remember(targetID, url, title string) *Tab {
 	if s.canActivate(targetID) {
 		s.active = targetID
 	}
-	return tab
+	return tab, true
+}
+
+// pageOpened makes a tab the page opened itself the active one: an apply flow that
+// opens a new tab is the common case, and without this the next command acts on
+// the page the agent just left. The tabs known when the session was built are
+// ignored (`setDiscoverTargets` re-announces every open one), and the daemon's own
+// newtab/open already selects explicitly.
+func (s *Session) pageOpened(targetID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.booted || s.bootSet[targetID] {
+		return
+	}
+	s.active = targetID
 }
 
 // canActivate decides whether the tab can become active: only the one that was
