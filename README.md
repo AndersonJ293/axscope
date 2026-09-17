@@ -71,7 +71,7 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **30 of the 34 commands**. The rest are not missing — set
+request): **30 of the 35 commands**. The rest are not missing — set
 `AXSCOPE_MCP_TOOLS=all` to expose every command, and `axscope help` lists them all
 with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
@@ -97,6 +97,7 @@ axscope read --table                 # an HTML <table> as aligned rows
 axscope reload --hard                # reloads bypassing the cache — the remedy for a dead UI
 axscope tabs                         # open tabs (the active one is marked *)
 axscope status                       # session, CDP endpoint, active tab, refs
+axscope viewport 360x800 mobile=1    # emulates a phone (metrics + touch); --reset restores
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script
 ```
@@ -181,6 +182,13 @@ axis (`#code 5000/41672 x120/800`); without it the format stays as above.
 the page is already at its end — it falls back to the largest scrollable area in
 view and the answer names whichever moved (`#jobs 400/1914`); `target=` picks the
 container yourself.
+
+`viewport <width>x<height>` emulates a device — `viewport 360x800 mobile=1` is a
+phone (the metrics plus touch), `scale=2` sets the device pixel ratio, and
+`--reset` (or `viewport reset`) returns to the real window. `snap` and `shot`
+follow it, so a responsive layout is checked without resizing the window. In
+`mobile=1` a page that carries a viewport meta lays out at the device width, which
+is the normal case; without one it falls back to the 980px mobile default.
 
 The end of the snapshot lists the **clickables the tree does not mark** — a `div`
 with a handler and `cursor: pointer`, the case of the chat that never becomes a

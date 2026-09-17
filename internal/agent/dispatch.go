@@ -42,6 +42,7 @@ func (a *Agent) routes() map[string]route {
 		"check":    {needsSession: true, handle: a.checkLike},
 		"uncheck":  {needsSession: true, handle: a.checkLike},
 		"scroll":   {needsSession: true, handle: a.scroll},
+		"viewport": {needsSession: true, handle: a.viewport},
 		"wait":     {needsSession: true, handle: a.wait},
 		"waitgone": {needsSession: true, handle: a.wait},
 		"read":     {needsSession: true, handle: a.read},

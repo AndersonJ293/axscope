@@ -189,6 +189,31 @@ func TestReadExpression(t *testing.T) {
 	}
 }
 
+// viewport accepts WxH and refuses what would be a silent no-op.
+func TestParseViewportSize(t *testing.T) {
+	cases := []struct {
+		in   string
+		w, h int
+		ok   bool
+	}{
+		{"360x800", 360, 800, true},
+		{"360X800", 360, 800, true},
+		{"1080*1920", 1080, 1920, true},
+		{"360", 0, 0, false},
+		{"0x800", 0, 0, false},
+		{"axb", 0, 0, false},
+	}
+	for _, c := range cases {
+		w, h, err := parseViewportSize(c.in)
+		if c.ok && (err != nil || w != c.w || h != c.h) {
+			t.Errorf("parseViewportSize(%q) = %d,%d,%v; want %d,%d", c.in, w, h, err, c.w, c.h)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("parseViewportSize(%q) accepted an invalid size", c.in)
+		}
+	}
+}
+
 func TestSplitTokens(t *testing.T) {
 	cases := []struct {
 		name    string
