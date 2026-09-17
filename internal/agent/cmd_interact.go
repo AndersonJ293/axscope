@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
 	"github.com/AndersonJ293/axscope/internal/dom"
+	"github.com/AndersonJ293/axscope/internal/paths"
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
@@ -52,6 +54,47 @@ func (a *Agent) clickLike(ctx context.Context, sess *browser.Session, req protoc
 		return protocol.Fail(actionFailure(action, target, err))
 	}
 	return ok(a.finish(ctx, sess, sid, withNotice(action+" "+target, notice), before))
+}
+
+// download triggers the file a target offers and answers where it landed. The
+// path is on the machine running the daemon, so it can go straight into an
+// attachment.
+func (a *Agent) download(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {
+	target := req.String("target")
+	if target == "" {
+		return protocol.Fail(fmt.Errorf("usage: axscope download <target>"))
+	}
+	t, sid, err := a.resolve(ctx, sess, target)
+	if err != nil {
+		return protocol.Fail(err)
+	}
+	dir := paths.DownloadsDir(a.Session)
+	before := a.errCount(sess, sid)
+	// A link has a URL the browser can fetch itself, which the extension saves
+	// without the save dialog the debugger cannot suppress. A button or a blob
+	// only exists in the page, so the click path stays for those.
+	if href := browser.Href(ctx, a.client(), sid, t.ObjectID); isDownloadable(href) {
+		if path, err := browser.DownloadURL(ctx, a.client(), sid, href, 30*time.Second); err == nil {
+			return ok(a.finish(ctx, sess, sid, "download "+target+" -> "+path+" (browser)", before))
+		}
+		// An older extension has no downloads bridge: fall back to the click.
+	}
+	path, err := browser.Download(ctx, a.client(), sid, t, dir, 30*time.Second, sess.Presenter)
+	if err != nil {
+		return protocol.Fail(actionFailure("download", target, err))
+	}
+	return ok(a.finish(ctx, sess, sid, "download "+target+" -> "+path+" (click)", before))
+}
+
+// isDownloadable accepts what chrome.downloads can fetch by itself. A blob: URL
+// belongs to the page's origin, so it is not on the list.
+func isDownloadable(href string) bool {
+	for _, prefix := range []string{"http://", "https://", "file://"} {
+		if strings.HasPrefix(href, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Agent) drag(ctx context.Context, sess *browser.Session, req protocol.Request) protocol.Response {

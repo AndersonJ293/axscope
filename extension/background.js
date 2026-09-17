@@ -168,6 +168,23 @@ async function handleMessage(st, msg) {
   }
   if (!method) return;
 
+  // Downloads: the debugger refuses the browser-level download commands, so the
+  // extension saves the file itself with chrome.downloads (saveAs:false never
+  // prompts, even when the browser asks where to save). The daemon polls the
+  // status for the absolute path.
+  if (method === 'Axscope.download') {
+    const { url, filename } = params || {};
+    const opts = { url, saveAs: false, conflictAction: 'uniquify' };
+    if (filename) opts.filename = filename;
+    respond(st, id, await chrome.downloads.download(opts));
+    return;
+  }
+  if (method === 'Axscope.downloadStatus') {
+    const items = await chrome.downloads.search({ id: (params || {}).id });
+    respond(st, id, items[0] || null);
+    return;
+  }
+
   if (method.startsWith('Target.')) {
     respond(st, id, await handleTarget(st, method, params || {}));
     return;

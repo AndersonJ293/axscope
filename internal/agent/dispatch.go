@@ -32,6 +32,7 @@ func (a *Agent) routes() map[string]route {
 		"click":    {needsSession: true, handle: a.clickLike},
 		"hover":    {needsSession: true, handle: a.clickLike},
 		"drag":     {needsSession: true, handle: a.drag},
+		"download": {needsSession: true, handle: a.download},
 		"upload":   {needsSession: true, handle: a.upload},
 		"fill":     {needsSession: true, handle: a.fillLike},
 		"type":     {needsSession: true, handle: a.fillLike},

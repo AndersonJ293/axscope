@@ -66,6 +66,12 @@ func BrowsersDir() string {
 	return filepath.Join(StateDir(), "browsers")
 }
 
+// DownloadsDir is where `download` saves the files a page offers, one directory
+// per session, so the path returned is stable and attachable.
+func DownloadsDir(session string) string {
+	return filepath.Join(StateDir(), "downloads", session)
+}
+
 // BrowserExecutableMarker points to the Chromium installed by `axscope install` for a product.
 func BrowserExecutableMarker(product string) string {
 	return filepath.Join(BrowsersDir(), "executable-"+product)

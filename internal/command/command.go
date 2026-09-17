@@ -33,6 +33,7 @@ var Specs = []Spec{
 	{Cmd: "click", Positional: []string{"target"}, Flags: []string{"right", "middle", "double", "dom"}, Help: "clicks the target, real pointer by default (--dom fires element.click() for pages that ignore synthetic pointer events)"},
 	{Cmd: "hover", Positional: []string{"target"}, Help: "hovers over the target"},
 	{Cmd: "drag", Positional: []string{"from", "to"}, Flags: []string{"top", "bottom", "type"}, Help: "drags <from> to <to> (--top/--bottom where to drop; type=pointer|html5 forces the family)"},
+	{Cmd: "download", Positional: []string{"target"}, Help: "triggers a file the page offers and returns its path (server-local, attachable)"},
 	{Cmd: "upload", Positional: []string{"file", "target"}, Optional: []string{"target"}, Help: "sends a file (without target it goes to the first <input type=file>; target= on a dropzone)"},
 	{Cmd: "fill", Positional: []string{"target", "value"}, Help: "replaces the field's content"},
 	{Cmd: "type", Positional: []string{"target", "value"}, Help: "types character by character"},
