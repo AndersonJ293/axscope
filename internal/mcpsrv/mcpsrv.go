@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/AndersonJ293/axscope/internal/command"
 	"github.com/AndersonJ293/axscope/internal/daemonclient"
@@ -22,6 +23,10 @@ import (
 )
 
 const protocolVersion = "2025-06-18"
+
+// defaultCallMinutes bounds a tool call when the client does not cancel and the
+// daemon never answers, so the call cannot hang an agent forever.
+const defaultCallMinutes = 10
 
 // sessionOnce keeps the auto-provisioned session stable for the process life:
 // the first call decides it, every later one reads the same id.
@@ -127,32 +132,63 @@ type rpcError struct {
 	Message string `json:"message"`
 }
 
+// server is the stdio transport state. A tool call runs in its own goroutine, so
+// a slow or stuck command no longer freezes the whole server: ping keeps
+// answering and a cancellation is read and delivered while the call is in
+// flight. The writer is shared, so every response takes the lock.
+type server struct {
+	ctx    context.Context
+	writer *bufio.Writer
+	wmu    sync.Mutex
+
+	mu    sync.Mutex
+	calls map[string]context.CancelFunc
+
+	// wg tracks the tool calls in flight so stdin EOF drains them: a pipe still
+	// reading stdout expects their responses.
+	wg sync.WaitGroup
+
+	// call runs a tool; a test swaps it. Nil means callTool.
+	call func(context.Context, string, map[string]any) map[string]any
+}
+
 // Run serves the MCP protocol on stdin/stdout until EOF.
 func Run(ctx context.Context) error {
 	// The daemon is detached (Setsid) so the browser survives between commands;
 	// without this an auto session would outlive the client that asked for it.
 	defer stopAutoSession()
 
-	reader := bufio.NewReaderSize(os.Stdin, 8<<20)
-	writer := bufio.NewWriter(os.Stdout)
-	defer writer.Flush()
+	s := &server{
+		ctx:    ctx,
+		writer: bufio.NewWriter(os.Stdout),
+		calls:  map[string]context.CancelFunc{},
+	}
 
+	reader := bufio.NewReaderSize(os.Stdin, 8<<20)
+	var runErr error
 	for {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
-			handleLine(ctx, line, writer)
-			writer.Flush()
+			s.dispatch(line)
 		}
 		if err != nil {
-			if err == io.EOF {
-				return nil
+			if err != io.EOF {
+				runErr = err
 			}
-			return err
+			break
 		}
 	}
+	// A pipe still reading stdout expects the calls in flight to answer. Each has
+	// its own bound (callTimeout), so the drain cannot wait forever.
+	s.wg.Wait()
+	s.flush()
+	return runErr
 }
 
-func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
+// dispatch routes one line. A notification is handled inline (a cancellation
+// must not sit behind the call it cancels); a tools/call runs in its own
+// goroutine; everything else stays inline, keeping the handshake ordered.
+func (s *server) dispatch(line []byte) {
 	trimmed := strings.TrimSpace(string(line))
 	if trimmed == "" {
 		return
@@ -161,11 +197,45 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 	if err := json.Unmarshal([]byte(trimmed), &req); err != nil {
 		return
 	}
-	// Notifications (without id) do not generate a response.
+	if req.Method == "notifications/cancelled" {
+		s.cancel(req.Params)
+		return
+	}
+	// A notification without an id never gets a response.
 	if len(req.ID) == 0 {
 		return
 	}
+	if req.Method == "tools/call" {
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.handle(req)
+		}()
+		return
+	}
+	s.handle(req)
+}
 
+// handleLine is the single-request path, kept for tests: it builds a server over
+// the writer and handles the line synchronously.
+func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
+	s := &server{ctx: ctx, writer: writer, calls: map[string]context.CancelFunc{}}
+	trimmed := strings.TrimSpace(string(line))
+	if trimmed == "" {
+		return
+	}
+	var req rpcRequest
+	if err := json.Unmarshal([]byte(trimmed), &req); err != nil {
+		return
+	}
+	if len(req.ID) == 0 {
+		return
+	}
+	s.handle(req)
+}
+
+// handle answers one request. The caller decides where it runs.
+func (s *server) handle(req rpcRequest) {
 	switch req.Method {
 	case "initialize":
 		// The MCP client name (opencode, claude, cursor…) names the tab group,
@@ -181,7 +251,7 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 			_ = os.Setenv("AXSCOPE_AGENT", name)
 		}
 		ensureSession(name)
-		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{
+		s.write(rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "axscope", "version": "0.1.0"},
@@ -189,10 +259,10 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 		}})
 
 	case "ping":
-		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}})
+		s.write(rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{}})
 
 	case "tools/list":
-		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"tools": tools()}})
+		s.write(rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"tools": tools()}})
 
 	case "tools/call":
 		var params struct {
@@ -200,21 +270,123 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 			Arguments map[string]any `json:"arguments"`
 		}
 		if err := json.Unmarshal(req.Params, &params); err != nil {
-			write(writer, errResponse(req.ID, -32602, "invalid params"))
+			s.write(errResponse(req.ID, -32602, "invalid params"))
 			return
 		}
-		result := callTool(ctx, params.Name, params.Arguments)
-		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: result})
+		ctx, cancel := s.beginCall(req.ID)
+		result := s.caller()(ctx, params.Name, params.Arguments)
+		s.endCall(req.ID, cancel)
+		s.write(rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: result})
 
 	case "resources/list":
-		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"resources": []any{}}})
+		s.write(rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"resources": []any{}}})
 
 	case "prompts/list":
-		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"prompts": []any{}}})
+		s.write(rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{"prompts": []any{}}})
 
 	default:
-		write(writer, errResponse(req.ID, -32601, "unsupported method: "+req.Method))
+		s.write(errResponse(req.ID, -32601, "unsupported method: "+req.Method))
 	}
+}
+
+// caller is the tool runner, defaulting to callTool.
+func (s *server) caller() func(context.Context, string, map[string]any) map[string]any {
+	if s.call != nil {
+		return s.call
+	}
+	return callTool
+}
+
+// beginCall registers a tool call under a cancellable, bounded context. The bound
+// is a backstop for a client that never cancels: AXSCOPE_MCP_TIMEOUT_MINUTES
+// (0 = no bound), so a daemon that never answers cannot hold the call forever.
+func (s *server) beginCall(id json.RawMessage) (context.Context, context.CancelFunc) {
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if d := callTimeout(); d > 0 {
+		ctx, cancel = context.WithTimeout(s.ctx, d)
+	} else {
+		ctx, cancel = context.WithCancel(s.ctx)
+	}
+	s.mu.Lock()
+	s.calls[idKey(id)] = cancel
+	s.mu.Unlock()
+	return ctx, cancel
+}
+
+// endCall forgets a finished call and releases its context.
+func (s *server) endCall(id json.RawMessage, cancel context.CancelFunc) {
+	s.mu.Lock()
+	delete(s.calls, idKey(id))
+	s.mu.Unlock()
+	cancel()
+}
+
+// cancel delivers a client cancellation to the in-flight call, if it is still
+// running. A late cancel for a finished call is a no-op.
+func (s *server) cancel(params json.RawMessage) {
+	var p struct {
+		RequestID json.RawMessage `json:"requestId"`
+	}
+	if json.Unmarshal(params, &p) != nil {
+		return
+	}
+	s.mu.Lock()
+	cancel := s.calls[idKey(p.RequestID)]
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// write sends one response and flushes it: a concurrent caller must not sit in
+// the buffer until the next request.
+func (s *server) write(resp rpcResponse) {
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return
+	}
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	_, _ = s.writer.Write(append(data, '\n'))
+	_ = s.writer.Flush()
+}
+
+func (s *server) flush() {
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	_ = s.writer.Flush()
+}
+
+// callTimeout bounds one tool call. It is a safety net, not the expected path:
+// a well-behaved client cancels first. 0 disables the bound.
+func callTimeout() time.Duration {
+	minutes := defaultCallMinutes
+	if v := os.Getenv("AXSCOPE_MCP_TIMEOUT_MINUTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			minutes = n
+		}
+	}
+	if minutes <= 0 {
+		return 0
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
+// idKey normalizes a JSON-RPC id so a cancellation's numeric or string form
+// matches the id the request carried (clients are not consistent about it).
+func idKey(raw json.RawMessage) string {
+	s := strings.TrimSpace(string(raw))
+	if s == "" {
+		return ""
+	}
+	if s[0] == '"' {
+		var v string
+		if json.Unmarshal(raw, &v) == nil {
+			return v
+		}
+	}
+	return s
 }
 
 func callTool(ctx context.Context, name string, args map[string]any) map[string]any {
@@ -223,7 +395,7 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 	}
 	// Tools arrive after initialize; this covers a client that skips it.
 	ensureSession("")
-	resp, err := daemonclient.Send(protocol.Request{Cmd: name, Args: args})
+	resp, err := daemonclient.SendContext(ctx, protocol.Request{Cmd: name, Args: args})
 	if err != nil {
 		return toolText("error: "+err.Error(), true)
 	}
@@ -366,14 +538,6 @@ func instructions() string {
 		note += fmt.Sprintf("%d of the %d commands are exposed by default to keep each request lean; call the `help` tool to list them all, or set AXSCOPE_MCP_TOOLS=all to expose every command.", exposed, total)
 	}
 	return note + " This MCP server has a browser session of its own (`status` names it; set AXSCOPE_SESSION to share one)."
-}
-
-func write(writer *bufio.Writer, resp rpcResponse) {
-	data, err := json.Marshal(resp)
-	if err != nil {
-		return
-	}
-	_, _ = writer.Write(append(data, '\n'))
 }
 
 // displayName turns the MCP client name into a readable label:

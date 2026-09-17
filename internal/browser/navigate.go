@@ -247,6 +247,9 @@ func (s *Session) WaitForURL(ctx context.Context, sid string, present bool, matc
 	deadline := time.Now().Add(timeout)
 	last := ""
 	for {
+		if ctx.Err() != nil {
+			return last, false
+		}
 		if href, err := dom.EvalString(ctx, s.client, sid, "location.href"); err == nil {
 			last = href
 			if match(href) == present {
@@ -299,6 +302,9 @@ func (s *Session) WaitForNetworkIdle(ctx context.Context, sid string, idle, time
 func (s *Session) WaitForLoad(ctx context.Context, sid string, from docMark, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		doc, state, url := s.docState(ctx, sid)
 		if state == "complete" && (from.doc == "" || doc != from.doc || url != from.url) {
 			return nil
