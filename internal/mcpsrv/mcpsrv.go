@@ -255,9 +255,10 @@ type toolDef struct {
 // curatedMCP is the lean set exposed by default (fewer schemas means less context
 // per request; `AXSCOPE_MCP_TOOLS=all` opens everything). It covers reading,
 // interaction, scrolling, navigation and tab lifecycle; select/check/uncheck/
-// type/upload stay because the refusal messages cite them, and status/ping stay
-// because a client needs to ask what the state is when a connection drops.
+// type/upload stay because the refusal messages cite them, and status/ping/help
+// stay because a client needs to ask what the state is and what exists.
 var curatedMCP = map[string]bool{
+	"help":     true,
 	"open":     true,
 	"snap":     true,
 	"click":    true,
@@ -360,9 +361,9 @@ func instructions() string {
 	exposed, total := len(tools()), mcpCommands()
 	note := "axscope drives a real browser (snap → ref → act). "
 	if exposed >= total {
-		note += fmt.Sprintf("All %d commands are exposed; `axscope help` lists them with their arguments.", total)
+		note += fmt.Sprintf("All %d commands are exposed; call the `help` tool for the list with their arguments.", total)
 	} else {
-		note += fmt.Sprintf("%d of the %d commands are exposed by default to keep each request lean; set AXSCOPE_MCP_TOOLS=all to expose every command, or run `axscope help` to list them all.", exposed, total)
+		note += fmt.Sprintf("%d of the %d commands are exposed by default to keep each request lean; call the `help` tool to list them all, or set AXSCOPE_MCP_TOOLS=all to expose every command.", exposed, total)
 	}
 	return note + " This MCP server has a browser session of its own (`status` names it; set AXSCOPE_SESSION to share one)."
 }

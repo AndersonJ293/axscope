@@ -71,8 +71,8 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **32 of the 36 commands** (including `ping` and `status`). The rest are not missing — set
-`AXSCOPE_MCP_TOOLS=all` to expose every command, and `axscope help` lists them all
+request): **33 of the 37 commands** (including `help`, `ping` and `status`). The rest are not missing — set
+`AXSCOPE_MCP_TOOLS=all` to expose every command, and the **`help` tool** lists them all
 with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
 choice and not an absent capability.

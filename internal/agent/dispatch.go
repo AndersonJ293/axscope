@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
+	"github.com/AndersonJ293/axscope/internal/command"
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
@@ -25,6 +26,7 @@ func (a *Agent) routes() map[string]route {
 	return map[string]route{
 		"ping":   {handle: a.ping},
 		"status": {handle: a.status},
+		"help":   {handle: a.help},
 		"script": {handle: a.runScript},
 
 		"open":     {needsSession: true, handle: a.open},
@@ -81,6 +83,13 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 
 func (a *Agent) ping(_ context.Context, _ *browser.Session, _ protocol.Request) protocol.Response {
 	return ok("pong")
+}
+
+// help answers the command catalog. It is exposed over MCP so a client can list
+// what exists before guessing tool names (or reaching for `eval`), and it needs
+// no browser.
+func (a *Agent) help(_ context.Context, _ *browser.Session, _ protocol.Request) protocol.Response {
+	return ok(command.Help())
 }
 
 // sessionError adds the way out when the session could not be brought up, so a
