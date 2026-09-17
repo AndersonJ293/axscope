@@ -556,6 +556,7 @@ axscope stop --all    # all sessions and all browsers
 | `AXSCOPE_BRIDGE_PORT` | first port for the extension bridge (default `8787`) |
 | `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |
 | `AXSCOPE_SPOTLIGHT` | `1` re-enables the target outline |
+| `AXSCOPE_DEBUG` | `1` logs the best-effort presentation failures (daemon log) |
 
 ## Project layout
 
