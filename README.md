@@ -398,10 +398,16 @@ without restarting anything.
    this browser"* banner on every tab. To hide it:
 
    ```bash
-   scripts/brave-hide-debug-banner.sh install   # creates a .desktop override, no sudo
-   # close Brave completely and open it again
-   scripts/brave-hide-debug-banner.sh remove    # to revert
+   scripts/hide-debug-banner.sh install   # Brave/Chrome/Chromium, .desktop override, no sudo
+   # close the browser completely and open it again
+   scripts/hide-debug-banner.sh remove    # to revert
    ```
+
+   It handles `brave`, `chrome` and `chromium` (all it finds, by default) and
+   prints the `Exec` lines it changed. On **macOS and Windows** there is no
+   `.desktop` to override: add `--silent-debugger-extension-api` to how you
+   launch the browser yourself (Windows: the shortcut's target; macOS: a wrapper
+   that runs the browser binary), or live with the banner.
 
 3. Check the connection in the extension icon (it should say **connected**).
 
