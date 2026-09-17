@@ -120,6 +120,12 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		line += " [ref=" + ref + "]"
 	}
 	line += b.props(n)
+	if frameRoles[role] && len(b.children[nodeID]) == 0 {
+		// The frame's tree did not graft onto it: it is cross-origin (its own
+		// process, out of reach) or still loading. Naming it beats a bare
+		// "- Iframe", which reads as an empty frame.
+		line += " (its content is not in the tree: a cross-origin frame or one still loading)"
+	}
 	b.emit(depth, line)
 	before := len(b.out)
 

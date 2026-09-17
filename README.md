@@ -605,9 +605,11 @@ internal/installer/ Chrome for Testing download
 - **Cross-origin iframe (OOPIF) is not read**: `snap` shows the frame as a single
   line (`- Iframe`, no content), because that accessibility tree lives in the
   other site's process — reaching it requires a separate CDP session per frame
-  (see [`docs/BACKLOG.md`](docs/BACKLOG.md)). A **same-origin** iframe is read in
-  full, and
-  the ref from inside works: the trees of both frames are merged in the snapshot.
+  (see [`docs/BACKLOG.md`](docs/BACKLOG.md)). The line now says so (*"its content
+  is not in the tree: a cross-origin frame or one still loading"*), instead of
+  leaving it to look like an empty frame. A **same-origin** iframe is read in
+  full, and the ref from inside works: the trees of both frames are merged in the
+  snapshot.
 - Native dialogs are dismissed by default; `dialog accept` arms the next one (a
   `confirm()` the flow has to say yes to), and the arming is consumed by that one
   dialog. A `beforeunload` keeps its own rule (`open --force`).
