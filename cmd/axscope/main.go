@@ -90,6 +90,9 @@ func run() error {
 		}
 		return nil
 
+	case "sessions":
+		return runSessions()
+
 	case "clean":
 		return runClean(args[1:])
 

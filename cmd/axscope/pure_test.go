@@ -6,6 +6,21 @@ import (
 	"testing"
 )
 
+// sessions reads the tab count out of the status text, so the `name: value`
+// line format is a small contract between the two commands.
+func TestStatusField(t *testing.T) {
+	text := "session: default\nengine: ext\nconnection: ok\ntabs: 3\n*[1] t — u"
+	if got := statusField(text, "tabs"); got != "3" {
+		t.Errorf("statusField(tabs) = %q, want 3", got)
+	}
+	if got := statusField(text, "engine"); got != "ext" {
+		t.Errorf("statusField(engine) = %q, want ext", got)
+	}
+	if got := statusField(text, "missing"); got != "" {
+		t.Errorf("statusField(missing) = %q, want empty", got)
+	}
+}
+
 // human formats a byte count for the clean output; the boundaries between units
 // are where a wrong divisor or unit letter shows up.
 func TestHuman(t *testing.T) {

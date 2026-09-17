@@ -234,11 +234,11 @@ func tools() []toolDef {
 }
 
 // mcpHidden reports the commands that are never MCP tools: the daemon or the CLI
-// settles stop/install before any browser action is involved. `ping` is not here:
-// it is the client's liveness check and works without a browser.
+// settles stop/install/sessions before any browser action is involved. `ping` is
+// not here: it is the client's liveness check and works without a browser.
 func mcpHidden(cmd string) bool {
 	switch cmd {
-	case "stop", "install":
+	case "stop", "install", "sessions":
 		return true
 	}
 	return false

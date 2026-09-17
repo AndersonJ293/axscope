@@ -107,7 +107,11 @@ func Run(ctx context.Context, opts Options) error {
 	ag := &agent.Agent{Session: opts.Session, Attach: opts.Attach, Headless: opts.Headless, Engine: opts.Engine}
 	defer ag.Close()
 
-	writeInfo(opts.Session, socketPath)
+	engine := opts.Engine
+	if opts.Attach != "" {
+		engine = "attached"
+	}
+	writeInfo(opts.Session, socketPath, engine)
 
 	stop := make(chan struct{})
 	var stopOnce sync.Once
@@ -260,13 +264,13 @@ func cleanup(socketPath, session string) {
 	_ = os.Remove(paths.DaemonInfoPath(session))
 }
 
-func writeInfo(session, socketPath string) {
-	pid := os.Getpid()
+func writeInfo(session, socketPath, engine string) {
 	// Primitive values only, so marshal cannot fail.
-	data, _ := json.MarshalIndent(map[string]any{
-		"session": session,
-		"socket":  socketPath,
-		"pid":     pid,
+	data, _ := json.MarshalIndent(paths.SessionInfo{
+		Session: session,
+		Socket:  socketPath,
+		PID:     os.Getpid(),
+		Engine:  engine,
 	}, "", "  ")
 	_ = os.WriteFile(paths.DaemonInfoPath(session), data, 0o644)
 }

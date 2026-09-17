@@ -25,6 +25,7 @@ var Specs = []Spec{
 	{Cmd: "status", Help: "URL, title, tabs, CDP endpoint and overlay state"},
 	{Cmd: "install", Flags: []string{"engine"}, Help: "downloads engines (--engine chrome|shell|all)"},
 	{Cmd: "engines", Help: "lists installed engines"},
+	{Cmd: "sessions", Help: "lists the live sessions and how to attach to one"},
 	{Cmd: "clean", Flags: []string{"all"}, Help: "deletes logs and dead sessions (--all includes profiles and browsers)"},
 	{Cmd: "stop", Help: "shuts down the daemon (and the browser, if we started it)"},
 

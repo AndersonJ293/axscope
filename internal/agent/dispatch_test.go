@@ -20,13 +20,14 @@ func TestSessionErrorNamesRecovery(t *testing.T) {
 }
 
 // cliOnly lists the commands in command.Specs that no agent route serves:
-// install/engines/clean are settled in cmd/axscope, and stop by the daemon's
-// accept loop. Any new command without a route fails this guard.
+// install/engines/clean/sessions are settled in cmd/axscope, and stop by the
+// daemon's accept loop. Any new command without a route fails this guard.
 var cliOnly = map[string]bool{
-	"install": true,
-	"engines": true,
-	"clean":   true,
-	"stop":    true,
+	"install":  true,
+	"engines":  true,
+	"clean":    true,
+	"sessions": true,
+	"stop":     true,
 }
 
 // TestRoutesCoverCommandSpecs is the guard that CLI, help, script and MCP stay in

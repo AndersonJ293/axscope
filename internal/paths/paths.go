@@ -2,9 +2,12 @@
 package paths
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // StateDir stores what is persistent (profiles, logs, downloaded binary).
@@ -51,6 +54,46 @@ func SocketPath(session string) string {
 
 func DaemonInfoPath(session string) string {
 	return filepath.Join(StateDir(), "sessions", session+".json")
+}
+
+// SessionInfo is what a live daemon writes about itself, so the CLI can list the
+// sessions without depending on each daemon's command output.
+type SessionInfo struct {
+	Session string `json:"session"`
+	Socket  string `json:"socket"`
+	PID     int    `json:"pid"`
+	Engine  string `json:"engine"`
+}
+
+// Sessions lists the sessions that have a daemon info file, sorted. A session
+// whose daemon is already gone still appears here; the caller checks the socket.
+func Sessions() ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(StateDir(), "sessions"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		out = append(out, strings.TrimSuffix(e.Name(), ".json"))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// ReadSessionInfo loads what the daemon wrote for a session.
+func ReadSessionInfo(session string) (SessionInfo, error) {
+	var info SessionInfo
+	data, err := os.ReadFile(DaemonInfoPath(session))
+	if err != nil {
+		return info, err
+	}
+	return info, json.Unmarshal(data, &info)
 }
 
 // ActiveTabPath remembers the active tab across daemon restarts so it does not switch under the agent.
