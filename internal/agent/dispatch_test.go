@@ -1,11 +1,23 @@
 package agent
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/AndersonJ293/axscope/internal/command"
 )
+
+// A dropped connection must name the way out instead of reading as a dead end.
+func TestSessionErrorNamesRecovery(t *testing.T) {
+	got := sessionError(fmt.Errorf("connection closed")).Error()
+	for _, want := range []string{"connection closed", "axscope status", "retries"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("sessionError does not say %q: %s", want, got)
+		}
+	}
+}
 
 // cliOnly lists the commands in command.Specs that no agent route serves:
 // install/engines/clean are settled in cmd/axscope, and stop by the daemon's

@@ -157,7 +157,8 @@ type toolDef struct {
 // curatedMCP is the lean set exposed by default (fewer schemas means less context
 // per request; `AXSCOPE_MCP_TOOLS=all` opens everything). It covers reading,
 // interaction, scrolling, navigation and tab lifecycle; select/check/uncheck/
-// type/upload stay because the refusal messages cite them.
+// type/upload stay because the refusal messages cite them, and status/ping stay
+// because a client needs to ask what the state is when a connection drops.
 var curatedMCP = map[string]bool{
 	"open":     true,
 	"snap":     true,
@@ -189,6 +190,8 @@ var curatedMCP = map[string]bool{
 	"console":  true,
 	"net":      true,
 	"eval":     true,
+	"status":   true,
+	"ping":     true,
 }
 
 // tools derives the tools from the command table, so CLI and MCP do not diverge.
@@ -231,10 +234,11 @@ func tools() []toolDef {
 }
 
 // mcpHidden reports the commands that are never MCP tools: the daemon or the CLI
-// settles ping/stop/install before any browser action is involved.
+// settles stop/install before any browser action is involved. `ping` is not here:
+// it is the client's liveness check and works without a browser.
 func mcpHidden(cmd string) bool {
 	switch cmd {
-	case "ping", "stop", "install":
+	case "stop", "install":
 		return true
 	}
 	return false

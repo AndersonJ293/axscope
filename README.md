@@ -71,7 +71,7 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **30 of the 35 commands**. The rest are not missing — set
+request): **32 of the 36 commands** (including `ping` and `status`). The rest are not missing — set
 `AXSCOPE_MCP_TOOLS=all` to expose every command, and `axscope help` lists them all
 with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
@@ -96,7 +96,7 @@ axscope read --links                 # the links of the page as `label — href`
 axscope read --table                 # an HTML <table> as aligned rows
 axscope reload --hard                # reloads bypassing the cache — the remedy for a dead UI
 axscope tabs                         # open tabs (the active one is marked *)
-axscope status                       # session, CDP endpoint, active tab, refs
+axscope status                       # session, engine, connection, CDP endpoint, live tabs, refs
 axscope viewport 360x800 mobile=1    # emulates a phone (metrics + touch); --reset restores
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
 axscope script scenario.txt          # batch script
