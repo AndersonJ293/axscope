@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `AXSCOPE_MCP_TIMEOUT_MINUTES` bounds a single MCP tool call (default `10`,
+  `0` = no bound), so a client that never cancels cannot hold a call forever.
 - `click --dom`, for pages that refuse the real pointer (`pointer-events: none`,
   a handler that only trusts a programmatic click).
 - `open --force`, which accepts a `beforeunload` so an explicit navigation can
@@ -18,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An MCP tool call no longer freezes the whole server: calls run concurrently, so
+  a slow `wait` blocks neither `ping` nor the next call, and a client
+  `notifications/cancelled` reaches the command already in flight.
+- The daemon stops a command when its client goes away (a cancellation, a lost
+  connection), releasing the run lock instead of queueing every later request
+  behind a stuck command.
+- The daemon client reads a response under the caller's context, so a daemon that
+  accepted a request and never answered no longer blocks the client forever.
 - A tab the page opens (`target=_blank`, `window.open`) that is born already in
   the session's group is now reported to the daemon: the extension claims it by
   its group on creation, instead of only on a group change (which never comes).
