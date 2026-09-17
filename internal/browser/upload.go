@@ -14,11 +14,30 @@ import (
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
 
+// shadowFileInputScript finds the first `<input type=file>` crossing open shadow
+// roots: a plain `document.querySelector` finds nothing in an app rendered inside
+// one (LinkedIn's `#interop-outlet`), which is why `upload` without a target
+// answered "could not find <input type=file>" there.
+const shadowFileInputScript = `const see = (root) => {
+	const el = root.querySelector ? root.querySelector('input[type=file]') : null;
+	if (el) return el;
+	for (const n of root.querySelectorAll('*')) {
+		if (n.shadowRoot) {
+			const found = see(n.shadowRoot);
+			if (found) return found;
+		}
+	}
+	return null;
+};`
+
+// firstFileInputExpression is that search as a Runtime.evaluate expression.
+const firstFileInputExpression = "(() => {\n" + shadowFileInputScript + "\nreturn see(document);\n})()"
+
 // FirstFileInput returns the first `<input type=file>` on the page, the target the
 // browser accepts without a dialog when none is given.
 func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.evaluate", map[string]any{
-		"expression":    "document.querySelector('input[type=file]')",
+		"expression":    firstFileInputExpression,
 		"returnByValue": false,
 	}, session)
 	if err != nil {
@@ -30,7 +49,7 @@ func FirstFileInput(ctx context.Context, client *cdp.Client, session string) (st
 		} `json:"result"`
 	}
 	if json.Unmarshal(raw, &res) != nil || res.Result.ObjectID == "" {
-		return "", fmt.Errorf("could not find <input type=file> on the page — pass target=<ref|css=|text=>")
+		return "", fmt.Errorf("could not find <input type=file> on the page, shadow roots included — pass target=<ref|css=|text=>")
 	}
 	return res.Result.ObjectID, nil
 }
@@ -70,20 +89,21 @@ func SetFileInput(ctx context.Context, client *cdp.Client, session, objectID, pa
 }
 
 // AssociatedFileInput returns the object id of the `<input type=file>` a dropzone
-// or label stands for — its own subtree, the label's control, or the page's first
-// one — or "" when there is none. Setting the file on that input is what the page
-// listens to, and it works while the input is hidden.
+// or label stands for — its own subtree, the label's control, or the first one on
+// the page (shadow roots included) — or "" when there is none. Setting the file on
+// that input is what the page listens to, and it works while the input is hidden.
 func AssociatedFileInput(ctx context.Context, client *cdp.Client, session, objectID string) (string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": objectID,
 		"functionDeclaration": `function () {
+			` + shadowFileInputScript + `
 			const pick = (root) => (root && root.querySelector) ? root.querySelector('input[type=file]') : null;
 			let input = pick(this);
 			if (!input && this.closest) {
 				const label = this.closest('label');
 				if (label && label.control && label.control.type === 'file') input = label.control;
 			}
-			if (!input) input = document.querySelector('input[type=file]');
+			if (!input) input = see(document);
 			return input || null;
 		}`,
 		"returnByValue": false,

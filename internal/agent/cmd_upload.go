@@ -90,8 +90,12 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 	if spec != "" {
 		label = fmt.Sprintf("upload %s on %s [%s]", filepath.Base(filePath), spec, via)
 	}
-	if count, ok := browser.FileInputCount(ctx, a.client(), sid, inputID); ok && count == 0 {
-		label += " (the <input type=file> still has 0 files — the page did not take it)"
+	// `input.files` is not the page's state: a page that reads the file and moves
+	// it into its own state leaves the input at 0 (LinkedIn does this once the
+	// resume is accepted). Report that as indeterminate instead of a failure — the
+	// old wording read as "did not take it" while the page had taken it.
+	if count, isInput := browser.FileInputCount(ctx, a.client(), sid, inputID); isInput && count == 0 {
+		label += " (the input reports 0 files — the page may have moved the file into its own state; confirm in the UI)"
 	}
 	return ok(a.finish(ctx, sess, sid, label, before))
 }
