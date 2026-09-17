@@ -17,6 +17,7 @@ import (
 
 	"github.com/AndersonJ293/axscope/internal/command"
 	"github.com/AndersonJ293/axscope/internal/daemonclient"
+	"github.com/AndersonJ293/axscope/internal/paths"
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
@@ -25,9 +26,16 @@ const protocolVersion = "2025-06-18"
 // sessionOnce keeps the auto-provisioned session stable for the process life:
 // the first call decides it, every later one reads the same id.
 var (
-	sessionOnce sync.Once
-	sessionID   string
+	sessionOnce     sync.Once
+	sessionID       string
+	autoProvisioned bool
 )
+
+// defaultAutoIdleMinutes is how long an auto-provisioned session may sit without
+// a command before the daemon shuts itself down. It is an MCP-only default: an
+// explicit AXSCOPE_IDLE_MINUTES (0 = never) wins, and explicit sessions keep the
+// daemon up until `stop`.
+const defaultAutoIdleMinutes = "30"
 
 // ensureSession gives the MCP server a session of its own unless AXSCOPE_SESSION
 // was set, which joins that one on purpose (two instances sharing a session is
@@ -40,9 +48,27 @@ func ensureSession(clientName string) string {
 			return
 		}
 		sessionID = autoSession(clientName)
+		autoProvisioned = true
 		_ = os.Setenv("AXSCOPE_SESSION", sessionID)
+		if os.Getenv("AXSCOPE_IDLE_MINUTES") == "" {
+			_ = os.Setenv("AXSCOPE_IDLE_MINUTES", defaultAutoIdleMinutes)
+		}
 	})
 	return sessionID
+}
+
+// stopAutoSession takes down the daemon an auto-provisioned session brought up,
+// so an MCP client exiting does not leave an orphan browser behind. An explicit
+// session is left alone: it is shared on purpose, and its owner stops it.
+func stopAutoSession() {
+	if !autoProvisioned {
+		return
+	}
+	socket := paths.SocketPath(os.Getenv("AXSCOPE_SESSION"))
+	if _, err := os.Stat(socket); err != nil {
+		return // the daemon never came up, or is already gone
+	}
+	_, _ = daemonclient.SendTo(socket, protocol.Request{Cmd: "stop"})
 }
 
 // autoSession is a short, filesystem-safe id: the client name and four random
@@ -103,6 +129,10 @@ type rpcError struct {
 
 // Run serves the MCP protocol on stdin/stdout until EOF.
 func Run(ctx context.Context) error {
+	// The daemon is detached (Setsid) so the browser survives between commands;
+	// without this an auto session would outlive the client that asked for it.
+	defer stopAutoSession()
+
 	reader := bufio.NewReaderSize(os.Stdin, 8<<20)
 	writer := bufio.NewWriter(os.Stdout)
 	defer writer.Flush()
