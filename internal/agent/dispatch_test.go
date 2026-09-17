@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/AndersonJ293/axscope/internal/command"
+	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
 // A dropped connection must name the way out instead of reading as a dead end.
@@ -15,6 +17,20 @@ func TestSessionErrorNamesRecovery(t *testing.T) {
 	for _, want := range []string{"connection closed", "axscope status", "retries"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("sessionError does not say %q: %s", want, got)
+		}
+	}
+}
+
+// help is how a client discovers the command surface over MCP; it must answer
+// without a browser, and list the commands (not just the usage line).
+func TestHelpListsTheCommands(t *testing.T) {
+	resp := (&Agent{}).help(context.Background(), nil, protocol.Request{})
+	if !resp.OK {
+		t.Fatalf("help failed: %+v", resp)
+	}
+	for _, want := range []string{"usage: axscope", "snap", "eval"} {
+		if !strings.Contains(resp.Text, want) {
+			t.Errorf("help does not mention %q", want)
 		}
 	}
 }

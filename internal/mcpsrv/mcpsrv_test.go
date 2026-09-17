@@ -11,6 +11,19 @@ import (
 	"testing"
 )
 
+// help must be in the default catalog: a client that cannot list the commands
+// guesses tool names (or reaches for `eval`) — a real session did exactly that.
+func TestHelpIsInTheCuratedCatalog(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TOOLS", "")
+	names := map[string]bool{}
+	for _, td := range tools() {
+		names[td.Name] = true
+	}
+	if !names["help"] {
+		t.Error("help must be exposed by default")
+	}
+}
+
 // The auto session is a filesystem path component, so the prefix has to be safe
 // and short: anything outside [a-z0-9-] becomes a dash and ".." cannot survive.
 func TestSessionPrefix(t *testing.T) {
