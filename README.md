@@ -435,6 +435,29 @@ is rendered just like in the other modes.
 Each tab is attached **on demand** — only the one being used. Opening the agent
 does not sweep or instrument your tabs.
 
+### Distribution and permissions
+
+The extension is installed **unpacked** (`brave://extensions` → Developer mode →
+**Load unpacked**), not from the Chrome Web Store, and there is no plan to list
+it:
+
+- It asks for **`debugger`** (drives a tab through CDP), **`tabs`** and
+  **`tabGroups`** (one group per session is the isolation), **`storage`** (which
+  group a session owns) and **`downloads`** (saves a file without the browser's
+  save dialog) — plus **`<all_urls>`**, because it has to reach whatever site you
+  point it at. A store listing with that pair (`debugger` + `<all_urls>`) is
+  impractical, and the permission is broad by design.
+- The debug-banner workaround is a **`.desktop` override** on Linux, which a
+  store package cannot install.
+- Unpacked means you run the code in this repository: no third-party build
+  between you and your browser.
+
+What the permissions reach is bounded in [`SECURITY.md`](SECURITY.md): the
+extension attaches only to the tabs inside the agent's group, only on demand, and
+the daemon socket is readable only by the same user. A **store-friendly path**
+(optional permissions requested on first use, or per-site host permissions) is a
+possible follow-up, not a promise.
+
 ### Group name
 
 The group appears as **`<Agent> <N>`** — `Opencode 1`, `Opencode 2`, `Claude 1`.

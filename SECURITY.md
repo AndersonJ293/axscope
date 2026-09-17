@@ -38,6 +38,11 @@ surface; this section describes what is in scope.
 - **`chrome.debugger`** gives the extension full CDP access to the tabs in its
   group: page content, cookies sent with requests, screenshots, input. Only tabs
   inside the agent's tab group are attached, and only on demand.
+- **The extension is installed unpacked**, not from the Chrome Web Store, and
+  asks for `debugger`, `tabs`, `tabGroups`, `storage`, `downloads` and
+  `<all_urls>`. The `debugger` + `<all_urls>` pair is why a store listing is
+  impractical; running the code from this repository is the trade the project
+  makes (see the README's *Distribution and permissions*).
 
 ### Untrusted page content and prompt injection
 
