@@ -216,8 +216,18 @@ async function adoptExistingGroup(st) {
       const g = await chrome.tabGroups.get(stored);
       if (g) {
         st.groupId = g.id;
-        st.groupTitle = g.title || st.groupTitle;
+        // Keep groupTitle as just the agent+number (numbering and the rename
+        // path build on it), and refresh the label: an adopted group may predate
+        // the ` · <session>` suffix, and reusing the full title here would make
+        // displayTitle apply the suffix twice.
+        const m = / (\d+)/.exec(g.title || '');
+        st.groupTitle = `${st.agent || AGENT_DEFAULT}${m ? ' ' + m[1] : ''}`;
         await syncGroupTabs(st);
+        try {
+          await chrome.tabGroups.update(g.id, { title: displayTitle(st) });
+        } catch {
+          /* group is gone */
+        }
         return;
       }
     }
