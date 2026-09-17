@@ -254,6 +254,14 @@ tab ever becoming the active one.
   path is `pos=x,y`, with the point coming from whoever knows where it drew.
   Measured in scenario 14: the circle is at (470,95) in the canvas coordinates,
   and the point only reaches the page after being mapped by the element's scale.
+- **Rewrite the pre-rename history** (`git filter-repo`: the personal author
+  email, the Portuguese messages). No. The repository is public, so a rewrite
+  changes every SHA and breaks existing clones and forks, and the `v0.1.0` tag
+  and release would have to be re-created; the email is already public, so a
+  rewrite would not reliably erase it (forks, caches, the GitHub API). The `0.1.0`
+  changelog was rewritten by hand because GoReleaser dumped the whole history —
+  what keeps the next one clean is Conventional Commits from the rename onward
+  (GoReleaser can filter by type), not a new past. Decided 2026-09-16.
 
 ---
 

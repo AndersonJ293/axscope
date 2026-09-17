@@ -64,6 +64,10 @@ elementFromPoint sees layers but does not know where the browser re-delivers
 the event (shadow host, iframe); the capture listener does.
 ```
 
+The history before the rename is intentionally **not** rewritten (the decision
+and its why are in [`docs/BACKLOG.md`](docs/BACKLOG.md)). Conventional Commits
+applies from the rename onward, and is what keeps the generated changelog clean.
+
 ## Reporting bugs and requesting features
 
 Open an issue using the templates in `.github/ISSUE_TEMPLATE/`. For a bug,
