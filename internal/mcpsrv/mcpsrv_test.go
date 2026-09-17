@@ -10,17 +10,17 @@ import (
 	"testing"
 )
 
-// stop/install are settled by the daemon or the CLI and are not browser actions;
-// the switch in tools() must exclude them even with the full catalog requested
-// (AXSCOPE_MCP_TOOLS=all), where the curated filter is out of the way. `ping`
-// stays exposed: it is the client's liveness check.
+// stop/install/sessions are settled by the daemon or the CLI and are not browser
+// actions; the switch in tools() must exclude them even with the full catalog
+// requested (AXSCOPE_MCP_TOOLS=all), where the curated filter is out of the way.
+// `ping` stays exposed: it is the client's liveness check.
 func TestCatalogExcludesCLIOnlyCommandsWithAll(t *testing.T) {
 	t.Setenv("AXSCOPE_MCP_TOOLS", "all")
 	exposed := map[string]bool{}
 	for _, td := range tools() {
 		exposed[td.Name] = true
 	}
-	for _, cmd := range []string{"stop", "install"} {
+	for _, cmd := range []string{"stop", "install", "sessions"} {
 		if exposed[cmd] {
 			t.Errorf("%q must not be exposed as an MCP tool", cmd)
 		}

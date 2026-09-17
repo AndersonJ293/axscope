@@ -298,6 +298,9 @@ axscope --chrome open https://example.com
 # no window at all, for batch work
 axscope --headless script script.txt
 
+# which sessions are alive, and how to attach to one
+axscope sessions
+
 # stop everything (all modes and their browsers)
 axscope stop --all
 ```

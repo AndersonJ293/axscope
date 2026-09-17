@@ -7,6 +7,57 @@ import (
 	"testing"
 )
 
+// Sessions only reports the daemon info files of a state dir: a missing dir is
+// empty, `.active` leftovers and subdirectories are not sessions, and the names
+// come sorted.
+func TestSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("AXSCOPE_HOME", home)
+	if got, err := Sessions(); err != nil || len(got) != 0 {
+		t.Fatalf("Sessions() on a missing dir = %v, %v", got, err)
+	}
+	dir := filepath.Join(home, "sessions")
+	if err := os.MkdirAll(filepath.Join(dir, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"work.json", "default.json", "default.active", "junk.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(got) != "[default work]" {
+		t.Errorf("Sessions() = %v, want [default work]", got)
+	}
+}
+
+// ReadSessionInfo round-trips what the daemon writes.
+func TestReadSessionInfo(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("AXSCOPE_HOME", home)
+	if _, err := ReadSessionInfo("work"); err == nil {
+		t.Error("ReadSessionInfo on a missing file must fail")
+	}
+	dir := filepath.Join(home, "sessions")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	blob := `{"session":"work","socket":"/run/user/1/axscope/work.sock","pid":42,"engine":"chrome"}`
+	if err := os.WriteFile(filepath.Join(dir, "work.json"), []byte(blob), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := ReadSessionInfo("work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Session != "work" || info.PID != 42 || info.Engine != "chrome" {
+		t.Errorf("ReadSessionInfo = %+v", info)
+	}
+}
+
 // StateDir is the persistent root: AXSCOPE_HOME wins, then XDG_DATA_HOME, then
 // ~/.local/share. An empty variable means "not set" for every override.
 func TestStateDir(t *testing.T) {
