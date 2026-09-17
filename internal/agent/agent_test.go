@@ -175,11 +175,12 @@ func TestLinksExpression(t *testing.T) {
 	}
 }
 
-// read must cross open shadow roots: `innerText` stops at a shadow boundary, so
-// a modal rendered in one is otherwise invisible to the reading.
+// read must cross open shadow roots and skip what is not rendered inside them:
+// `innerText` stops at a shadow boundary, and for a hidden shadow child it falls
+// back to textContent, which used to carry <style> CSS and closed steps.
 func TestReadExpression(t *testing.T) {
 	expr := readExpression("#interop-outlet")
-	for _, want := range []string{"querySelector", "innerText", "shadowRoot", "querySelectorAll('*')"} {
+	for _, want := range []string{"querySelector", "innerText", "shadowRoot", "querySelectorAll('*')", "STYLE", "checkVisibility"} {
 		if !strings.Contains(expr, want) {
 			t.Errorf("the read does not use %q", want)
 		}

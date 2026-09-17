@@ -204,18 +204,25 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	return ok(fmt.Sprintf("url: %s\n\n%s", url, text))
 }
 
-// readExpression reads the rendered text of the scope. `innerText` is the honest
-// reading of a subtree — it skips what is not rendered — but it stops at a shadow
-// boundary, so the text of each open shadow root is spliced in after the light
-// DOM (its order untouched, its text first). A modal rendered in a shadow root
-// (LinkedIn's `#interop-outlet`) is otherwise invisible to `read`.
+// readExpression reads the rendered text of the scope, crossing open shadow
+// roots: `innerText` stops at a shadow boundary, so the text of each root is
+// spliced in after the light DOM. Inside a root, `innerText` falls back to
+// `textContent` for nodes that are not rendered, which used to carry the CSS of a
+// `<style>` and the fields of a closed step into the reading; those are skipped.
+// A modal rendered in a shadow root (LinkedIn's `#interop-outlet`) is otherwise
+// invisible to `read`.
 func readExpression(sel string) string {
 	return fmt.Sprintf(`(() => {
 		const el = document.querySelector(%s) || document.body;
 		if (!el) return '';
+		const skip = { STYLE: 1, SCRIPT: 1, NOSCRIPT: 1, TEMPLATE: 1, HEAD: 1, META: 1, LINK: 1, TITLE: 1 };
+		const rendered = (node) => node.checkVisibility
+			? node.checkVisibility({ checkVisibilityCSS: true, checkOpacity: false })
+			: node.getClientRects().length > 0;
 		let out = el.innerText || '';
 		const add = (host) => {
 			for (const child of host.shadowRoot.children) {
+				if (skip[child.tagName] || !rendered(child)) continue;
 				const t = child.innerText || '';
 				if (t) out += '\n' + t;
 			}
