@@ -77,6 +77,14 @@ with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
 choice and not an absent capability.
 
+**Each MCP server gets its own session** (e.g. `opencode-a1b2`), so two opencode
+instances do not see each other's tabs or refs. The CLI keeps `default`, so it no
+longer shares the browser with the MCP by accident: run `axscope sessions` to see
+the live ones and attach with `AXSCOPE_SESSION=<id> axscope …`. Set
+`AXSCOPE_SESSION` in the MCP environment (or in both) to join an explicit
+session on purpose — the shared mode, also useful to survive a client restart.
+`status` names the session either way.
+
 ## Usage
 
 ```bash
@@ -424,8 +432,8 @@ extension (Brave)  ⇄  one connection per session  ⇄  daemon (Go)  ⇄  CLI /
 ```
 
 Each session takes a port in the **8787–8802** range and gets its **own tab
-group** in Brave, named `axscope · <session>`. The extension only sees and only
-touches the tabs in that session's group.
+group** in Brave. The extension only sees and only touches the tabs in that
+session's group.
 
 This solves three things at once:
 
@@ -469,8 +477,10 @@ possible follow-up, not a promise.
 
 ### Group name
 
-The group appears as **`<Agent> <N>`** — `Opencode 1`, `Opencode 2`, `Claude 1`.
-The number is assigned by the extension (the next free one for that agent).
+The group appears as **`<Agent> <N> · <session>`** — `Opencode 1 · opencode-a1b2`,
+`Claude 1 · work`. The number is assigned by the extension (the next free one for
+that agent); the session is the id `axscope sessions` prints, so you can match a
+group in the browser with the session you would attach to.
 
 The agent name comes from the MCP configuration that is driving it:
 
@@ -552,7 +562,7 @@ axscope stop --all    # all sessions and all browsers
 
 | Variable | Effect |
 |---|---|
-| `AXSCOPE_SESSION` | session name (default `default`) |
+| `AXSCOPE_SESSION` | session name (CLI default `default`; the MCP auto-provisions one; set it to share) |
 | `AXSCOPE_ENGINE` | `ext`, `chrome` or `shell` (default `ext`) |
 | `AXSCOPE_IDLE_MINUTES` | shuts the daemon down after N idle min (default 0 = off) |
 | `AXSCOPE_HOME` | data directory |

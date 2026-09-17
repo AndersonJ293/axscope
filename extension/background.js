@@ -21,15 +21,17 @@ let heartbeatTimer = null;
 const AGENT_DEFAULT = 'axscope';
 
 /**
- * Next free number for the display title ("Opencode 1", "Opencode 2", …). The
- * title is cosmetic: group ownership is the session, not this name.
+ * Next free number for the label ("Opencode 1", "Opencode 2", …). The number is
+ * cosmetic: group ownership is the session, and the session is appended to the
+ * label so a human can match it with the id `axscope sessions` printed. The
+ * regex is a prefix match because the label carries the ` · <session>` suffix.
  */
 async function nextTitleFor(agent) {
   const name = agent || AGENT_DEFAULT;
   let max = 0;
   try {
     const groups = await chrome.tabGroups.query({});
-    const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)$`);
+    const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} (\\d+)`);
     for (const g of groups) {
       const m = re.exec(g.title || '');
       if (m) max = Math.max(max, parseInt(m[1], 10));
@@ -38,6 +40,11 @@ async function nextTitleFor(agent) {
     /* no tabGroups: use 1 */
   }
   return `${name} ${max + 1}`;
+}
+
+/** What the tab group shows: the agent label plus the session it belongs to. */
+function displayTitle(st) {
+  return st.session ? `${st.groupTitle} · ${st.session}` : st.groupTitle;
 }
 
 function groupColor(agent) {
@@ -151,10 +158,10 @@ async function handleMessage(st, msg) {
       st.agent = agent;
       // Already has a group? Rename keeping the number ("Opencode 2" stays 2).
       if (st.groupId !== null && st.groupId !== undefined) {
-        const m = / (\d+)$/.exec(st.groupTitle || '');
+        const m = / (\d+)/.exec(st.groupTitle || '');
         st.groupTitle = `${agent}${m ? ' ' + m[1] : ''}`;
         try {
-          await chrome.tabGroups.update(st.groupId, { title: st.groupTitle });
+          await chrome.tabGroups.update(st.groupId, { title: displayTitle(st) });
         } catch {
           /* group is gone */
         }
@@ -258,7 +265,7 @@ async function addTabToGroup(st, tabId) {
     st.groupId = gid;
     if (!st.groupTitle) st.groupTitle = await nextTitleFor(st.agent);
     await chrome.tabGroups.update(gid, {
-      title: st.groupTitle,
+      title: displayTitle(st),
       color: groupColor(st.agent),
       collapsed: false,
     });

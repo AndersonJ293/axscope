@@ -5,11 +5,15 @@ package mcpsrv
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/AndersonJ293/axscope/internal/command"
 	"github.com/AndersonJ293/axscope/internal/daemonclient"
@@ -17,6 +21,66 @@ import (
 )
 
 const protocolVersion = "2025-06-18"
+
+// sessionOnce keeps the auto-provisioned session stable for the process life:
+// the first call decides it, every later one reads the same id.
+var (
+	sessionOnce sync.Once
+	sessionID   string
+)
+
+// ensureSession gives the MCP server a session of its own unless AXSCOPE_SESSION
+// was set, which joins that one on purpose (two instances sharing a session is
+// the explicit way to survive a client restart). The CLI keeps `default`, so an
+// MCP instance no longer shares the browser, the tabs and the refs by accident.
+func ensureSession(clientName string) string {
+	sessionOnce.Do(func() {
+		if v := os.Getenv("AXSCOPE_SESSION"); v != "" {
+			sessionID = v
+			return
+		}
+		sessionID = autoSession(clientName)
+		_ = os.Setenv("AXSCOPE_SESSION", sessionID)
+	})
+	return sessionID
+}
+
+// autoSession is a short, filesystem-safe id: the client name and four random
+// hex characters, e.g. `opencode-a1b2`.
+func autoSession(clientName string) string {
+	return sessionPrefix(clientName) + "-" + randomHex(2)
+}
+
+// sessionPrefix lowercases the client name into the [a-z0-9-] the session path
+// accepts, bounded so the socket name stays short.
+func sessionPrefix(clientName string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(clientName) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	prefix := strings.Trim(b.String(), "-")
+	if len(prefix) > 20 {
+		prefix = strings.Trim(prefix[:20], "-")
+	}
+	if prefix == "" {
+		return "mcp"
+	}
+	return prefix
+}
+
+func randomHex(n int) string {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		// crypto/rand does not fail in practice; the pid keeps the id unique.
+		return strconv.Itoa(os.Getpid())
+	}
+	return hex.EncodeToString(buf)
+}
 
 type rpcRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -82,9 +146,11 @@ func handleLine(ctx context.Context, line []byte, writer *bufio.Writer) {
 			} `json:"clientInfo"`
 		}
 		_ = json.Unmarshal(req.Params, &params)
-		if name := displayName(params.ClientInfo.Name); name != "" && os.Getenv("AXSCOPE_AGENT") == "" {
+		name := displayName(params.ClientInfo.Name)
+		if name != "" && os.Getenv("AXSCOPE_AGENT") == "" {
 			_ = os.Setenv("AXSCOPE_AGENT", name)
 		}
+		ensureSession(name)
 		write(writer, rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: map[string]any{
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
@@ -125,6 +191,8 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 	if args == nil {
 		args = map[string]any{}
 	}
+	// Tools arrive after initialize; this covers a client that skips it.
+	ensureSession("")
 	resp, err := daemonclient.Send(protocol.Request{Cmd: name, Args: args})
 	if err != nil {
 		return toolText("error: "+err.Error(), true)
@@ -260,10 +328,13 @@ func mcpCommands() int {
 // reimplements it with `eval`.
 func instructions() string {
 	exposed, total := len(tools()), mcpCommands()
+	note := "axscope drives a real browser (snap → ref → act). "
 	if exposed >= total {
-		return fmt.Sprintf("axscope drives a real browser (snap → ref → act). All %d commands are exposed; `axscope help` lists them with their arguments.", total)
+		note += fmt.Sprintf("All %d commands are exposed; `axscope help` lists them with their arguments.", total)
+	} else {
+		note += fmt.Sprintf("%d of the %d commands are exposed by default to keep each request lean; set AXSCOPE_MCP_TOOLS=all to expose every command, or run `axscope help` to list them all.", exposed, total)
 	}
-	return fmt.Sprintf("axscope drives a real browser (snap → ref → act). %d of the %d commands are exposed by default to keep each request lean; set AXSCOPE_MCP_TOOLS=all to expose every command, or run `axscope help` to list them all.", exposed, total)
+	return note + " This MCP server has a browser session of its own (`status` names it; set AXSCOPE_SESSION to share one)."
 }
 
 func write(writer *bufio.Writer, resp rpcResponse) {
