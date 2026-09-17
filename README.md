@@ -83,7 +83,10 @@ longer shares the browser with the MCP by accident: run `axscope sessions` to se
 the live ones and attach with `AXSCOPE_SESSION=<id> axscope …`. Set
 `AXSCOPE_SESSION` in the MCP environment (or in both) to join an explicit
 session on purpose — the shared mode, also useful to survive a client restart.
-`status` names the session either way.
+`status` names the session either way. An auto session is **stopped when its MCP
+server exits** (and, as a safety net for a killed client, after 30 idle minutes),
+so it does not leave an orphan browser behind; `AXSCOPE_IDLE_MINUTES=0` disables
+the idle window, and an explicit session is never stopped automatically.
 
 ## Usage
 
@@ -549,7 +552,9 @@ The daemon keeps the browser alive on purpose: the next call answers instantly
 and the state (login, tabs) survives between commands. It does **not** hang
 around forever if you ask it not to: `AXSCOPE_IDLE_MINUTES` shuts it down after N
 idle minutes (default `0` = disabled, because a new Chrome start brings the
-window to the front).
+window to the front). An **MCP auto session** is the exception: it defaults to 30
+idle minutes and is stopped when its MCP server exits, so an agent run does not
+leave an orphan daemon behind.
 
 To stop it right away, whenever you want:
 
@@ -564,7 +569,7 @@ axscope stop --all    # all sessions and all browsers
 |---|---|
 | `AXSCOPE_SESSION` | session name (CLI default `default`; the MCP auto-provisions one; set it to share) |
 | `AXSCOPE_ENGINE` | `ext`, `chrome` or `shell` (default `ext`) |
-| `AXSCOPE_IDLE_MINUTES` | shuts the daemon down after N idle min (default 0 = off) |
+| `AXSCOPE_IDLE_MINUTES` | shuts the daemon down after N idle min (default 0 = off; an MCP auto session defaults to 30) |
 | `AXSCOPE_HOME` | data directory |
 | `AXSCOPE_CHROME` | Chromium executable |
 | `AXSCOPE_ATTACH` | `host:port` of an already-open Chromium |

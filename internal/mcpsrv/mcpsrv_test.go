@@ -46,7 +46,7 @@ func TestAutoSessionShape(t *testing.T) {
 // not share the browser, the tabs and the refs with the CLI by accident. The
 // once is reset here because it is process-wide by design.
 func TestEnsureSessionAutoProvisions(t *testing.T) {
-	sessionOnce, sessionID = sync.Once{}, ""
+	sessionOnce, sessionID, autoProvisioned = sync.Once{}, "", false
 	t.Setenv("AXSCOPE_SESSION", "")
 	if got := ensureSession("opencode"); !strings.HasPrefix(got, "opencode-") {
 		t.Errorf("ensureSession = %q, want an opencode- id", got)
@@ -54,14 +54,44 @@ func TestEnsureSessionAutoProvisions(t *testing.T) {
 	if os.Getenv("AXSCOPE_SESSION") == "" {
 		t.Error("ensureSession must export the id, so the daemon inherits it")
 	}
+	if !autoProvisioned {
+		t.Error("autoProvisioned must be set, so the session is stopped on exit")
+	}
 }
 
-// An explicit AXSCOPE_SESSION is used as is: that is the shared mode.
+// An explicit AXSCOPE_SESSION is used as is: that is the shared mode, and its
+// daemon must outlive this server.
 func TestEnsureSessionKeepsExplicit(t *testing.T) {
-	sessionOnce, sessionID = sync.Once{}, ""
+	sessionOnce, sessionID, autoProvisioned = sync.Once{}, "", false
 	t.Setenv("AXSCOPE_SESSION", "work")
 	if got := ensureSession("opencode"); got != "work" {
 		t.Errorf("ensureSession = %q, want work", got)
+	}
+	if autoProvisioned {
+		t.Error("an explicit session must not be stopped on exit")
+	}
+}
+
+// An auto session shuts itself down when the client goes away; the window is a
+// default, not a rule.
+func TestEnsureSessionSetsIdleDefault(t *testing.T) {
+	sessionOnce, sessionID, autoProvisioned = sync.Once{}, "", false
+	t.Setenv("AXSCOPE_SESSION", "")
+	t.Setenv("AXSCOPE_IDLE_MINUTES", "")
+	ensureSession("opencode")
+	if got := os.Getenv("AXSCOPE_IDLE_MINUTES"); got != defaultAutoIdleMinutes {
+		t.Errorf("AXSCOPE_IDLE_MINUTES = %q, want %q", got, defaultAutoIdleMinutes)
+	}
+}
+
+// An explicit idle window wins, including 0 = never.
+func TestEnsureSessionKeepsExplicitIdle(t *testing.T) {
+	sessionOnce, sessionID, autoProvisioned = sync.Once{}, "", false
+	t.Setenv("AXSCOPE_SESSION", "")
+	t.Setenv("AXSCOPE_IDLE_MINUTES", "0")
+	ensureSession("opencode")
+	if got := os.Getenv("AXSCOPE_IDLE_MINUTES"); got != "0" {
+		t.Errorf("AXSCOPE_IDLE_MINUTES = %q, want 0 (never)", got)
 	}
 }
 
