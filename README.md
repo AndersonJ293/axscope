@@ -77,6 +77,12 @@ with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
 choice and not an absent capability.
 
+A tool call runs in its own goroutine and is capped by
+`AXSCOPE_MCP_TIMEOUT_MINUTES` (default `10`, `0` = no cap). A client
+`notifications/cancelled` stops the call in flight, and the daemon stops the
+command when the connection closes: a slow `wait` blocks neither `ping` nor the
+next call, and a command that never returns cannot hold the session forever.
+
 **Each MCP server gets its own session** (e.g. `opencode-a1b2`), so two opencode
 instances do not see each other's tabs or refs. The CLI keeps `default`, so it no
 longer shares the browser with the MCP by accident: run `axscope sessions` to see
@@ -579,6 +585,7 @@ axscope stop --all    # all sessions and all browsers
 | `AXSCOPE_AGENT` | agent name for the tab group |
 | `AXSCOPE_BRIDGE_PORT` | first port for the extension bridge (default `8787`) |
 | `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |
+| `AXSCOPE_MCP_TIMEOUT_MINUTES` | bounds one MCP tool call (default 10; 0 = no bound) |
 | `AXSCOPE_SPOTLIGHT` | `1` re-enables the target outline |
 | `AXSCOPE_DEBUG` | `1` logs the best-effort presentation failures (daemon log) |
 

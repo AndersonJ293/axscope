@@ -212,13 +212,25 @@ func handle(ctx context.Context, conn net.Conn, ag *agent.Agent, shutdown func()
 		return
 	}
 
+	// The client may give up while the command runs (an MCP cancellation, a
+	// Ctrl-C, a lost connection). One request per connection means any read here
+	// is the close, and it must stop the command: otherwise the command keeps
+	// holding the agent's run lock and every later request queues behind it.
+	reqCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		var b [1]byte
+		_, _ = conn.Read(b[:])
+		cancel()
+	}()
+
 	if req.Cmd == "stop" {
 		writeResponse(conn, protocol.Response{OK: true, Text: "shutting down"})
 		shutdown()
 		return
 	}
 
-	resp := ag.Run(ctx, req)
+	resp := ag.Run(reqCtx, req)
 	writeResponse(conn, resp)
 }
 

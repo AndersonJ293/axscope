@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // help must be in the default catalog: a client that cannot list the commands
@@ -273,5 +275,116 @@ func TestInitializeUsesClientNameWhenAgentUnset(t *testing.T) {
 	initialize(t, "cli")
 	if got := os.Getenv("AXSCOPE_AGENT"); got != "Cli" {
 		t.Errorf("AXSCOPE_AGENT = %q, want %q", got, "Cli")
+	}
+}
+
+// syncBuffer is a bytes.Buffer safe to read while the server writes to it: the
+// slow-call test has to inspect the output before the call finishes.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// A cancellation's id must match whether the client sent a number or a string,
+// or the cancel would land nowhere and the call would keep waiting.
+func TestIDKeyNormalizesNumberAndString(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{`7`, "7"},
+		{`"7"`, "7"},
+		{`"abc"`, "abc"},
+		{`  9  `, "9"},
+		{``, ""},
+	}
+	for _, c := range cases {
+		if got := idKey(json.RawMessage(c.in)); got != c.want {
+			t.Errorf("idKey(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// The bound is a backstop, and 0 must mean "no bound" — WithTimeout(0) would be
+// an already-expired context and would refuse every call.
+func TestCallTimeout(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TIMEOUT_MINUTES", "")
+	if got := callTimeout(); got != 10*time.Minute {
+		t.Errorf("default callTimeout = %v, want 10m", got)
+	}
+	t.Setenv("AXSCOPE_MCP_TIMEOUT_MINUTES", "3")
+	if got := callTimeout(); got != 3*time.Minute {
+		t.Errorf("callTimeout = %v, want 3m", got)
+	}
+	t.Setenv("AXSCOPE_MCP_TIMEOUT_MINUTES", "0")
+	if got := callTimeout(); got != 0 {
+		t.Errorf("callTimeout = %v, want 0 (no bound)", got)
+	}
+}
+
+// 0 minutes must produce a cancellable-but-live context, not an expired one.
+func TestBeginCallWithNoBoundIsNotExpired(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TIMEOUT_MINUTES", "0")
+	s := &server{ctx: context.Background(), calls: map[string]context.CancelFunc{}}
+	ctx, cancel := s.beginCall(json.RawMessage(`1`))
+	defer s.endCall(json.RawMessage(`1`), cancel)
+	select {
+	case <-ctx.Done():
+		t.Fatal("0 minutes must mean no bound, not an expired context")
+	default:
+	}
+}
+
+// A client cancellation must reach the in-flight call; a late one for a finished
+// call must be a harmless no-op.
+func TestCancelReachesTheInFlightCall(t *testing.T) {
+	s := &server{ctx: context.Background(), calls: map[string]context.CancelFunc{}}
+	ctx, cancel := s.beginCall(json.RawMessage(`"abc"`))
+	defer s.endCall(json.RawMessage(`"abc"`), cancel)
+
+	s.cancel(json.RawMessage(`{"requestId":"abc"}`))
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("cancel did not reach the call it named")
+	}
+	s.cancel(json.RawMessage(`{"requestId":"gone"}`)) // no panic, no effect
+}
+
+// Regression: a tools/call is dispatched in its own goroutine, so a slow command
+// cannot block ping (the client's liveness check) behind it. The old synchronous
+// loop froze the whole server until the call returned.
+func TestSlowCallDoesNotBlockPing(t *testing.T) {
+	out := &syncBuffer{}
+	s := &server{
+		ctx:    context.Background(),
+		writer: bufio.NewWriter(out),
+		calls:  map[string]context.CancelFunc{},
+		call: func(context.Context, string, map[string]any) map[string]any {
+			time.Sleep(300 * time.Millisecond)
+			return toolText("done", false)
+		},
+	}
+	s.dispatch([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"snap","arguments":{}}}`))
+	s.dispatch([]byte(`{"jsonrpc":"2.0","id":2,"method":"ping"}`))
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(out.String(), `"id":2`) {
+		if time.Now().After(deadline) {
+			t.Fatalf("ping was blocked behind a slow call; output: %s", out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

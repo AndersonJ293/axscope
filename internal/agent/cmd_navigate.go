@@ -82,6 +82,9 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 
 	present := req.Cmd == "wait"
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return protocol.Fail(fmt.Errorf("%q wait cancelled: %w", asked, err))
+		}
 		where, err := locateText(ctx, a.client(), sid, asked, root)
 		if err == nil && (where != "") == present {
 			verb := "appeared"
@@ -226,6 +229,9 @@ func (a *Agent) waitForState(ctx context.Context, sess *browser.Session, sid, ta
 		}
 	}
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return protocol.Fail(fmt.Errorf("%s wait cancelled: %w", target, err))
+		}
 		if arrived, err := a.atState(ctx, sess, target, state); err == nil && arrived {
 			return ok(fmt.Sprintf("ok: %s %s in %dms", target, statePast(state), time.Since(start).Milliseconds()))
 		}
