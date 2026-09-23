@@ -55,6 +55,9 @@ func (a *Agent) Close() {
 			a.handle.Kill()
 		}
 	}
+	if a.sess != nil {
+		a.sess.Close()
+	}
 	a.handle = nil
 	a.sess = nil
 }
@@ -112,6 +115,9 @@ func (a *Agent) ensure(ctx context.Context) (*browser.Session, error) {
 		a.handle.Client.Close()
 		if !a.handle.Attached && !a.handle.Exited() {
 			a.handle.Kill()
+		}
+		if a.sess != nil {
+			a.sess.Close()
 		}
 		a.handle = nil
 		a.sess = nil

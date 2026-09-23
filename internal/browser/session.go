@@ -44,7 +44,11 @@ type TabInfo struct {
 
 // Session keeps the tabs alive and the convergence state.
 type Session struct {
+	// ctx is the session's own lifetime context, not the request's: attaching a
+	// tab, enabling the domains and handling a dialog run in the background and
+	// must outlive the command that triggered them. See NewSession.
 	ctx     context.Context
+	cancel  context.CancelFunc
 	client  *cdp.Client
 	Observe *Observe
 	// Presenter draws the action in the browser. The domain does not know the
@@ -94,8 +98,17 @@ type targetInfo struct {
 
 // NewSession wires target discovery and the existing tabs.
 func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, presenter Presenter) (*Session, error) {
+	// The session outlives the request that built it, so its own context must
+	// not inherit the request's cancellation: the daemon cancels the request
+	// when the client leaves (an MCP cancellation, a Ctrl-C), and a stored,
+	// cancelled ctx then failed every later attach with "failed to acquire
+	// lock: context canceled" — newtab, tab and open on a fresh target died
+	// while acting on the already-attached tab kept working. WithoutCancel keeps
+	// the caller's values but drops only the cancellation.
+	sctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	s := &Session{
-		ctx:           ctx,
+		ctx:           sctx,
+		cancel:        cancel,
 		client:        client,
 		Observe:       NewObserve(500),
 		Presenter:     presenter,
@@ -109,9 +122,18 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 	s.Observe.Wire(client)
 	s.wireTargets()
 	if err := s.bootstrap(ctx); err != nil {
+		cancel()
 		return nil, err
 	}
 	return s, nil
+}
+
+// Close releases the session's lifetime context, stopping any background work
+// (an attach, an init) that is still in flight once the browser is gone.
+func (s *Session) Close() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 }
 
 func (s *Session) wireTargets() {
