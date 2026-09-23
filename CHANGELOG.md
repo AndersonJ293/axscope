@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The daemon stops a command when its client goes away (a cancellation, a lost
   connection), releasing the run lock instead of queueing every later request
   behind a stuck command.
+- A tab attaches on the session's own lifetime, not the request's: the command
+  that built the session no longer poisons every later `newtab`, `tab` or `open`
+  on a fresh target with `failed to acquire lock: context canceled` once the
+  client that ran it left (acting on the already-attached tab still worked).
 - The daemon client reads a response under the caller's context, so a daemon that
   accepted a request and never answered no longer blocks the client forever.
 - A tab the page opens (`target=_blank`, `window.open`) that is born already in
