@@ -402,6 +402,9 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 	if !resp.OK {
 		return toolText("error: "+resp.Error, true)
 	}
+	if tip := batchTips.observe(name, time.Now()); tip != "" {
+		resp.Text += "\n" + tip
+	}
 	if b64 := resp.Image; b64 != nil {
 		return map[string]any{"content": []map[string]any{
 			{"type": "text", "text": resp.Text},
@@ -409,6 +412,51 @@ func callTool(ctx context.Context, name string, args map[string]any) map[string]
 		}}
 	}
 	return toolText(resp.Text, false)
+}
+
+// batchTip nudges an agent that drives the page one action per call toward
+// batch: the same steps in one round trip. It speaks once per streak and then
+// only every tipEvery actions, so it informs without becoming noise.
+type batchTip struct {
+	mu     sync.Mutex
+	streak int
+	last   time.Time
+}
+
+const (
+	tipAfter = 3
+	tipEvery = 8
+	// tipGap ends a streak: calls this far apart are not a sequence a batch
+	// would have saved.
+	tipGap = 90 * time.Second
+)
+
+var batchTips batchTip
+
+// actionTools are the calls a batch can fold together; reads (snap, read, find)
+// are how an agent decides the next step, so they do not count.
+var actionTools = map[string]bool{
+	"click": true, "hover": true, "fill": true, "type": true, "press": true,
+	"select": true, "check": true, "uncheck": true, "scroll": true, "open": true,
+	"wait": true, "waitgone": true, "drag": true, "upload": true, "dialog": true,
+	"back": true, "forward": true, "reload": true, "tab": true, "newtab": true,
+}
+
+func (t *batchTip) observe(tool string, now time.Time) string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !actionTools[tool] || now.Sub(t.last) > tipGap {
+		t.streak = 0
+	}
+	t.last = now
+	if !actionTools[tool] {
+		return ""
+	}
+	t.streak++
+	if t.streak == tipAfter || (t.streak > tipAfter && (t.streak-tipAfter)%tipEvery == 0) {
+		return fmt.Sprintf("tip: %d single actions in a row — `batch` runs known steps in one call (steps=[\"fill e5 x\", \"click e7\"], snap=final), much faster", t.streak)
+	}
+	return ""
 }
 
 func toolText(text string, isError bool) map[string]any {
@@ -458,6 +506,7 @@ var curatedMCP = map[string]bool{
 	"reload":   true,
 	"shot":     true,
 	"script":   true,
+	"batch":    true,
 	"console":  true,
 	"net":      true,
 	"eval":     true,
@@ -491,6 +540,9 @@ func tools() []toolDef {
 		for _, f := range spec.Flags {
 			props[f] = map[string]any{"type": "boolean"}
 		}
+		for name, prop := range schemaOverrides[spec.Cmd] {
+			props[name] = prop
+		}
 		schema := map[string]any{"type": "object", "properties": props}
 		if len(required) > 0 {
 			schema["required"] = required
@@ -502,6 +554,25 @@ func tools() []toolDef {
 		})
 	}
 	return out
+}
+
+// schemaOverrides types the arguments the command table can only call strings.
+// A batch's steps are a list — asking a model to JSON-encode it inside a string
+// is how quoting bugs are born.
+var schemaOverrides = map[string]map[string]any{
+	"batch": {
+		"steps": map[string]any{
+			"type":        "array",
+			"description": `commands in order; each is a command line ("click e3", "fill css=#q 'hello world'") or an object ({"cmd":"fill","target":"e5","value":"x"})`,
+			"items": map[string]any{
+				"anyOf": []any{
+					map[string]any{"type": "string"},
+					map[string]any{"type": "object", "properties": map[string]any{"cmd": map[string]any{"type": "string"}}, "required": []string{"cmd"}},
+				},
+			},
+		},
+		"snap": map[string]any{"type": "string", "enum": []string{"none", "final"}, "description": "final appends a snap after the last step"},
+	},
 }
 
 // mcpHidden reports the commands that are never MCP tools: the daemon or the CLI
@@ -531,7 +602,7 @@ func mcpCommands() int {
 // reimplements it with `eval`.
 func instructions() string {
 	exposed, total := len(tools()), mcpCommands()
-	note := "axscope drives a real browser (snap → ref → act). "
+	note := "axscope drives a real browser (snap → ref → act). Prefer `batch` for known steps: it runs a list of commands in one call and snap=final reads the screen at the end. "
 	if exposed >= total {
 		note += fmt.Sprintf("All %d commands are exposed; call the `help` tool for the list with their arguments.", total)
 	} else {

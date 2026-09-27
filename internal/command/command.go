@@ -61,10 +61,12 @@ var Specs = []Spec{
 	{Cmd: "console", Flags: []string{"all"}, Help: "console errors/warnings"},
 	{Cmd: "net", Positional: []string{"filter"}, Optional: []string{"filter"}, Help: "network requests"},
 	{Cmd: "shot", Positional: []string{"path"}, Optional: []string{"path"}, Flags: []string{"full"}, Help: "captures PNG (without a path it goes to /tmp)"},
-	{Cmd: "script", Positional: []string{"path"}, Help: "runs a script (file or - for stdin)"},
+	{Cmd: "batch", Positional: []string{"steps", "snap"}, Optional: []string{"snap"}, Flags: []string{"continue"}, Help: "runs several commands in one call — the fast path: steps is a list of command lines (\"click e3\") or objects ({\"cmd\":\"fill\",\"target\":\"e5\",\"value\":\"x\"}); stops at the first error unless --continue; snap=final reads the screen after the last step"},
+	{Cmd: "script", Positional: []string{"path", "content"}, Optional: []string{"path", "content"}, Help: "runs a script, one command per line (path= a file or - for stdin, or content= the lines inline)"},
 }
 
-func lookup(cmd string) (Spec, bool) {
+// Lookup returns the spec of a command.
+func Lookup(cmd string) (Spec, bool) {
 	for _, s := range Specs {
 		if s.Cmd == cmd {
 			return s, true
@@ -78,7 +80,7 @@ func Parse(tokens []string) (protocol.Request, error) {
 	if len(tokens) == 0 {
 		return protocol.Request{}, fmt.Errorf("no command")
 	}
-	spec, ok := lookup(tokens[0])
+	spec, ok := Lookup(tokens[0])
 	if !ok {
 		return protocol.Request{}, fmt.Errorf("unknown command: %q (see `axscope help`)", tokens[0])
 	}

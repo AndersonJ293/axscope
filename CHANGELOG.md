@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `batch`, the fast path for an agent: a list of commands (lines or objects) in
+  one call, with each step's position and time, a stop-at-first-error summary
+  (`--continue` to go on) and `snap=final` to read the screen at the end. Over
+  MCP `steps` is a typed list, and an agent issuing single actions in a row gets
+  an occasional tip pointing at it.
+- `script` accepts `content=` over MCP, so a script no longer needs a file.
+
 - `AXSCOPE_MCP_TIMEOUT_MINUTES` bounds a single MCP tool call (default `10`,
   `0` = no bound), so a client that never cancels cannot hold a call forever.
 - `click --dom`, for pages that refuse the real pointer (`pointer-events: none`,
