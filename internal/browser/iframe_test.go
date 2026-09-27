@@ -18,7 +18,7 @@ func TestGraftFrame_PutsContentInsideIframe(t *testing.T) {
 	}
 
 	joined := append(parent, graftFrame(child, "f0:", "frame")...)
-	snap := buildText(joined, SnapshotOptions{})
+	snap := build(t, joined, SnapshotOptions{})
 
 	// The frame root does not become a line: `RootWebArea "Inner document"`
 	// would be noise inside the iframe, and what matters is the content.

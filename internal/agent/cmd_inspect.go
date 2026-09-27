@@ -88,12 +88,31 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	gen := a.nextGen()
-	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, browser.SnapshotOptions{
+	opts := browser.SnapshotOptions{
 		RefsOnly: req.Bool("refs", false),
 		All:      req.Bool("all", false),
-		Gen:      gen,
-	})
+		Page:     req.Bool("page", false),
+		Viewport: req.Bool("viewport", false),
+	}
+	if raw := req.String("depth"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 {
+			return protocol.Fail(fmt.Errorf("depth=%q: use a whole number from 1 (1 = the top level only)", raw))
+		}
+		opts.MaxDepth = n
+	}
+	// The scope resolves against the refs of the reading the agent has, so it
+	// happens before this reading replaces them.
+	if within := req.String("within"); within != "" {
+		backend, label, err := a.scopeNode(ctx, sid, within)
+		if err != nil {
+			return protocol.Fail(fmt.Errorf("within=%s: %w", within, err))
+		}
+		opts.Scope, opts.ScopeLabel = backend, label
+	}
+	gen := a.nextGen()
+	opts.Gen = gen
+	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, opts)
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -104,11 +123,55 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	fmt.Fprintf(&b, "title: %s\n", snap.Title)
 	fmt.Fprintf(&b, "url: %s\n", snap.URL)
 	fmt.Fprintf(&b, "-- %d lines, %d refs%s\n", snap.Count, len(snap.Refs), scrollLine(snap))
+	if line := scopeLine(snap); line != "" {
+		b.WriteString(line + "\n")
+	}
+	if snap.Offscreen > 0 {
+		fmt.Fprintf(&b, "-- viewport only: %d targets off screen left out (scroll, or drop --viewport)\n", snap.Offscreen)
+	}
 	b.WriteString(snap.Text)
 	if snap.Truncated {
 		b.WriteString("\n(... truncated; use `--refs` to reduce)")
 	}
 	return ok(b.String())
+}
+
+// scopeNode resolves a within= target to its DOM node without measuring it: a
+// reading must not scroll the page, and a container can be off screen or
+// partly hidden and still be worth reading.
+func (a *Agent) scopeNode(ctx context.Context, sid, target string) (int, string, error) {
+	target = a.qualifyRef(target)
+	if _, gen, ok := refGen(target); ok && !strings.HasPrefix(target, "css=") && !strings.HasPrefix(target, "text=") {
+		a.mu.Lock()
+		current := a.snapGen
+		a.mu.Unlock()
+		if gen != current {
+			return 0, "", fmt.Errorf("ref %q is from an old read (the current one is #%d) — run `snap` again", target, current)
+		}
+	}
+	objectID, err := browser.ResolveObject(ctx, a.client(), sid, a.currentRefs(), target)
+	if err != nil {
+		return 0, "", err
+	}
+	backend, label := browser.DescribeNode(ctx, a.client(), sid, objectID)
+	if backend == 0 {
+		return 0, "", fmt.Errorf("the target has no DOM node to read from")
+	}
+	return backend, label, nil
+}
+
+// scopeLine says the reading is not the whole page. A modal chose the scope on
+// its own, so the line names the way back to the page: an agent that does not
+// know the rest was left out would conclude it is not there.
+func scopeLine(snap *browser.Snapshot) string {
+	switch {
+	case snap.Scope == "":
+		return ""
+	case snap.ScopeAuto:
+		return fmt.Sprintf("-- scope: %s — an open modal; the page behind it is left out (--page reads it all)", snap.Scope)
+	default:
+		return fmt.Sprintf("-- scope: %s", snap.Scope)
+	}
 }
 
 // scrollLine summarizes where the scrolling areas are, how far they scrolled
