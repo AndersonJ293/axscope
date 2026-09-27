@@ -76,3 +76,14 @@ func TestLoggedSilentByDefault(t *testing.T) {
 		t.Errorf("logged without AXSCOPE_DEBUG: %q", buf.String())
 	}
 }
+
+// The glide cap is an environment knob; an invalid value keeps the default and
+// a negative one jumps, never a negative wait.
+func TestGlideCap(t *testing.T) {
+	for env, want := range map[string]int{"": defaultGlideMs, "120": 120, "0": 0, "-5": 0, "abc": defaultGlideMs} {
+		t.Setenv("AXSCOPE_CURSOR_DELAY", env)
+		if got := glideCap(); got != want {
+			t.Errorf("AXSCOPE_CURSOR_DELAY=%q: glideCap() = %d, want %d", env, got, want)
+		}
+	}
+}

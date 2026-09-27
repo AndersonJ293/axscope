@@ -61,33 +61,6 @@ func TestKeyInfo(t *testing.T) {
 	}
 }
 
-// The cursor delay is an environment knob; an invalid or negative value must
-// fall back to the default or to no delay, never to a negative sleep.
-func TestCursorDelay(t *testing.T) {
-	cases := []struct {
-		env     string
-		wantMs  int
-		wantDur time.Duration
-	}{
-		{"", 160, 160 * time.Millisecond},
-		{"250", 250, 250 * time.Millisecond},
-		{"0", 0, 0},
-		{"-10", 0, 0},
-		{"abc", 160, 160 * time.Millisecond},
-	}
-	for _, c := range cases {
-		t.Run("env="+c.env, func(t *testing.T) {
-			t.Setenv("AXSCOPE_CURSOR_DELAY", c.env)
-			if got := cursorDelayMs(); got != c.wantMs {
-				t.Errorf("cursorDelayMs() = %d, want %d", got, c.wantMs)
-			}
-			if got := visualDelay(); got != c.wantDur {
-				t.Errorf("visualDelay() = %v, want %v", got, c.wantDur)
-			}
-		})
-	}
-}
-
 func TestEnvIntAndBool(t *testing.T) {
 	intCases := []struct {
 		env  string

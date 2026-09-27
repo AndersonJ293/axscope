@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The cursor glides from its last point to the target (40–80 ms, by distance)
+  and the input lands on arrival, replacing the fixed 160 ms pause: a click
+  drops from ~540 ms to ~100 ms. It stays on screen across navigations, tilts on
+  click, and has a new look. `AXSCOPE_CURSOR_DELAY` now caps the glide
+  (default 80).
+
 - Readability pass: comments reduced to a few high-value lines, with no internal
   history. Documentation moved to `docs/` (`ARCHITECTURE.md`, `BACKLOG.md`).
 - Tests now run with the race detector in CI.

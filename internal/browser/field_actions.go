@@ -39,9 +39,6 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 	}, session); err != nil {
 		return "", err
 	}
-	if d := visualDelay(); d > 0 {
-		time.Sleep(d / 2)
-	}
 	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": normalizeNewlines(text)}, session); err != nil {
 		return "", err
 	}
