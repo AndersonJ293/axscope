@@ -48,6 +48,9 @@ type Agent struct {
 	// previous step): what `wait --change` counts a change from, since the
 	// action that caused it has usually finished by the time the wait starts.
 	prevStart, curStart time.Time
+	// before is the page as the running action found it (summaryCommands only);
+	// finish compares against it.
+	before *pageState
 	// readings is each tab's last snap, for --delta and stable ref numbers.
 	readings  map[string]*reading
 	bridge    *bridge.Server

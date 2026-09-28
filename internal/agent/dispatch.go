@@ -87,6 +87,17 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 	if !found {
 		return protocol.Fail(fmt.Errorf("command %q is not handled by the daemon", req.Cmd))
 	}
+	a.mu.Lock()
+	a.before = nil
+	a.mu.Unlock()
+	if summaryCommands[req.Cmd] {
+		if sid, err := sess.ActiveSID(); err == nil {
+			st := a.readState(ctx, sess, sid)
+			a.mu.Lock()
+			a.before = st
+			a.mu.Unlock()
+		}
+	}
 	return r.handle(ctx, sess, req)
 }
 
