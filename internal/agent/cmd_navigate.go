@@ -53,6 +53,9 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 	if req.Bool("network-idle", false) {
 		return a.waitNetworkIdle(ctx, sess, req)
 	}
+	if req.Bool("change", false) {
+		return a.waitChange(ctx, sess, req)
+	}
 	if want, re := req.String("url"), req.String("urlre"); want != "" || re != "" {
 		return a.waitURL(ctx, sess, req, want, re)
 	}

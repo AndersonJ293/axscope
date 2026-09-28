@@ -111,6 +111,7 @@ axscope wait "Ready" within=css=#list   # the text, but only inside the containe
 axscope wait css=#submit --enabled   # waits for the state, not the text
 axscope wait url=settings/rules      # waits for the URL (a SPA changes it with no new text)
 axscope wait --network-idle          # waits until the requests stop (a page that renders in cascades)
+axscope wait --change within=css=#lb # waits for the region to change and settle, then reads it with refs
 axscope find css=#submit             # the ref the last snap gave a css=/text= target, without acting
 axscope download e7                  # saves the file a target offers, returns its path
 axscope read --links                 # the links of the page as `label — href` (absolute)
@@ -240,6 +241,36 @@ error: the page has unsaved changes and blocked the navigation — leave it with
 $ axscope open https://example.com/next --force
 ok: https://example.com/next
 ```
+
+### Waiting for what a filter loads
+
+A search box that asks the backend (a country picker, a job form's city field)
+has no text to wait for: you do not know the options until they arrive.
+`wait --change` waits for the page — or the `within=` region — to change and
+settle, then answers with a reading of it:
+
+```
+$ axscope type css=#q b
+$ axscope wait --change within=css=#lb
+ok: changed in css=#lb after 1487ms, settled at 2132ms
+
+-- scope: listbox
+- listbox [ref=e1#1]
+  - option "Brasil" [ref=e2#1]
+  - option "Bolívia" [ref=e3#1]
+  - option "Bélgica" [ref=e4#1]
+  - option "Bulgária" [ref=e5#1]
+$ axscope click e2
+```
+
+Settled means the DOM held still for 300 ms, no request was in flight, the DOM
+still held after that, and nothing inside says `aria-busy`, so a debounced
+search that shows "Loading…" before its fetch is not read too early. The region
+may not exist yet (a listbox that opens on typing): it is waited for, and its
+appearing counts as the change. Attribute churn from animations (`class`,
+`style`) does not count. The default timeout is 10 s (`wait --change 3000`);
+"nothing changed" is an error, and a region that never holds still is read as
+it is, with a note.
 
 ### Reading part of the page
 

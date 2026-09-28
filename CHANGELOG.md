@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Refs are stable across readings of the same page: an element keeps its
   number, and a new one gets a number above every earlier one.
+- `wait --change [within=<target>]` waits for the page or a region to change and
+  settle (DOM quiet, network idle, no `aria-busy`), then reads it with refs; the
+  region may not exist yet.
 
 - `snap within=<target>` reads one element (a ref, `css=`, `text=`, or a plain
   `<div>` the tree drops), without scrolling the page.
