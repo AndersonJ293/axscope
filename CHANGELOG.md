@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `wait "A|B"` ends on whichever text appears first and names it (`waitgone`
+  waits for all to go), for pages that word the same section differently. A
+  text that never appears is answered with the page's visible headings.
 - Every command that takes a target reaches inside a cross-origin iframe:
   `select` (native and ARIA), `drag`, `upload`, `download`, `scroll target=`,
   `wait --enabled/--gone`, `wait within=`, `find` and `snap within=` take a
