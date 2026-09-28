@@ -164,18 +164,53 @@ func Run(ctx context.Context) error {
 		calls:  map[string]context.CancelFunc{},
 	}
 
-	reader := bufio.NewReaderSize(os.Stdin, 8<<20)
-	var runErr error
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(line) > 0 {
-			s.dispatch(line)
+	ppid := os.Getppid()
+	touch()
+	claimNewest(ppid)
+	defer releaseNewest(ppid)
+
+	// stdin is read on its own goroutine: a blocked read must not keep the
+	// server from hearing a signal (the client's SIGTERM used to be swallowed)
+	// or the watchdog.
+	lines := make(chan []byte)
+	readErr := make(chan error, 1)
+	go func() {
+		reader := bufio.NewReaderSize(os.Stdin, 8<<20)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(line) > 0 {
+				lines <- line
+			}
+			if err != nil {
+				readErr <- err
+				return
+			}
 		}
-		if err != nil {
+	}()
+
+	watch := time.NewTicker(watchEvery)
+	defer watch.Stop()
+	var runErr error
+loop:
+	for {
+		select {
+		case line := <-lines:
+			touch()
+			s.dispatch(line)
+		case err := <-readErr:
 			if err != io.EOF {
 				runErr = err
 			}
-			break
+			break loop
+		case <-ctx.Done():
+			// The calls in flight run on s.ctx, which is ctx: they are cancelled
+			// and answer promptly, so the drain below is short.
+			break loop
+		case <-watch.C:
+			if exit, why := shouldExit(ppid, os.Getppid(), superseded(ppid), idleFor(), s.inFlight()); exit {
+				fmt.Fprintf(os.Stderr, "axscope mcp: exiting — %s\n", why)
+				break loop
+			}
 		}
 	}
 	// A pipe still reading stdout expects the calls in flight to answer. Each has
@@ -183,6 +218,13 @@ func Run(ctx context.Context) error {
 	s.wg.Wait()
 	s.flush()
 	return runErr
+}
+
+// inFlight counts the tool calls running now.
+func (s *server) inFlight() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.calls)
 }
 
 // dispatch routes one line. A notification is handled inline (a cancellation

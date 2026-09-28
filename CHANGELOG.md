@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The MCP server exits on SIGTERM (it swallowed the signal while blocked
+  reading stdin), when its client process is gone, and when a newer server of
+  the same client took over and it sat idle for 10 minutes: a client that
+  reconnects without closing the old server's stdin no longer leaves servers
+  and browsers behind.
+
 - An MCP tool call no longer freezes the whole server: calls run concurrently, so
   a slow `wait` blocks neither `ping` nor the next call, and a client
   `notifications/cancelled` reaches the command already in flight.
