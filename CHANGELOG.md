@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `check`/`uncheck` no longer refuse a custom checkbox: the state is read from
+  ARIA (`aria-checked`, `aria-pressed`, `aria-selected`), a label's control or
+  the one checkbox inside a wrapper; a toggle with no readable state is clicked
+  and the answer says so, and a click that did not change the state is flagged.
 - `eval` takes the rest of the line as JavaScript, in a `batch` or `script`
   step too: `eval () => document.title` no longer fails on "extra argument".
   A function written as the whole expression is called (awaited when async)

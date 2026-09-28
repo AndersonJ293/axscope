@@ -245,49 +245,80 @@ func ariaOptionExpression(want string) string {
 	})()`, strconv.Quote(want), underShadow, jsElementText)
 }
 
-// SetChecked makes a checkbox/radio reach the wanted state, clicking if needed;
-// it reports whether it clicked and the click warning.
+// SetChecked makes a checkbox, radio or toggle reach the wanted state,
+// clicking if needed; it reports whether it clicked and a notice. A custom
+// widget is clicked like a native one: refusing it sent the agent to `click`,
+// which is what check does anyway.
 func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Target, want bool, p Presenter) (bool, string, error) {
+	before, what, err := checkedState(ctx, client, session, t)
+	if err != nil {
+		return false, "", err
+	}
+	if before != nil && *before == want {
+		return false, "", nil
+	}
+	warning, err := Click(ctx, client, session, t, "left", 1, p)
+	if err != nil || warning != "" {
+		return true, warning, err
+	}
+	if before == nil {
+		// A toggle drawn with divs keeps its state in a class: there is nothing
+		// standard to read, so the click is the whole of `check`.
+		return true, fmt.Sprintf("%s has no checked state to read (a custom toggle) — clicked it; the next snap shows whether it took", what), nil
+	}
+	time.Sleep(40 * time.Millisecond)
+	if after, _, err := checkedState(ctx, client, session, t); err == nil && after != nil && *after != want {
+		return true, "clicked, but the state did not change — the page may toggle on another element (try `click` on the label or the box)", nil
+	}
+	return true, "", nil
+}
+
+// checkedState reads whether the target is checked, from wherever it says so:
+// the element's own `checked`, ARIA (aria-checked/aria-pressed/aria-selected on
+// it or its toggle ancestor), the control of a <label>, or the one checkbox or
+// radio inside a wrapper. nil means there is no state to read.
+func checkedState(ctx context.Context, client *cdp.Client, session string, t *Target) (*bool, string, error) {
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId": t.ObjectID,
 		"functionDeclaration": `function () {
-			return {
-				kind: typeof this.checked,
-				current: !!this.checked,
-				role: (this.getAttribute && this.getAttribute('role')) || '',
-				tag: (this.tagName || '').toLowerCase()
+			const what = ((this.getAttribute && this.getAttribute('role')) || (this.tagName || '').toLowerCase());
+			if (typeof this.checked === 'boolean') return { state: this.checked, what };
+			const aria = (el) => {
+				for (const a of ['aria-checked', 'aria-pressed', 'aria-selected']) {
+					const v = el.getAttribute && el.getAttribute(a);
+					if (v === 'true' || v === 'mixed') return true;
+					if (v === 'false') return false;
+				}
+				return null;
 			};
+			let v = aria(this);
+			if (v !== null) return { state: v, what };
+			const toggle = this.closest && this.closest('[role=checkbox],[role=switch],[role=radio],[role=menuitemcheckbox],[role=menuitemradio],[role=option],[aria-pressed]');
+			if (toggle && toggle !== this && (v = aria(toggle)) !== null) return { state: v, what };
+			const label = this.closest && this.closest('label');
+			const control = label && label.control;
+			if (control && typeof control.checked === 'boolean') return { state: control.checked, what };
+			const inner = this.querySelectorAll ? this.querySelectorAll('input[type=checkbox],input[type=radio]') : [];
+			if (inner.length === 1) return { state: inner[0].checked, what };
+			return { state: null, what };
 		}`,
 		"returnByValue": true,
 	}, t.ObjSession(session))
 	if err != nil {
-		return false, "", err
+		return nil, "", err
 	}
 	var res struct {
 		Result struct {
 			Value struct {
-				Kind    string `json:"kind"`
-				Current bool   `json:"current"`
-				Role    string `json:"role"`
-				Tag     string `json:"tag"`
+				State *bool  `json:"state"`
+				What  string `json:"what"`
 			} `json:"value"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return false, "", err
+		return nil, "", err
 	}
-	if v := res.Result.Value; v.Kind != "boolean" {
-		what := v.Tag
-		if v.Role != "" {
-			what = v.Role
-		}
-		return false, "", fmt.Errorf("not a checkbox or radio (it is %s) — for a listbox option use `axscope select`, for a toggle `axscope click`", what)
-	}
-	if res.Result.Value.Current == want {
-		return false, "", nil
-	}
-	warning, err := Click(ctx, client, session, t, "left", 1, p)
-	return true, warning, err
+	return res.Result.Value.State, res.Result.Value.What, nil
 }
 
 // ErrInFrame refuses an action not yet supported on an element of a
