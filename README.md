@@ -169,6 +169,21 @@ point**, not at its center, which is what lets you click inside an iframe). Open
 shadow roots are traversed: the accessibility tree flattens them — the snapshot
 shows what is inside, with a ref — and aiming by `text=`/`css=` reaches in too.
 
+When a `text=` or `css=` target matches several elements the search cannot tell
+apart, the action still happens on the first one — and says so, with the way to
+pick another:
+
+```
+$ axscope click "text=Launch demo modal"
+ok: click text=Launch demo modal
+note: 5 elements match text=Launch demo modal — acted on the first; pick another with `text=Launch demo modal >> nth=1` (0-based) or a ref from snap
+```
+
+`>> nth=N` is Playwright's syntax and 0-based. For `text=` it indexes the
+matches tied at the best preference (exact name, in view, uncovered), counted
+once per target (the `<span>` inside a `<button>` is the same target); for `css=`
+it indexes `querySelectorAll`.
+
 `snap` prints each ref with the reading's generation (`e12#7`), because an old
 ref can point at whatever now occupies that position. You do not have to repeat
 it: a plain `e12` means the **current** reading, and an explicit older

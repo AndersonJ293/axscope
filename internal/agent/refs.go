@@ -103,5 +103,10 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 	if err != nil {
 		return nil, sid, err
 	}
+	if t.Note != "" {
+		a.mu.Lock()
+		a.note = t.Note
+		a.mu.Unlock()
+	}
 	return t, sid, nil
 }

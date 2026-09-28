@@ -298,6 +298,13 @@ func (a *Agent) finish(ctx context.Context, sess *browser.Session, sid, label st
 	sess.UpdateHUD(ctx, label)
 	var b strings.Builder
 	fmt.Fprintf(&b, "ok: %s", label)
+	a.mu.Lock()
+	note := a.note
+	a.note = ""
+	a.mu.Unlock()
+	if note != "" {
+		fmt.Fprintf(&b, "\nnote: %s", note)
+	}
 	newErrs := sess.Observe.Console(sid, "error", 0)
 	if len(newErrs) > errCountBefore {
 		for _, e := range newErrs[errCountBefore:] {

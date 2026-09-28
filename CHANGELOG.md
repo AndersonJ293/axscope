@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `snap depth=N` cuts the reading at N levels; each cut container keeps a ref
   and a count of the targets inside, to open with `within=`.
 - `snap --viewport` leaves out what is wholly off screen and counts it.
+- An action on a `text=`/`css=` target that matched several elements says so
+  (`note: 5 elements match … acted on the first`), and `>> nth=N` (Playwright's
+  syntax, 0-based) picks another.
 
 - `AXSCOPE_MCP_TIMEOUT_MINUTES` bounds a single MCP tool call (default `10`,
   `0` = no bound), so a client that never cancels cannot hold a call forever.
