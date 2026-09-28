@@ -44,6 +44,10 @@ type Agent struct {
 	// target that matched several elements); finish appends it. Commands run
 	// one at a time (runMu), and dispatch clears it before each.
 	note string
+	// prevStart is when the command before this one started (in a batch, the
+	// previous step): what `wait --change` counts a change from, since the
+	// action that caused it has usually finished by the time the wait starts.
+	prevStart, curStart time.Time
 	// readings is each tab's last snap, for --delta and stable ref numbers.
 	readings  map[string]*reading
 	bridge    *bridge.Server

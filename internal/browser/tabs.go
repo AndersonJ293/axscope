@@ -131,6 +131,9 @@ func (s *Session) initTab(tab *Tab) error {
 	if err := s.Presenter.Install(s.ctx, s.client, sid); err != nil {
 		return fmt.Errorf("overlay: %w", err)
 	}
+	// Best effort: without the log, `wait --change` only sees what changes
+	// after it starts, as before.
+	_ = s.installMutations(sid)
 
 	s.client.On("Network.requestWillBeSent", func(params json.RawMessage, s2 string) {
 		if s2 != sid {
