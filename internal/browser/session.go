@@ -77,6 +77,10 @@ type Session struct {
 
 	inflight     map[string]map[string]pendingReq
 	lastActivity map[string]time.Time
+	// mainFrame is each tab's main frame id, which tells the page's requests
+	// from its iframes'. It is not the tab's id: through the extension a tab
+	// is a browser tab number.
+	mainFrame map[string]string
 
 	acceptDialogs bool
 	// nextDialog is the action for the next native dialog that is not a
@@ -117,6 +121,7 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 		bootSet:       make(map[string]bool),
 		inflight:      make(map[string]map[string]pendingReq),
 		lastActivity:  make(map[string]time.Time),
+		mainFrame:     make(map[string]string),
 		acceptDialogs: acceptDialogs,
 	}
 	s.Observe.Wire(client)
