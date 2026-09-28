@@ -57,3 +57,17 @@ func TestPrevStartIsThePreviousStep(t *testing.T) {
 		t.Errorf("prevStart = %v, want the last step's start %v", a.prevStart, before)
 	}
 }
+
+// A ref of the current reading that no longer resolves was there when it was
+// read: gone, not misspelled. A ref the reading never had is still a refusal.
+func TestGoneAlreadyByRef(t *testing.T) {
+	a := &Agent{}
+	a.setRefs(map[string]int{"e2#3": 10}, 3)
+	a.snapGen = 3
+	if why := a.goneAlready(t.Context(), "sid", "e2"); why == "" {
+		t.Error("a ref of the last reading must count as gone")
+	}
+	if why := a.goneAlready(t.Context(), "sid", "e9"); why != "" {
+		t.Errorf("an unknown ref counted as gone: %s", why)
+	}
+}
