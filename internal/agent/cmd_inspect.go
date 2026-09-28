@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -442,7 +443,7 @@ func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	raw, err := dom.EvalAwait(ctx, a.client(), sid, js)
+	raw, err := dom.EvalAwait(ctx, a.client(), sid, callIfFunction(js))
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -450,6 +451,20 @@ func (a *Agent) eval(ctx context.Context, sess *browser.Session, req protocol.Re
 		return ok(rawValue(raw))
 	}
 	return ok(prettyValue(raw))
+}
+
+// functionJS matches JavaScript that is a function, not a value.
+var functionJS = regexp.MustCompile(`^(async\s+)?(function\b|\([^()]*\)\s*=>|[\w$]+\s*=>)`)
+
+// callIfFunction runs a function the agent wrote as the whole expression
+// (`() => document.title`): evaluated as is, it answers the function itself,
+// an empty object, and the agent reads that as "nothing on the page".
+func callIfFunction(js string) string {
+	trimmed := strings.TrimSpace(js)
+	if functionJS.MatchString(trimmed) {
+		return "(" + trimmed + ")()"
+	}
+	return js
 }
 
 // prettyValue shows a CDP value the way a person reads it: a JSON string loses

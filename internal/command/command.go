@@ -16,7 +16,10 @@ type Spec struct {
 	// Optional lists positionals that can be omitted (they have a default).
 	Optional []string
 	Flags    []string
-	Help     string
+	// Rest makes the last positional take the rest of the line: JavaScript
+	// has spaces an agent will not quote (`eval () => document.title`).
+	Rest bool
+	Help string
 }
 
 // Specs is the canonical table. Order does not matter.
@@ -50,7 +53,7 @@ var Specs = []Spec{
 	{Cmd: "waitgone", Positional: []string{"text", "timeout", "within", "url", "urlre"}, Optional: []string{"text", "timeout", "within", "url", "urlre"}, Help: "waits for the text to disappear (timeout in ms; within= limits the container; url=/urlre= wait for the URL to change)"},
 	{Cmd: "read", Positional: []string{"selector"}, Optional: []string{"selector"}, Flags: []string{"links", "table"}, Help: "reads the page's main text (--links lists the links as `label — href`; --table reads an HTML <table> as aligned rows)"},
 	{Cmd: "find", Positional: []string{"target"}, Flags: []string{"all"}, Help: "shows the ref the last snap gave a css=/text= target, without acting (--all lists every matching ref)"},
-	{Cmd: "eval", Positional: []string{"js"}, Flags: []string{"raw"}, Help: "evaluates JavaScript on the page (--raw prints the exact CDP JSON)"},
+	{Cmd: "eval", Positional: []string{"js"}, Flags: []string{"raw"}, Rest: true, Help: "evaluates JavaScript on the page — the rest of the line, no quotes needed; a function (`() => …`, async too) is called and its result printed (--raw prints the exact CDP JSON)"},
 	{Cmd: "tabs", Help: "lists the tabs"},
 	{Cmd: "tab", Positional: []string{"ref"}, Flags: []string{"focus"}, Help: "switches to the tab (index or targetId; --focus brings the window to the front)"},
 	{Cmd: "newtab", Positional: []string{"url"}, Optional: []string{"url"}, Help: "opens a new tab"},
@@ -110,6 +113,11 @@ func Parse(tokens []string) (protocol.Request, error) {
 			parts := strings.SplitN(token, "=", 2)
 			req.Args[parts[0]] = parts[1]
 		default:
+			if len(positional) == 0 && spec.Rest && len(spec.Positional) > 0 {
+				last := spec.Positional[len(spec.Positional)-1]
+				req.Args[last] = req.String(last) + " " + token
+				continue
+			}
 			if len(positional) == 0 {
 				return protocol.Request{}, fmt.Errorf("extra argument in %q: %q — a value with spaces goes in quotes: %s", spec.Cmd, token, quoteHint(tokens, idx+1))
 			}
