@@ -68,6 +68,9 @@ func (a *Agent) routes() map[string]route {
 // other command ensures the session first — including an unknown one, which is
 // refused only after the session exists.
 func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Response {
+	a.mu.Lock()
+	a.note = ""
+	a.mu.Unlock()
 	r, found := a.routes()[req.Cmd]
 	if found && !r.needsSession {
 		return r.handle(ctx, nil, req)

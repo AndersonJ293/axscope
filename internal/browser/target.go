@@ -19,6 +19,10 @@ type Target struct {
 	BackendNodeID int
 	Rect          dom.Rect
 	Description   string
+	// Matches counts the elements a css=/text= target could not tell apart
+	// (0 or 1 = no doubt); Note says so to the agent.
+	Matches int
+	Note    string
 	// Point, when set, is where the action happens (a `pos=x,y` target); the
 	// Rect remains the element's. Without separating them the action would fall
 	// on the center, which inside an iframe drifts from the requested place.
@@ -35,9 +39,14 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		return nil, fmt.Errorf("empty target")
 	}
 
+	spec, nth, err := splitNth(spec)
+	if err != nil {
+		return nil, err
+	}
 	var objectID string
 	var backendID int
 	var point *Point
+	matches := 0
 	// Expression that produced the node, to resolve again if the scroll
 	// invalidates it (a virtualized list recreates the rows).
 	var expr string
@@ -46,11 +55,19 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	case strings.HasPrefix(spec, "css="):
 		sel := strings.TrimPrefix(spec, "css=")
 		expr = cssExpression(sel)
+		if nth >= 0 {
+			expr = fmt.Sprintf("(%s[%d] || null)", cssGroupExpression(sel), nth)
+		} else {
+			matches = countOf(ctx, client, session, cssGroupExpression(sel))
+		}
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid selector %q: %w", sel, err)
 		}
 		if id == "" {
+			if nth >= 0 {
+				return nil, fmt.Errorf("no match #%d for selector %q (nth is 0-based)", nth, sel)
+			}
 			return nil, fmt.Errorf("no element for selector %q", sel)
 		}
 		objectID = id
@@ -58,9 +75,17 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	case strings.HasPrefix(spec, "text="):
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
 		expr = textExpression(want)
+		if nth >= 0 {
+			expr = fmt.Sprintf("(%s[%d] || null)", textGroupExpression(want), nth)
+		} else {
+			matches = countOf(ctx, client, session, textGroupExpression(want))
+		}
 		id, err := dom.EvalObject(ctx, client, session, expr)
 		if err != nil {
 			return nil, err
+		}
+		if id == "" && nth >= 0 {
+			return nil, fmt.Errorf("no match #%d for text %q among the ones tied (nth is 0-based)", nth, want)
 		}
 		if id == "" {
 			return nil, fmt.Errorf(
@@ -92,6 +117,9 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		point = &Point{X: x, Y: y}
 
 	default:
+		if nth >= 0 {
+			return nil, fmt.Errorf("%q: a ref names one element already; nth is for css= and text=", spec)
+		}
 		backend, ok := refs[spec]
 		if !ok {
 			return nil, fmt.Errorf("ref %q does not exist — run `snap` again (refs are per reading)", spec)
@@ -112,7 +140,8 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 		objectID = res.Object.ObjectID
 	}
 
-	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Point: point}
+	t := &Target{ObjectID: objectID, BackendNodeID: backendID, Description: spec, Point: point,
+		Matches: matches, Note: ambiguityNote(spec, matches)}
 
 	// Bring it to the screen in visible steps, then guarantee it with a direct
 	// scroll — the action must reach the target.
@@ -149,6 +178,17 @@ func ResolveTarget(ctx context.Context, client *cdp.Client, session string, refs
 	t.ObjectID = objectID
 	t.Rect = rect
 	return t, nil
+}
+
+// countOf evaluates a list expression and returns its length; a failure counts
+// as no doubt, since the count only adds a note.
+func countOf(ctx context.Context, client *cdp.Client, session, list string) int {
+	raw, err := dom.Eval(ctx, client, session, "("+list+").length")
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(string(raw))
+	return n
 }
 
 // ResolveBackend resolves a backend node id to an object id, the reverse of the
@@ -209,13 +249,27 @@ func DescribeNode(ctx context.Context, client *cdp.Client, session, objectID str
 // hidden element — an `<input type=file>` behind a button — can still be reached.
 // It takes the same forms as ResolveTarget, minus the geometry-based scroll.
 func ResolveObject(ctx context.Context, client *cdp.Client, session string, refs map[string]int, spec string) (string, error) {
+	spec, nth, err := splitNth(spec)
+	if err != nil {
+		return "", err
+	}
 	switch {
 	case strings.HasPrefix(spec, "css="):
-		return dom.EvalObject(ctx, client, session, cssExpression(strings.TrimPrefix(spec, "css=")))
+		sel := strings.TrimPrefix(spec, "css=")
+		if nth >= 0 {
+			return dom.EvalObject(ctx, client, session, fmt.Sprintf("(%s[%d] || null)", cssGroupExpression(sel), nth))
+		}
+		return dom.EvalObject(ctx, client, session, cssExpression(sel))
 	case strings.HasPrefix(spec, "text="):
 		want := strings.TrimSpace(strings.TrimPrefix(spec, "text="))
+		if nth >= 0 {
+			return dom.EvalObject(ctx, client, session, fmt.Sprintf("(%s[%d] || null)", textGroupExpression(want), nth))
+		}
 		return dom.EvalObject(ctx, client, session, textExpression(want))
 	default:
+		if nth >= 0 {
+			return "", fmt.Errorf("%q: a ref names one element already; nth is for css= and text=", spec)
+		}
 		backend, ok := refs[spec]
 		if !ok {
 			return "", fmt.Errorf("ref %q does not exist — run `snap` again (refs are per reading)", spec)

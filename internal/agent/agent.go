@@ -39,7 +39,11 @@ type Agent struct {
 	refs   map[string]int
 	// snapGen is the last read's generation; a ref born in an older generation
 	// is refused rather than clicking whatever now occupies that position.
-	snapGen   int
+	snapGen int
+	// note is what resolving this command's target has to tell the agent (a
+	// target that matched several elements); finish appends it. Commands run
+	// one at a time (runMu), and dispatch clears it before each.
+	note      string
 	bridge    *bridge.Server
 	extClient *cdp.Client
 	agent     string
