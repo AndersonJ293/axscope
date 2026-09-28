@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Only the page's own requests count as its work in flight: an iframe's loads
+  (a cross-origin one reports their end in its own session) no longer make the
+  first seconds after a load wait out the settle cap on every action.
+
 - `wait --change` counts a change the previous step already caused (a list
   that opened during the `click`, a filter applied during the `type`) instead of
   answering "nothing changed": the page keeps a short log of its DOM changes.
