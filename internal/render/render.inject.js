@@ -1,11 +1,17 @@
 // Overlay injected into the page: rendered cursor, click ripple, spotlight and
 // HUD. Built with createElement/CSSOM/adoptedStyleSheets, never innerHTML.
 (() => {
-  if (window.__axscope && window.__axscope.__v) return;
+  const VERSION = 2;
+  if (window.__axscope && window.__axscope.__v >= VERSION) return;
+  // An older overlay (a daemon upgraded under a live page) steps aside instead of
+  // leaving a second cursor behind.
+  document.querySelectorAll('[data-axscope-root]').forEach((el) => el.remove());
 
   const SVGNS = 'http://www.w3.org/2000/svg';
+  // A rounded pointer with no tail: the tip is at (5, 3), where the click lands.
   const CURSOR_PATH =
-    'M6 2.6 L6 22.2 L10.9 17.6 L14.3 24.6 L17.6 23.0 L14.2 16.2 L21.6 15.9 Z';
+    'M5 4.6C5 3.2 6.6 2.4 7.7 3.3L22.3 15.1C23.5 16 22.8 17.9 21.3 17.9H15.1' +
+    'C14.5 17.9 13.9 18.2 13.6 18.7L10 23.8C9.1 25.1 7 24.5 7 22.9Z';
 
   const CSS = `
     .cursor, .ripple, .spotlight, .hud {
@@ -16,16 +22,21 @@
     .cursor {
       width: 28px; height: 28px; z-index: 5;
       transform: translate(-200px, -200px);
-      transition: transform 260ms cubic-bezier(.22,1,.36,1);
+      /* The duration is set per move (glide): short hops are quick, long ones
+         a little longer, and the Go side waits exactly that long. */
+      transition: transform 0ms cubic-bezier(.22,1,.36,1);
       will-change: transform;
-      filter: drop-shadow(0 3px 6px rgba(2,6,23,.45))
-              drop-shadow(0 1px 1px rgba(2,6,23,.35));
+      filter: drop-shadow(0 4px 8px rgba(76,29,149,.35))
+              drop-shadow(0 1px 2px rgba(2,6,23,.40));
     }
-    .cursor svg {
-      display: block; transform-origin: 6px 3px;
-      transition: transform 110ms cubic-bezier(.3,1.5,.5,1);
+    .cursor svg { display: block; transform-origin: 5px 3px; }
+    /* The click: a quick tilt around the tip and a spring back. */
+    .cursor.press svg { animation: axscope-tilt 240ms cubic-bezier(.3,1.4,.5,1); }
+    @keyframes axscope-tilt {
+      0%   { transform: rotate(0) scale(1); }
+      35%  { transform: rotate(-16deg) scale(.88); }
+      100% { transform: rotate(0) scale(1); }
     }
-    .cursor.press svg { transform: scale(.74); }
 
     /* ---- click ripple ---- */
     /* The click is the only attention moment: the cursor sinks and a short ring
@@ -105,8 +116,7 @@
     /* Respects those who asked for less motion. */
     @media (prefers-reduced-motion: reduce) {
       .cursor, .spotlight, .hud { transition-duration: 1ms; }
-      .cursor svg { transition-duration: 1ms; }
-      .ripple.on, .hud .dot { animation: none; }
+      .ripple.on, .hud .dot, .cursor.press svg { animation: none; }
     }
   `;
 
@@ -115,6 +125,11 @@
   let rippleTimer = 0;
   let hudEl = null, hudTabs = null, hudLabel = null;
   let visible = true, hudVisible = true;
+  // Where the cursor is drawn. A new document starts unplaced; the first move
+  // carries the point the previous page left it at, so it does not pop in.
+  let placed = false, curX = 0, curY = 0;
+  const reducedMotion = () =>
+    !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   function div(cls) {
     const el = document.createElement('div');
@@ -176,12 +191,13 @@
     grad.setAttribute('y1', '0');
     grad.setAttribute('x2', '0.35');
     grad.setAttribute('y2', '1');
+    // The HUD's indigo → violet, so cursor and HUD read as one thing.
     const stop1 = document.createElementNS(SVGNS, 'stop');
     stop1.setAttribute('offset', '0');
-    stop1.setAttribute('stop-color', '#ffffff');
+    stop1.setAttribute('stop-color', '#818cf8');
     const stop2 = document.createElementNS(SVGNS, 'stop');
     stop2.setAttribute('offset', '1');
-    stop2.setAttribute('stop-color', '#dbe4fb');
+    stop2.setAttribute('stop-color', '#8b5cf6');
     grad.appendChild(stop1);
     grad.appendChild(stop2);
     defs.appendChild(grad);
@@ -189,8 +205,9 @@
     const path = document.createElementNS(SVGNS, 'path');
     path.setAttribute('d', CURSOR_PATH);
     path.setAttribute('fill', 'url(#axscope-grad)');
-    path.setAttribute('stroke', '#0b1220');
-    path.setAttribute('stroke-width', '1.4');
+    // A white rim keeps the pointer legible on dark and light pages alike.
+    path.setAttribute('stroke', '#ffffff');
+    path.setAttribute('stroke-width', '1.8');
     path.setAttribute('stroke-linejoin', 'round');
     path.setAttribute('stroke-linecap', 'round');
     svg.appendChild(defs);
@@ -232,9 +249,29 @@
     el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
 
-  function moveCursor(x, y) {
-    if (!build()) return;
+  // glide moves the cursor to (x, y) and returns how long the move takes (ms),
+  // so the real input can land when the drawn cursor arrives. opts.from is the
+  // point the cursor had before a navigation rebuilt the overlay; opts.max caps
+  // the duration (0 = jump).
+  function glide(x, y, opts) {
+    if (!build()) return 0;
+    const from = opts && opts.from;
+    const max = opts && typeof opts.max === 'number' ? opts.max : 0;
+    if (!placed && from) {
+      cursorEl.style.transitionDuration = '0ms';
+      place(cursorEl, from[0], from[1]);
+      void cursorEl.offsetWidth; // commits the start point before the glide
+      curX = from[0]; curY = from[1]; placed = true;
+    }
+    const dist = placed ? Math.hypot(x - curX, y - curY) : 0;
+    let ms = 0;
+    if (visible && max > 0 && dist >= 1 && !reducedMotion()) {
+      ms = Math.round(Math.min(max, Math.max(40, 40 + dist / 20)));
+    }
+    cursorEl.style.transitionDuration = `${ms}ms`;
     place(cursorEl, x, y);
+    curX = x; curY = y; placed = true;
+    return ms;
   }
 
   function ripple(x, y) {
@@ -251,18 +288,25 @@
   }
 
   window.__axscope = {
-    __v: 1,
+    __v: VERSION,
     ready: build,
     show(value) { visible = !!value; applyVisibility(); },
     hudVisible(value) { hudVisible = !!value; applyVisibility(); },
-    cursor: moveCursor,
-    press(x, y, kind) {
-      moveCursor(x, y);
-      ripple(x, y);
-      if (!build()) return;
-      cursorEl.classList.add('press');
-      setTimeout(() => cursorEl && cursorEl.classList.remove('press'), 150);
-      if (kind === 'right') ripple(x, y);
+    cursor: glide,
+    // press glides to the point, then sinks and ripples on arrival: the ring
+    // must mark where the click lands, not where the cursor was headed.
+    press(x, y, kind, opts) {
+      const ms = glide(x, y, opts);
+      if (!cursorEl) return ms;
+      setTimeout(() => {
+        ripple(x, y);
+        if (!cursorEl) return;
+        cursorEl.classList.remove('press');
+        void cursorEl.offsetWidth; // restarts the tilt on a quick second click
+        cursorEl.classList.add('press');
+        setTimeout(() => cursorEl && cursorEl.classList.remove('press'), 260);
+      }, ms);
+      return ms;
     },
     spotlight(rect) {
       if (!build()) return;

@@ -157,13 +157,7 @@ func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to
 	// The cursor travels to the destination: whoever watches needs to see the
 	// drag happen.
 	showCursor(ctx, client, session, p, &from.Rect, fx, fy)
-	if d := visualDelay(); d > 0 {
-		time.Sleep(d)
-	}
 	showCursor(ctx, client, session, p, &to.Rect, tx, ty)
-	if d := visualDelay(); d > 0 {
-		time.Sleep(d)
-	}
 
 	where := opts.DropAt
 	if where == "" {
@@ -213,9 +207,6 @@ func dragPointer(ctx context.Context, client *cdp.Client, session string, from, 
 	tx, ty := dropPoint(to, opts.DropAt)
 
 	showCursor(ctx, client, session, p, &from.Rect, fx, fy)
-	if d := visualDelay(); d > 0 {
-		time.Sleep(d)
-	}
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent",
 		map[string]any{"type": "mouseMoved", "x": fx, "y": fy}, session); err != nil {
 		return err

@@ -569,8 +569,12 @@ that cost real bugs:
 - **`aria-hidden`** on the host — otherwise the HUD shows up in `snap` itself;
 - **`top: auto`** on the HUD — the base rule sets `top:0` and the box stretched.
 
-Visibility tuning: `AXSCOPE_CURSOR_DELAY` (ms, default 160) controls how long the
-cursor "arrives" before acting; `0` removes the pause.
+The cursor glides from where it was to the target — 40 ms for a short hop, up to
+80 ms for a long move — and the real input lands when it arrives; the click
+tilts it around the tip and ripples. A navigation rebuilds the overlay, so the
+cursor is put back where it was instead of vanishing until the next action.
+`AXSCOPE_CURSOR_DELAY` (ms, default 80) caps the glide; `0` jumps with no wait.
+`prefers-reduced-motion` jumps too.
 
 ## Disk
 
@@ -619,7 +623,7 @@ axscope stop --all    # all sessions and all browsers
 | `AXSCOPE_ATTACH` | `host:port` of an already-open Chromium |
 | `AXSCOPE_HEADLESS` | start without a window |
 | `AXSCOPE_FORCE_AX` | `1` enables the accessibility tree when the browser starts (costs memory; the tree is normally enabled on demand) |
-| `AXSCOPE_CURSOR_DELAY` | cursor pause before acting (ms) |
+| `AXSCOPE_CURSOR_DELAY` | cap of the cursor glide before acting (ms, default 80; 0 = jump) |
 | `AXSCOPE_AGENT` | agent name for the tab group |
 | `AXSCOPE_BRIDGE_PORT` | first port for the extension bridge (default `8787`) |
 | `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |

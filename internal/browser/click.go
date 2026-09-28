@@ -11,22 +11,6 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
-func visualDelay() time.Duration {
-	if v := cursorDelayMs(); v > 0 {
-		return time.Duration(v) * time.Millisecond
-	}
-	return 0
-}
-
-// cursorDelayMs reads AXSCOPE_CURSOR_DELAY (ms). Default 160.
-func cursorDelayMs() int {
-	raw := envInt("AXSCOPE_CURSOR_DELAY", 160)
-	if raw < 0 {
-		return 0
-	}
-	return raw
-}
-
 // Click clicks the target with a real mouse, refusing when the point is disabled
 // or covered and warning when the event does not reach the target.
 func Click(ctx context.Context, client *cdp.Client, session string, t *Target, button string, count int, p Presenter) (string, error) {
@@ -44,10 +28,8 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	prepareClick(ctx, client, session, t.ObjectID)
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
+	// The presenter returns when the drawn cursor has arrived.
 	_ = p.PressCursor(ctx, client, session, cx, cy, button)
-	if d := visualDelay(); d > 0 {
-		time.Sleep(d)
-	}
 
 	if _, err := client.Send(ctx, "Input.dispatchMouseEvent", map[string]any{
 		"type": "mouseMoved", "x": cx, "y": cy,
@@ -280,9 +262,6 @@ func Hover(ctx context.Context, client *cdp.Client, session string, t *Target, p
 		"type": "mouseMoved", "x": fx, "y": fy,
 	}, session); err != nil {
 		return err
-	}
-	if d := visualDelay(); d > 0 {
-		time.Sleep(d)
 	}
 
 	_ = p.MoveCursor(ctx, client, session, cx, cy)
