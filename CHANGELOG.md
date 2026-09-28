@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An action's answer says what it did beyond `ok`, only when it happened: a
+  dialog that opened or closed, a new tab, a title that changed.
+
 - `batch`, the fast path for an agent: a list of commands (lines or objects) in
   one call, with each step's position and time, a stop-at-first-error summary
   (`--continue` to go on) and `snap=final` to read the screen at the end. Over

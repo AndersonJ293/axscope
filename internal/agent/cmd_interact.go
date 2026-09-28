@@ -313,6 +313,15 @@ func (a *Agent) finish(ctx context.Context, sess *browser.Session, sid, label st
 	}
 	url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 	fmt.Fprintf(&b, "\nurl: %s", url)
+	a.mu.Lock()
+	before := a.before
+	a.before = nil
+	a.mu.Unlock()
+	if before != nil {
+		for _, line := range changes(before, a.readState(ctx, sess, sid), sess.Tabs()) {
+			b.WriteString("\n" + line)
+		}
+	}
 	return b.String()
 }
 

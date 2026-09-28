@@ -214,6 +214,18 @@ refs (`#4`, `#5`, …). Aim by `css=`/`text=` there — or `find` to see the ref
 current reading gives them — because those forms are resolved in the reading of
 the moment; a ref only pays off while the page holds still.
 
+An action's answer also says what it did beyond `ok`, and only when something
+changed, since every line is context:
+
+```
+ok: click css=#apply
+url: https://example.com/jobs
+dialog opened: "Apply to Example"
+```
+
+`dialog opened: "…"` / `dialog closed: "…"`, `new tab: [2] <url> (now the active
+tab)` and `title: "A" → "B"`; an action that changed none of them adds nothing.
+
 When the target refuses the action, the action **is not sent** and the response
 says why and what to do next: the target is disabled (`wait --enabled`), the
 target is covered (`to click the point anyway, use pos=x,y`), or the target is
