@@ -210,3 +210,17 @@ func TestRefsStayStableAcrossReadings(t *testing.T) {
 		}
 	}
 }
+
+func TestFindBackendTellsThePageFromAFrame(t *testing.T) {
+	host := &frameHost{Session: "child"}
+	nodes := []axNode{{NodeID: "1", BackendDOMNodeID: 7}, {NodeID: "x0:1", BackendDOMNodeID: 7, frame: host}}
+	if n := findBackend(nodes, 7, ""); n == nil || n.NodeID != "1" {
+		t.Fatalf("page: got %+v", n)
+	}
+	if n := findBackend(nodes, 7, "child"); n == nil || n.NodeID != "x0:1" {
+		t.Fatalf("frame: got %+v", n)
+	}
+	if n := findBackend(nodes, 7, "other"); n != nil {
+		t.Fatalf("another frame: got %+v", n)
+	}
+}

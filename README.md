@@ -206,10 +206,14 @@ it indexes `querySelectorAll`.
 
 **Cross-origin iframes** (a payment form, an embedded widget) are read too: the
 frame runs in another process, so axscope reads its tree through a CDP session
-of the frame's own and grafts it on the `<iframe>` line, refs included. By such a
-ref, `click`, `hover`, `fill`, `type`, `check` and `uncheck` act inside the
-frame (the element is measured there and the input lands at its point in the
-page); the other commands refuse it with the list of those that work. It works
+of the frame's own and grafts it on the `<iframe>` line, refs included. Such a
+ref works like any other: every action (`select`, `drag`, `upload` and
+`download` too), `scroll target=`, `wait --enabled`, `find`, `wait within=` and
+`snap within=` — the element is measured in the frame and the input lands at its
+point in the page. A `css=`/`text=` target the page lacks is looked for inside
+the frames the last `snap` reached, so an item with no ref can still be dragged.
+A `drag` has both ends in one document: from the page into a frame it is
+refused. It works
 through the browser extension too (0.1.5+: reload it after updating), which
 auto-attaches each cross-origin frame of its tabs as a child debugger session.
 
@@ -818,14 +822,9 @@ internal/installer/ Chrome for Testing download
 
 ## Known limitations
 
-- **Cross-origin iframe (OOPIF) is not read**: `snap` shows the frame as a single
-  line (`- Iframe`, no content), because that accessibility tree lives in the
-  other site's process — reaching it requires a separate CDP session per frame
-  (see [`docs/BACKLOG.md`](docs/BACKLOG.md)). The line now says so (*"its content
-  is not in the tree: a cross-origin frame or one still loading"*), instead of
-  leaving it to look like an empty frame. A **same-origin** iframe is read in
-  full, and the ref from inside works: the trees of both frames are merged in the
-  snapshot.
+- **Cross-origin iframe**: read and acted on (see *Cross-origin iframes*), but
+  a `drag` cannot cross from the page into one, and `eval` runs in the page's
+  document only.
 - Native dialogs are dismissed by default; `dialog accept` arms the next one (a
   `confirm()` the flow has to say yes to), and the arming is consumed by that one
   dialog. A `beforeunload` keeps its own rule (`open --force`).

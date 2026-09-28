@@ -28,13 +28,22 @@ func findModal(nodes []axNode) *axNode {
 // findBackend returns the tree node for a DOM node. An element the tree drops
 // (a plain div) has no node of its own, so its nearest descendants that do are
 // not reachable from here — the caller says so rather than reading the page.
-func findBackend(nodes []axNode, backend int) *axNode {
+func findBackend(nodes []axNode, backend int, frame string) *axNode {
 	for i := range nodes {
-		if nodes[i].BackendDOMNodeID == backend {
+		if nodes[i].BackendDOMNodeID == backend && nodeFrame(&nodes[i]) == frame {
 			return &nodes[i]
 		}
 	}
 	return nil
+}
+
+// nodeFrame is the session of the cross-origin frame a node came from, or ""
+// for the page's own nodes.
+func nodeFrame(n *axNode) string {
+	if n.frame == nil {
+		return ""
+	}
+	return n.frame.Session
 }
 
 func boolProp(n *axNode, name string) bool {

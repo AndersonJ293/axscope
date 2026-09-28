@@ -20,7 +20,10 @@ func (a *Agent) find(ctx context.Context, sess *browser.Session, req protocol.Re
 		return protocol.Fail(fmt.Errorf("usage: axscope find <css=|text=> [--all]"))
 	}
 	refs := a.currentRefs()
-	if len(refs) == 0 {
+	a.mu.Lock()
+	frameRefs := len(a.frameRefs)
+	a.mu.Unlock()
+	if len(refs) == 0 && frameRefs == 0 {
 		return protocol.Fail(fmt.Errorf("nothing to match against: run `snap` first (refs are per reading)"))
 	}
 	if req.Bool("all", false) {
@@ -30,11 +33,20 @@ func (a *Agent) find(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	backend, selector := browser.DescribeNode(ctx, a.client(), sid, t.ObjectID)
+	backend, selector := browser.DescribeNode(ctx, a.client(), t.ObjSession(sid), t.ObjectID)
 	if t.BackendNodeID != 0 {
 		backend = t.BackendNodeID
 	}
 	line := fmt.Sprintf("target: %s\nselector: %s", spec, selector)
+	if t.InFrame() {
+		// A frame's backend ids are its own: the ref the agent gave is the answer,
+		// and the selector only works inside the frame's document.
+		line += " (inside a cross-origin iframe)"
+		if strings.HasPrefix(spec, "css=") || strings.HasPrefix(spec, "text=") {
+			return ok(line + "\nref: (none — found by search inside the frame; it acts as a target all the same)")
+		}
+		return ok(line + "\nref: " + a.qualifyRef(spec))
+	}
 	ref := refForBackend(refs, backend)
 	if ref == "" {
 		return ok(line + "\nref: (none — the target is not one of the last snap's refs)")

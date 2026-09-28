@@ -107,13 +107,13 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	// The scope resolves against the refs of the reading the agent has, so it
 	// happens before this reading replaces them.
 	if within := req.String("within"); within != "" {
-		backend, label, err := a.scopeNode(ctx, sid, within)
+		backend, label, frame, err := a.scopeNode(ctx, sid, within)
 		if err != nil {
 			return protocol.Fail(fmt.Errorf("within=%s: %w", within, err))
 		}
-		opts.Scope, opts.ScopeLabel = backend, label
+		opts.Scope, opts.ScopeLabel, opts.ScopeFrame = backend, label, frame
 	}
-	key := fmt.Sprintf("%v|%v|%v|%v|%d|%d", opts.RefsOnly, opts.All, opts.Page, opts.Viewport, opts.MaxDepth, opts.Scope)
+	key := fmt.Sprintf("%v|%v|%v|%v|%d|%d|%s", opts.RefsOnly, opts.All, opts.Page, opts.Viewport, opts.MaxDepth, opts.Scope, opts.ScopeFrame)
 	a.mu.Lock()
 	prev := a.readings[sid]
 	a.mu.Unlock()
@@ -145,7 +145,15 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	if a.readings == nil {
 		a.readings = map[string]*reading{}
 	}
-	a.readings[sid] = &reading{url: tabURL, key: key, gen: gen, lines: lines, nums: refNumbers(snap.Refs), frameNums: frameRefNumbers(snap.FrameRefs)}
+	nums, frameNums := refNumbers(snap.Refs), frameRefNumbers(snap.FrameRefs)
+	if prev != nil {
+		// A reading that saw part of the page (within=, --viewport, a modal)
+		// keeps the numbers of what it left out: the next full reading gives
+		// those elements the refs they had, instead of new ones.
+		inherit(nums, prev.nums)
+		inherit(frameNums, prev.frameNums)
+	}
+	a.readings[sid] = &reading{url: tabURL, key: key, gen: gen, lines: lines, nums: nums, frameNums: frameNums}
 	a.mu.Unlock()
 	sess.UpdateHUD(ctx, "snap")
 
@@ -189,26 +197,33 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 
 // scopeNode resolves a within= target to its DOM node without measuring it: a
 // reading must not scroll the page, and a container can be off screen or
-// partly hidden and still be worth reading.
-func (a *Agent) scopeNode(ctx context.Context, sid, target string) (int, string, error) {
+// partly hidden and still be worth reading. A ref inside a cross-origin iframe
+// also returns the frame's session: its backend id is the frame's own.
+func (a *Agent) scopeNode(ctx context.Context, sid, target string) (int, string, string, error) {
 	target = a.qualifyRef(target)
 	if _, gen, ok := refGen(target); ok && !strings.HasPrefix(target, "css=") && !strings.HasPrefix(target, "text=") {
 		a.mu.Lock()
 		current := a.snapGen
 		a.mu.Unlock()
 		if gen != current {
-			return 0, "", fmt.Errorf("ref %q is from an old read (the current one is #%d) — run `snap` again", target, current)
+			return 0, "", "", fmt.Errorf("ref %q is from an old read (the current one is #%d) — run `snap` again", target, current)
 		}
+	}
+	a.mu.Lock()
+	fr, inFrame := a.frameRefs[target]
+	a.mu.Unlock()
+	if inFrame {
+		return fr.Backend, target, fr.Session, nil
 	}
 	objectID, err := browser.ResolveObject(ctx, a.client(), sid, a.currentRefs(), target)
 	if err != nil {
-		return 0, "", err
+		return 0, "", "", err
 	}
 	backend, label := browser.DescribeNode(ctx, a.client(), sid, objectID)
 	if backend == 0 {
-		return 0, "", fmt.Errorf("the target has no DOM node to read from")
+		return 0, "", "", fmt.Errorf("the target has no DOM node to read from")
 	}
-	return backend, label, nil
+	return backend, label, "", nil
 }
 
 // scopeLine says the reading is not the whole page. A modal chose the scope on

@@ -22,7 +22,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	}
 	cx, cy := t.actionPoint()
 
-	obj := t.objSession(session)
+	obj := t.ObjSession(session)
 	if reason := clickRefusal(ctx, client, obj, t.ObjectID, cx, cy); reason != "" {
 		return "", fmt.Errorf("%s", reason)
 	}
@@ -77,7 +77,7 @@ func DOMClick(ctx context.Context, client *cdp.Client, session string, t *Target
 			return '';
 		}`,
 		"returnByValue": true,
-	}, t.objSession(session))
+	}, t.ObjSession(session))
 	if err != nil {
 		return err
 	}

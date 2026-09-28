@@ -85,3 +85,16 @@ func TestSnapCap(t *testing.T) {
 		}
 	}
 }
+
+func TestInheritKeepsWhatAPartialReadingLeftOut(t *testing.T) {
+	nums := map[int]int{10: 3}
+	inherit(nums, map[int]int{10: 3, 11: 4, 12: 9})
+	if len(nums) != 3 || nums[11] != 4 || nums[12] != 9 {
+		t.Fatalf("got %v", nums)
+	}
+	nums = map[int]int{10: 3}
+	inherit(nums, map[int]int{10: 7})
+	if nums[10] != 3 {
+		t.Fatalf("the current reading must win, got %v", nums)
+	}
+}

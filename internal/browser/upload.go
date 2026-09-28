@@ -169,6 +169,9 @@ func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target
 	}
 
 	b64 := base64.StdEncoding.EncodeToString(data)
+	// The drop event's coordinates are the document's: a frame's start at
+	// its own corner.
+	x, y = x-t.FrameOffset.X, y-t.FrameOffset.Y
 	raw, err := client.Send(ctx, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            t.ObjectID,
 		"functionDeclaration": dropFileScript,
@@ -180,7 +183,7 @@ func DropFile(ctx context.Context, client *cdp.Client, session string, t *Target
 			map[string]any{"value": y},
 		},
 		"returnByValue": true,
-	}, session)
+	}, t.ObjSession(session))
 	if err != nil {
 		return err
 	}

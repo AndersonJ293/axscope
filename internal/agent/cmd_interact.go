@@ -73,7 +73,7 @@ func (a *Agent) download(ctx context.Context, sess *browser.Session, req protoco
 	// A link has a URL the browser can fetch itself, which the extension saves
 	// without the save dialog the debugger cannot suppress. A button or a blob
 	// only exists in the page, so the click path stays for those.
-	if href := browser.Href(ctx, a.client(), sid, t.ObjectID); isDownloadable(href) {
+	if href := browser.Href(ctx, a.client(), t.ObjSession(sid), t.ObjectID); isDownloadable(href) {
 		if path, err := browser.DownloadURL(ctx, a.client(), sid, href, 30*time.Second); err == nil {
 			return ok(a.finish(ctx, sess, sid, "download "+target+" -> "+path+" (browser)", before))
 		}
@@ -272,7 +272,7 @@ func (a *Agent) scroll(ctx context.Context, sess *browser.Session, req protocol.
 		if err != nil {
 			return protocol.Fail(err)
 		}
-		where, err := browser.ScrollTarget(ctx, a.client(), sid, t.ObjectID, 0, dy)
+		where, err := browser.ScrollTarget(ctx, a.client(), t.ObjSession(sid), t.ObjectID, 0, dy)
 		if err != nil {
 			return protocol.Fail(err)
 		}

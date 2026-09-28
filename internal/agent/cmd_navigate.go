@@ -78,7 +78,7 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 		return a.waitForState(ctx, sess, sid, asked, state, start, deadline)
 	}
 
-	root, err := a.searchRoot(ctx, sess, sid, req.String("within"))
+	root, in, err := a.searchRoot(ctx, sess, sid, req.String("within"))
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -88,7 +88,7 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 		if err := ctx.Err(); err != nil {
 			return protocol.Fail(fmt.Errorf("%q wait cancelled: %w", asked, err))
 		}
-		where, err := locateText(ctx, a.client(), sid, asked, root)
+		where, err := locateText(ctx, a.client(), in, asked, root)
 		if err == nil && (where != "") == present {
 			verb := "appeared"
 			if !present {
@@ -209,16 +209,18 @@ func requestedState(req protocol.Request) string {
 }
 
 // searchRoot returns the objectId where the text search starts: the `within=`
-// container, or the document.
-func (a *Agent) searchRoot(ctx context.Context, sess *browser.Session, sid, within string) (string, error) {
+// container, or the document — and the session it lives in, a cross-origin
+// iframe's for a container inside one.
+func (a *Agent) searchRoot(ctx context.Context, sess *browser.Session, sid, within string) (string, string, error) {
 	if within == "" {
-		return dom.EvalObject(ctx, a.client(), sid, "document")
+		root, err := dom.EvalObject(ctx, a.client(), sid, "document")
+		return root, sid, err
 	}
 	t, _, err := a.resolve(ctx, sess, within)
 	if err != nil {
-		return "", fmt.Errorf("within=%s: %w", within, err)
+		return "", sid, fmt.Errorf("within=%s: %w", within, err)
 	}
-	return t.ObjectID, nil
+	return t.ObjectID, t.ObjSession(sid), nil
 }
 
 // goneAlready says why a target that does not resolve counts as gone rather
@@ -284,7 +286,7 @@ func (a *Agent) atState(ctx context.Context, sess *browser.Session, target, stat
 	}
 	switch state {
 	case "enabled":
-		return browser.Enabled(ctx, a.client(), sid, t.ObjectID), nil
+		return browser.Enabled(ctx, a.client(), t.ObjSession(sid), t.ObjectID), nil
 	case "visible":
 		// It resolved and has a box: that is what "visible" means here (if it is
 		// on the point, the click handles that, refusing the opposite).

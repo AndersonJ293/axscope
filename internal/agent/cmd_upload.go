@@ -55,7 +55,9 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 		}
 	}
 
-	isInput, err := browser.IsFileInput(ctx, a.client(), sid, t.ObjectID)
+	// Inside a cross-origin iframe the input is an object of the frame's session.
+	obj := t.ObjSession(sid)
+	isInput, err := browser.IsFileInput(ctx, a.client(), obj, t.ObjectID)
 	if err != nil {
 		return protocol.Fail(err)
 	}
@@ -64,19 +66,19 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 	via := "input"
 	inputID := t.ObjectID
 	if isInput {
-		err = browser.SetFileInput(ctx, a.client(), sid, t.ObjectID, filePath)
+		err = browser.SetFileInput(ctx, a.client(), obj, t.ObjectID, filePath)
 	} else {
 		// A dropzone is usually a label or box over a hidden <input type=file>;
 		// setting the file on that input is what the page listens to. Only a real
 		// drop target with no input needs the synthetic drop.
-		candidate, cerr := browser.AssociatedFileInput(ctx, a.client(), sid, t.ObjectID)
+		candidate, cerr := browser.AssociatedFileInput(ctx, a.client(), obj, t.ObjectID)
 		if cerr != nil {
 			return protocol.Fail(cerr)
 		}
 		if candidate != "" {
 			via = "dropzone→input"
 			inputID = candidate
-			err = browser.SetFileInput(ctx, a.client(), sid, candidate, filePath)
+			err = browser.SetFileInput(ctx, a.client(), obj, candidate, filePath)
 		} else {
 			via = "dropzone"
 			err = browser.DropFile(ctx, a.client(), sid, t, filePath, sess.Presenter)
@@ -94,7 +96,7 @@ func (a *Agent) upload(ctx context.Context, sess *browser.Session, req protocol.
 	// it into its own state leaves the input at 0 (LinkedIn does this once the
 	// resume is accepted). Report that as indeterminate instead of a failure — the
 	// old wording read as "did not take it" while the page had taken it.
-	if count, isInput := browser.FileInputCount(ctx, a.client(), sid, inputID); isInput && count == 0 {
+	if count, isInput := browser.FileInputCount(ctx, a.client(), obj, inputID); isInput && count == 0 {
 		label += " (the input reports 0 files — the page may have moved the file into its own state; confirm in the UI)"
 	}
 	return ok(a.finish(ctx, sess, sid, label, before))

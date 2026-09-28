@@ -35,7 +35,7 @@ func toRow(ctx context.Context, client *cdp.Client, session string, t *Target) {
 			return this.closest ? (this.closest('li,tr,[role="listitem"],[role="row"]') || this) : this;
 		}`,
 		"returnByValue": false,
-	}, session)
+	}, t.ObjSession(session))
 	if err != nil {
 		return
 	}
@@ -47,12 +47,11 @@ func toRow(ctx context.Context, client *cdp.Client, session string, t *Target) {
 	if json.Unmarshal(raw, &res) != nil || res.Result.ObjectID == "" || res.Result.ObjectID == t.ObjectID {
 		return
 	}
-	rect, err := dom.BoxOf(ctx, client, session, res.Result.ObjectID)
+	rect, err := t.PageBox(ctx, client, session, res.Result.ObjectID)
 	if err != nil {
 		return
 	}
-	t.ObjectID = res.Result.ObjectID
-	t.Rect = rect
+	*t = *t.Sibling(res.Result.ObjectID, rect)
 }
 
 // signatureOf summarizes where the element is (index among its siblings +
@@ -91,17 +90,23 @@ func showCursor(ctx context.Context, client *cdp.Client, session string, p Prese
 // Drag drags `from` to `to`, detecting the family: HTML5 (built on the page with
 // a real DataTransfer) or pointer (a real mouse). `type` forces detection.
 func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Target, opts DragOptions, p Presenter) (string, bool, error) {
+	// The drag script runs in one document with both elements in it, and a
+	// pointer drag across a frame's edge leaves the frame's own handlers behind.
+	if from.FrameSession != to.FrameSession {
+		return "", false, fmt.Errorf("drag goes from one document to another (a cross-origin iframe and the page) — both ends must be in the same one")
+	}
+	obj := from.ObjSession(session)
 	// The row, not the text: it is what defines the drop point.
 	toRow(ctx, client, session, from)
 	toRow(ctx, client, session, to)
 
 	// Stores where the origin was, to say whether something changed: a gesture
 	// that does not take usually ends in a click, with no warning at all.
-	before := signatureOf(ctx, client, session, from.ObjectID)
+	before := signatureOf(ctx, client, obj, from.ObjectID)
 
 	kind := opts.Type
 	if kind == "" {
-		kind = dragKind(ctx, client, session, from.ObjectID)
+		kind = dragKind(ctx, client, obj, from.ObjectID)
 	}
 	var err error
 	if kind == "pointer" {
@@ -116,7 +121,7 @@ func Drag(ctx context.Context, client *cdp.Client, session string, from, to *Tar
 
 	changed := true
 	if before != "" {
-		if after := signatureOf(ctx, client, session, from.ObjectID); after != "" {
+		if after := signatureOf(ctx, client, obj, from.ObjectID); after != "" {
 			changed = before != after
 		}
 	}
@@ -171,7 +176,7 @@ func dragHTML5(ctx context.Context, client *cdp.Client, session string, from, to
 			map[string]any{"value": where},
 		},
 		"returnByValue": true,
-	}, session)
+	}, from.ObjSession(session))
 	if err != nil {
 		return err
 	}
