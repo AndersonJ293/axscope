@@ -428,3 +428,15 @@ func TestBatchStepsSchemaIsAList(t *testing.T) {
 	}
 	t.Error("batch is not in the default catalog")
 }
+
+// The step grammar travels in the handshake too: a client can serve a cached
+// batch schema without it, and then the agent would not know type or press exist.
+func TestInstructionsCarryTheStepGrammar(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TOOLS", "")
+	text := instructions()
+	for _, want := range []string{"type <target> <value>", "press <key>", "select <target> <value>", "scroll <dy>"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("instructions lack %q", want)
+		}
+	}
+}
