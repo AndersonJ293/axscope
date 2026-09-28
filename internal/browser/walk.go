@@ -13,6 +13,15 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	if n == nil || b.consumed[nodeID] {
 		return
 	}
+	// --viewport: a box wholly off screen is left out with what it holds, and
+	// counted, so the header can say how much scrolling would bring back.
+	if b.offscreen[n.BackendDOMNodeID] && n.BackendDOMNodeID != 0 {
+		if !n.Ignored && b.eligibleRef(n) {
+			b.skipped++
+		}
+		b.skipped += b.countTargets(nodeID)
+		return
+	}
 	if n.Ignored {
 		for _, c := range b.children[nodeID] {
 			b.walk(c, depth, parentName)
@@ -116,10 +125,30 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		return
 	}
 
+	// depth= cuts here: the container stays as a line with a ref to open it
+	// (`snap within=`) and says how much it holds, instead of its subtree.
+	cut := b.maxDepth > 0 && depth >= b.maxDepth-1 && len(b.children[nodeID]) > 0 && !hadText
+	inside := 0
+	if cut {
+		inside = b.countTargets(nodeID)
+		if ref == "" {
+			ref = b.scopeRef(n)
+		}
+	}
+
 	if ref != "" {
 		line += " [ref=" + ref + "]"
 	}
 	line += b.props(n)
+	if cut {
+		if inside > 0 {
+			line += fmt.Sprintf(" (%d targets inside)", inside)
+		} else {
+			line += " (text inside)"
+		}
+		b.emit(depth, line)
+		return
+	}
 	if frameRoles[role] && len(b.children[nodeID]) == 0 {
 		// The frame's tree did not graft onto it: it is cross-origin (its own
 		// process, out of reach) or still loading. Naming it beats a bare
@@ -206,6 +235,9 @@ func (b *snapBuilder) childIDs(nodeID, name string) []string {
 }
 
 func (b *snapBuilder) emit(depth int, line string) {
+	if b.maxDepth > 0 && depth >= b.maxDepth {
+		return
+	}
 	if len(b.out) >= b.max {
 		b.truncated = true
 		return

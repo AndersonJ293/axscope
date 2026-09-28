@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MCP `steps` is a typed list, and an agent issuing single actions in a row gets
   an occasional tip pointing at it.
 - `script` accepts `content=` over MCP, so a script no longer needs a file.
+- `snap within=<target>` reads one element (a ref, `css=`, `text=`, or a plain
+  `<div>` the tree drops), without scrolling the page.
+- `snap` reads an open modal dialog alone (`aria-modal` or `showModal()`), and
+  the header names it and `--page`, which reads the whole page.
+- `snap depth=N` cuts the reading at N levels; each cut container keeps a ref
+  and a count of the targets inside, to open with `within=`.
+- `snap --viewport` leaves out what is wholly off screen and counts it.
 
 - `AXSCOPE_MCP_TIMEOUT_MINUTES` bounds a single MCP tool call (default `10`,
   `0` = no bound), so a client that never cancels cannot hold a call forever.

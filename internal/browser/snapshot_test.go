@@ -66,7 +66,7 @@ func fixtureTree() []axNode {
 }
 
 func TestBuildText_CutsChromeAndNoise(t *testing.T) {
-	snap := buildText(fixtureTree(), SnapshotOptions{})
+	snap := build(t, fixtureTree(), SnapshotOptions{})
 
 	expected := `- link "Home" [ref=e1]
 - text: Hello
@@ -95,7 +95,7 @@ func TestBuildText_CutsChromeAndNoise(t *testing.T) {
 
 // With All, the chrome cut is turned off: footer and skip-link reappear.
 func TestBuildText_AllDisablesCut(t *testing.T) {
-	snap := buildText(fixtureTree(), SnapshotOptions{All: true})
+	snap := build(t, fixtureTree(), SnapshotOptions{All: true})
 
 	expected := `- link "Home" [ref=e1]
 - link "Skip to main content"
@@ -117,7 +117,7 @@ func TestBuildText_GenerationInRef(t *testing.T) {
 		ax("root", "", "RootWebArea", "", 0),
 		ax("b", "root", "button", "Send", 7),
 	}
-	snap := buildText(nodes, SnapshotOptions{Gen: 9})
+	snap := build(t, nodes, SnapshotOptions{Gen: 9})
 	if snap.Text != `- button "Send" [ref=e1#9]` {
 		t.Errorf("text = %q", snap.Text)
 	}
@@ -149,7 +149,7 @@ func TestBuildText_FlattensTableRow(t *testing.T) {
 		ax("c31i", "c31", "img", "Cover", 0),
 	}
 
-	snap := buildText(nodes, SnapshotOptions{})
+	snap := build(t, nodes, SnapshotOptions{})
 	expected := `- table
   - row: 1 · Salvador
   - row
@@ -174,7 +174,7 @@ func TestBuildText_FlatteningDoesNotLeakInRefsOnly(t *testing.T) {
 		ax("c11", "r1", "cell", "1", 0),
 		ax("c12", "r1", "cell", "Salvador", 0),
 	}
-	snap := buildText(nodes, SnapshotOptions{RefsOnly: true})
+	snap := build(t, nodes, SnapshotOptions{RefsOnly: true})
 	if snap.Text != "" {
 		t.Errorf("text = %q, expected empty", snap.Text)
 	}
@@ -190,7 +190,7 @@ func TestBuildText_DoesNotStealItemLabel(t *testing.T) {
 		ax("label", "row", "generic", "Candidate 413", 0),
 		ax("open", "row", "button", "Open", 42),
 	}
-	snap := buildText(nodes, SnapshotOptions{})
+	snap := build(t, nodes, SnapshotOptions{})
 
 	expected := `- main
   - generic "Candidate 413"
@@ -210,7 +210,7 @@ func TestBuildText_SummaryThatDoesNotFitDoesNotConsume(t *testing.T) {
 		ax("t1", "g", "StaticText", strings.Repeat("a", 200), 0),
 		ax("t2", "g", "StaticText", strings.Repeat("b", 200), 0),
 	}
-	snap := buildText(nodes, SnapshotOptions{})
+	snap := build(t, nodes, SnapshotOptions{})
 
 	if strings.Contains(snap.Text, "- region: ") {
 		t.Errorf("summarized what did not fit:\n%s", snap.Text)
@@ -229,7 +229,7 @@ func TestBuildText_RefsOnly(t *testing.T) {
 		ax("txt", "root", "StaticText", "loose text", 0),
 		ax("b", "root", "button", "Send", 3),
 	}
-	snap := buildText(nodes, SnapshotOptions{RefsOnly: true})
+	snap := build(t, nodes, SnapshotOptions{RefsOnly: true})
 	if snap.Text != `- button "Send" [ref=e1]` {
 		t.Errorf("text = %q", snap.Text)
 	}
@@ -243,7 +243,7 @@ func TestBuildText_Truncates(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		nodes = append(nodes, ax("t"+string(rune('a'+i)), "root", "button", "b"+string(rune('a'+i)), i+1))
 	}
-	snap := buildText(nodes, SnapshotOptions{MaxNodes: 2})
+	snap := build(t, nodes, SnapshotOptions{MaxNodes: 2})
 	if !snap.Truncated {
 		t.Fatalf("expected Truncated; text=%q", snap.Text)
 	}
@@ -261,7 +261,7 @@ func TestBuildText_NamedLandmarkSurvivesWithoutChildren(t *testing.T) {
 		ax("toptext", "top", "StaticText", "Top", 0),
 		ax("nav", "root", "navigation", "", 0),
 	}
-	snap := buildText(nodes, SnapshotOptions{})
+	snap := build(t, nodes, SnapshotOptions{})
 	if snap.Text != `- banner "Top"` {
 		t.Errorf("text = %q, expected the named banner and nothing from the unnamed navigation", snap.Text)
 	}
@@ -275,7 +275,7 @@ func TestBuildText_DedupeAtRoot(t *testing.T) {
 		ax("s1", "root", "link", "Same", 1),
 		ax("s2", "root", "link", "Same", 2),
 	}
-	snap := buildText(nodes, SnapshotOptions{})
+	snap := build(t, nodes, SnapshotOptions{})
 	if snap.Text != `- link "Same" [ref=e1] (+1 same)` {
 		t.Errorf("text = %q", snap.Text)
 	}

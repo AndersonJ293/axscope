@@ -99,6 +99,9 @@ the idle window, and an explicit session is never stopped automatically.
 ```bash
 axscope open https://example.com     # navigates (or uses the active tab)
 axscope snap                         # reads the screen
+axscope snap within=css=#results     # reads only that element (ref, css= or text=)
+axscope snap depth=2                 # the outline: cut containers keep a ref to open
+axscope snap --viewport              # only what is inside the window
 axscope click e1                     # acts by the ref from the last snap
 axscope fill e5 "owner@example.com"
 axscope press Enter
@@ -221,6 +224,47 @@ error: the page has unsaved changes and blocked the navigation — leave it with
 $ axscope open https://example.com/next --force
 ok: https://example.com/next
 ```
+
+### Reading part of the page
+
+A long page costs context on every `snap`. Three ways to read less:
+
+- `snap within=<target>` reads one element — a ref, `css=` or `text=` — with the
+  element as the top line. A plain `<div>` the tree drops works too (the header
+  names it `div.results`). It does not scroll the page.
+- `snap depth=N` cuts the reading at N levels. Each cut container stays as one
+  line with a ref and what it holds, so the outline is also the map:
+
+  ```
+  - table
+    - row [ref=e12#6] (4 targets inside)
+  $ axscope snap within=e12
+  ```
+
+- `snap --viewport` leaves out what is wholly off screen and says how much
+  (`-- viewport only: 199 targets off screen left out`).
+
+On the Bootstrap modal docs page (16 878 px tall) the full reading is 39 KB,
+`depth=2` 17 KB and `--viewport` 9 KB.
+
+**An open modal is read alone.** When a dialog is modal (`aria-modal=true` or
+`<dialog>.showModal()`), the page behind it cannot be used, so `snap` reads the
+dialog and says so:
+
+```
+-- 6 lines, 4 refs
+-- scope: dialog "Modal title" — an open modal; the page behind it is left out (--page reads it all)
+- dialog "Modal title" [ref=e1#1]
+  - heading "Modal title" [level=1]
+  - button "Close" [ref=e2#1]
+  - paragraph: Woo-hoo, you're reading this text in a modal!
+  - button "Close" [ref=e3#1]
+  - button "Save changes" [ref=e4#1]
+```
+
+Before, the same `snap` was 250 refs of the page with the dialog's three buttons
+somewhere in the middle. A closed (hidden) modal and a non-modal dialog (a chat
+widget) do not scope the reading; `--page` turns the scope off.
 
 The snapshot header says where you are, including inside a scrollable area:
 
