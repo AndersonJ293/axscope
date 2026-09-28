@@ -221,6 +221,33 @@ func (a *Agent) searchRoot(ctx context.Context, sess *browser.Session, sid, with
 	return t.ObjectID, nil
 }
 
+// goneAlready says why a target that does not resolve counts as gone rather
+// than misspelled: a ref of the current reading existed when it was read; a
+// css=/text= target counts when the page changed during the previous step,
+// which is what closing it looks like. Without either, it is "".
+func (a *Agent) goneAlready(ctx context.Context, sid, target string) string {
+	if !strings.HasPrefix(target, "css=") && !strings.HasPrefix(target, "text=") {
+		if _, known := a.currentRefs()[a.qualifyRef(target)]; known {
+			return "it was in the last reading and no longer resolves"
+		}
+		return ""
+	}
+	a.mu.Lock()
+	since := a.prevStart
+	a.mu.Unlock()
+	if since.IsZero() {
+		return ""
+	}
+	doc, err := dom.EvalObject(ctx, a.client(), sid, "document")
+	if err != nil {
+		return ""
+	}
+	if _, changed, err := browser.ChangedSince(ctx, a.client(), sid, doc, since); err == nil && changed {
+		return "the page changed during the previous step and it no longer resolves (if it was misspelled, this is not proof)"
+	}
+	return ""
+}
+
 // waitForState waits for the target to reach "enabled" (clickable), "visible"
 // (exists with a box) or "gone" (stopped resolving).
 func (a *Agent) waitForState(ctx context.Context, sess *browser.Session, sid, target, state string, start, deadline time.Time) protocol.Response {
@@ -228,6 +255,11 @@ func (a *Agent) waitForState(ctx context.Context, sess *browser.Session, sid, ta
 		// Check that it exists first: otherwise a misspelled target "goes away"
 		// immediately, and the response would confirm what never existed.
 		if _, _, err := a.resolve(ctx, sess, target); err != nil {
+			// Waited right after the action that closed it, the target is often
+			// gone already. That is an answer when there is evidence it existed.
+			if why := a.goneAlready(ctx, sid, target); why != "" {
+				return ok(fmt.Sprintf("ok: %s gone already — %s", target, why))
+			}
 			return protocol.Fail(fmt.Errorf("%s does not resolve, so there is nothing to disappear: %w", target, err))
 		}
 	}

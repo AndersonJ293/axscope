@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `wait --gone` right after the action that closed the target answers "gone
+  already" instead of "nothing to disappear": a ref of the last reading that no
+  longer resolves, or a `css=`/`text=` target when the page changed during the
+  previous step. A target that never existed on an unchanged page is still
+  refused.
+- A command line split by a space (`find text=Brasil +55`) is refused with the
+  line to send, the split value in quotes.
+
 - On a page whose requests never stop (polling, telemetry), an action no longer
   waits out the 1.5 s settle cap and `wait --change` no longer waits out its
   timeout: they wait for the requests in flight after the action, not for a

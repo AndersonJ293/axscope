@@ -198,3 +198,16 @@ func TestParse_WaitWithScopeAndState(t *testing.T) {
 		t.Errorf("args = %v", req.Args)
 	}
 }
+
+// A value with a space splits into two tokens; the refusal shows the line with
+// the split value put back in quotes.
+func TestExtraArgumentSuggestsQuotes(t *testing.T) {
+	_, err := Parse([]string{"find", "text=Brasil", "+55"})
+	if err == nil || !strings.Contains(err.Error(), "find 'text=Brasil +55'") {
+		t.Errorf("err = %v", err)
+	}
+	_, err = Parse([]string{"fill", "css=#q", "hello", "world"})
+	if err == nil || !strings.Contains(err.Error(), "fill css=#q 'hello world'") {
+		t.Errorf("err = %v", err)
+	}
+}

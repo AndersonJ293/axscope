@@ -95,7 +95,7 @@ func Parse(tokens []string) (protocol.Request, error) {
 		known[f] = true
 	}
 
-	for _, token := range tokens[1:] {
+	for idx, token := range tokens[1:] {
 		switch {
 		case strings.HasPrefix(token, "--"):
 			name := strings.TrimPrefix(token, "--")
@@ -111,13 +111,25 @@ func Parse(tokens []string) (protocol.Request, error) {
 			req.Args[parts[0]] = parts[1]
 		default:
 			if len(positional) == 0 {
-				return protocol.Request{}, fmt.Errorf("extra argument in %q: %q", spec.Cmd, token)
+				return protocol.Request{}, fmt.Errorf("extra argument in %q: %q — a value with spaces goes in quotes: %s", spec.Cmd, token, quoteHint(tokens, idx+1))
 			}
 			req.Args[positional[0]] = token
 			positional = positional[1:]
 		}
 	}
 	return req, nil
+}
+
+// quoteHint rewrites the line with the token that did not fit joined to the one
+// before it, in quotes — `text=Brasil +55` read as two tokens is the usual
+// case — so the refusal shows the line to send.
+func quoteHint(tokens []string, extra int) string {
+	if extra < 2 {
+		return strings.Join(tokens, " ")
+	}
+	head := append([]string(nil), tokens[:extra-1]...)
+	joined := strings.Join(tokens[extra-1:], " ")
+	return strings.Join(append(head, "'"+joined+"'"), " ")
 }
 
 // Help returns the help text.
