@@ -48,6 +48,47 @@ func runSessions() error {
 	return nil
 }
 
+// hintOtherSessions points at the sessions that do have tabs when this one
+// has none. A terminal lands on `default` while an MCP client keeps its tabs
+// in its own session, and an empty status then reads as "the browser is down".
+func hintOtherSessions(cmd string) {
+	current := paths.Session()
+	sessions, err := paths.Sessions()
+	if err != nil {
+		return
+	}
+	var busy []string
+	for _, session := range sessions {
+		if session == current {
+			continue
+		}
+		info, err := paths.ReadSessionInfo(session)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(info.Socket); err != nil {
+			continue
+		}
+		resp, err := daemonclient.SendTo(info.Socket, protocol.Request{Cmd: "status"})
+		if err != nil || !resp.OK {
+			continue
+		}
+		if n := statusField(resp.Text, "tabs"); n != "" && n != "0" {
+			unit := "tabs"
+			if n == "1" {
+				unit = "tab"
+			}
+			busy = append(busy, fmt.Sprintf("%s (%s %s)", session, n, unit))
+		}
+	}
+	if len(busy) == 0 {
+		return
+	}
+	first, _, _ := strings.Cut(busy[0], " ")
+	fmt.Fprintf(os.Stderr, "note: session %q has no tabs; the tabs are in %s — AXSCOPE_SESSION=%s axscope %s\n",
+		current, strings.Join(busy, ", "), first, cmd)
+}
+
 // statusField pulls one `name: value` line out of `status` output.
 func statusField(text, name string) string {
 	prefix := name + ": "

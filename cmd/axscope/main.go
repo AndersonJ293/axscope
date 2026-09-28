@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
@@ -127,9 +128,15 @@ func run() error {
 	}
 	if !resp.OK {
 		fmt.Fprintln(os.Stderr, "error:", resp.Error)
+		if strings.Contains(resp.Error, "no tab open") {
+			hintOtherSessions(req.Cmd)
+		}
 		os.Exit(2)
 	}
 	fmt.Println(resp.Text)
+	if req.Cmd == "status" && statusField(resp.Text, "tabs") == "0" {
+		hintOtherSessions(req.Cmd)
+	}
 	return nil
 }
 
