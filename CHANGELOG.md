@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- From a terminal, a session with no tabs names the sessions that have them
+  (`note: session "default" has no tabs; the tabs are in opencode (3 tabs) —
+  AXSCOPE_SESSION=opencode axscope status`), on `status` and on "no tab open":
+  an MCP client keeps its tabs in its own session, and the empty default read as
+  a browser that was down.
 - `read --links --scroll` scrolls the list (a selector's scroller, else the
   page, else the largest scrollable area) from the top and gathers the links
   at every step, up to `pages=` steps (10): a virtualized list keeps only the
