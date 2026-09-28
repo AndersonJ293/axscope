@@ -378,22 +378,83 @@ func (s *Session) docState(ctx context.Context, sid string) (doc, state, url str
 // respond, not a wait for quiet — an app that never stays still never settles.
 const settleCap = 1500 * time.Millisecond
 
-// Settle waits for the network to settle: no requests in flight for `idle`, or up
-// to settleCap; `wait` by text is the reliable criterion for more.
+// actionGrace is how long after an action a request it triggers may still
+// start (a handler that fetches on the next tick, a debounce's first beat).
+const actionGrace = 100 * time.Millisecond
+
+// Settle lets the page answer the action, up to settleCap; `wait` by text is
+// the reliable criterion for more. A quiet page (nothing in flight, no activity
+// for `idle`) is settled at once. Otherwise the requests in flight once the
+// action had its grace are waited for until they end — only those: a page that
+// polls or streams telemetry starts new ones forever, and waiting for a window
+// with none made every action on such a site pay the whole cap.
 func (s *Session) Settle(ctx context.Context, sid string, idle time.Duration) {
 	deadline := time.Now().Add(settleCap)
-	for time.Now().Before(deadline) {
-		s.mu.Lock()
-		inflight := len(s.busyReqs(sid, time.Now()))
-		last := s.lastActivity[sid]
-		s.mu.Unlock()
-		if inflight <= 0 && time.Since(last) >= idle {
-			return
+	if s.strictQuiet(sid, idle) {
+		return
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(actionGrace):
+	}
+	if s.strictQuiet(sid, idle) {
+		return
+	}
+	s.Drain(ctx, sid, deadline)
+}
+
+// strictQuiet is the old rule: nothing in flight and no activity for idle.
+func (s *Session) strictQuiet(sid string, idle time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.busyReqs(sid, time.Now())) == 0 && time.Since(s.lastActivity[sid]) >= idle
+}
+
+// Drain waits until the requests in flight now have all ended (new ones do not
+// extend the wait), or the deadline passes; it reports whether they ended.
+func (s *Session) Drain(ctx context.Context, sid string, deadline time.Time) bool {
+	s.mu.Lock()
+	waiting := s.busyIDs(sid, time.Now())
+	s.mu.Unlock()
+	for len(waiting) > 0 {
+		if !time.Now().Before(deadline) {
+			return false
 		}
 		select {
 		case <-ctx.Done():
-			return
-		case <-time.After(50 * time.Millisecond):
+			return false
+		case <-time.After(30 * time.Millisecond):
+		}
+		s.mu.Lock()
+		now := time.Now()
+		for id := range waiting {
+			r, open := s.inflight[sid][id]
+			if !open || now.Sub(r.start) >= longLived {
+				delete(waiting, id)
+			}
+		}
+		s.mu.Unlock()
+	}
+	return true
+}
+
+// busyIDs is busyReqs by request id. The caller holds s.mu.
+func (s *Session) busyIDs(sid string, now time.Time) map[string]bool {
+	out := map[string]bool{}
+	for id, r := range s.inflight[sid] {
+		if now.Sub(r.start) < longLived {
+			out[id] = true
 		}
 	}
+	return out
+}
+
+// Pending lists the requests of a tab that still count as work in flight.
+func (s *Session) Pending(sid string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.busyReqs(sid, time.Now())
+	sort.Strings(out)
+	return out
 }

@@ -168,12 +168,13 @@ func (a *Agent) waitChange(ctx context.Context, sess *browser.Session, req proto
 	}
 
 	// The DOM held still; a fetch in flight means the content is still coming
-	// (a debounced search answers after its own quiet). Wait for the network,
-	// then for the DOM once more, until both hold in the same round.
+	// (a debounced search answers after its own quiet). Wait for the requests in
+	// flight now — not for the network to stop, which a polling page never does —
+	// then for the DOM once more, until a round brings no change.
 	pending := []string(nil)
 	for !o.TimedOut && remaining() > 0 {
-		var idle bool
-		if pending, idle = sess.WaitForNetworkIdle(ctx, sid, changeQuiet, remaining()); !idle {
+		if !sess.Drain(ctx, sid, deadline) {
+			pending = sess.Pending(sid)
 			break
 		}
 		if o, err = observe(ctx, a, sid, objectID, remaining(), false); err != nil || !o.Changed {

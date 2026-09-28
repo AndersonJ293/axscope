@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -105,5 +106,26 @@ func TestSubframeRequestIsNotWork(t *testing.T) {
 	}
 	if subframeRequest("T1", "T1") || subframeRequest("", "T1") {
 		t.Error("the page's own requests (and one with no frame) count")
+	}
+}
+
+// Drain waits for the requests in flight when it starts, not for the ones that
+// start after: a polling page never stops starting requests.
+func TestDrainWaitsOnlyForTheRequestsInFlight(t *testing.T) {
+	s := &Session{inflight: map[string]map[string]pendingReq{}, lastActivity: map[string]time.Time{}}
+	s.startReq("t", "search", "https://a/api?q=bra")
+	go func() {
+		for i := 0; i < 6; i++ {
+			time.Sleep(20 * time.Millisecond)
+			s.startReq("t", fmt.Sprintf("poll%d", i), "https://a/tick")
+		}
+		s.doneReq("t", "search")
+	}()
+	start := time.Now()
+	if !s.Drain(context.Background(), "t", time.Now().Add(time.Second)) {
+		t.Fatal("drain did not end")
+	}
+	if took := time.Since(start); took < 100*time.Millisecond || took > 400*time.Millisecond {
+		t.Errorf("drain took %v: it must wait for the search and not for the polls", took)
 	}
 }
