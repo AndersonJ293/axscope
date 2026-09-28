@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Every command that takes a target reaches inside a cross-origin iframe:
+  `select` (native and ARIA), `drag`, `upload`, `download`, `scroll target=`,
+  `wait --enabled/--gone`, `wait within=`, `find` and `snap within=` take a
+  frame's ref, and a `css=`/`text=` target the page lacks is looked for in the
+  frames the last `snap` reached.
+
 - `snap` reads cross-origin iframes (OOPIF) through a CDP session of the frame's
   own, refs included; `click`, `hover`, `fill`, `type`, `check` and `uncheck`
   act inside them by ref — through the extension too (0.1.5), which
@@ -72,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A partial `snap` (`within=`, `--viewport`, a modal) no longer renumbers the
+  refs of what it left out: the next full reading keeps them.
 - `wait --gone` right after the action that closed the target answers "gone
   already" instead of "nothing to disappear": a ref of the last reading that no
   longer resolves, or a `css=`/`text=` target when the page changed during the

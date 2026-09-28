@@ -22,6 +22,16 @@ type reading struct {
 	frameNums map[string]int
 }
 
+// inherit copies into nums the entries of prev it lacks. The numbers never
+// collide: a reading numbers a new element above every number it was given.
+func inherit[K comparable](nums, prev map[K]int) {
+	for k, n := range prev {
+		if _, ok := nums[k]; !ok {
+			nums[k] = n
+		}
+	}
+}
+
 var refGenRe = regexp.MustCompile(`\[ref=(e\d+)#\d+\]`)
 
 // stable drops the generation from a line's ref: with stable numbers, a line

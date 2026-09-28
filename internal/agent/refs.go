@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -36,12 +37,31 @@ func refGen(spec string) (string, int, bool) {
 	return spec[:i], n, true
 }
 
-// frameCommands are the commands that act on an element inside a cross-origin
+// frameCommands are the commands that take an element inside a cross-origin
 // iframe: their calls on the object go to the frame's session and their input
 // lands at the element's point in the page. The rest still refuse such a ref.
 var frameCommands = map[string]bool{
 	"click": true, "hover": true, "fill": true, "type": true,
-	"check": true, "uncheck": true,
+	"check": true, "uncheck": true, "select": true, "scroll": true,
+	"drag": true, "upload": true, "download": true, "find": true,
+	"wait": true, "waitgone": true,
+}
+
+// readFrames returns one FrameRef per cross-origin frame the current reading
+// reached: what a css=/text= search inside them needs.
+func (a *Agent) readFrames() []browser.FrameRef {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	seen := map[string]bool{}
+	var out []browser.FrameRef
+	for _, fr := range a.frameRefs {
+		if !seen[fr.Session] {
+			seen[fr.Session] = true
+			out = append(out, fr)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Owner < out[j].Owner })
+	return out
 }
 
 func (a *Agent) currentRefs() map[string]int {
@@ -123,6 +143,14 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 	}
 	t, err := browser.ResolveTarget(ctx, a.client(), sid, a.currentRefs(), target)
 	if err != nil {
+		// A css=/text= target the page lacks may be inside a cross-origin iframe
+		// the reading reached: its document is not the page's.
+		if frames := a.readFrames(); len(frames) > 0 && frameCommands[cmd] &&
+			(strings.HasPrefix(target, "css=") || strings.HasPrefix(target, "text=")) {
+			if ft, ferr := browser.ResolveInFrames(ctx, a.client(), sid, frames, target); ferr == nil {
+				return ft, sid, nil
+			}
+		}
 		return nil, sid, err
 	}
 	if t.Note != "" {

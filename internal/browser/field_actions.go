@@ -14,7 +14,7 @@ import (
 
 // Fill replaces the field's content (focus + selection + insertText).
 func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
-	if ok, reason := classifyField(describeField(ctx, client, t.objSession(session), t.ObjectID)); !ok {
+	if ok, reason := classifyField(describeField(ctx, client, t.ObjSession(session), t.ObjectID)); !ok {
 		return "", fmt.Errorf("%s", reason)
 	}
 	cx, cy := t.actionPoint()
@@ -36,18 +36,18 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 			return true;
 		}`,
 		"returnByValue": true,
-	}, t.objSession(session)); err != nil {
+	}, t.ObjSession(session)); err != nil {
 		return "", err
 	}
 	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": normalizeNewlines(text)}, session); err != nil {
 		return "", err
 	}
-	return fillWarning(text, fieldValue(ctx, client, t.objSession(session), t.ObjectID)), nil
+	return fillWarning(text, fieldValue(ctx, client, t.ObjSession(session), t.ObjectID)), nil
 }
 
 // Type types character by character (it fires keyboard handlers).
 func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
-	if ok, reason := classifyField(describeField(ctx, client, t.objSession(session), t.ObjectID)); !ok {
+	if ok, reason := classifyField(describeField(ctx, client, t.ObjSession(session), t.ObjectID)); !ok {
 		return "", fmt.Errorf("%s", reason)
 	}
 	cx, cy := t.actionPoint()
@@ -58,7 +58,7 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { if (this.focus) this.focus(); return true; }`,
 		"returnByValue":       true,
-	}, t.objSession(session)); err != nil {
+	}, t.ObjSession(session)); err != nil {
 		return "", err
 	}
 	for _, r := range normalizeNewlines(text) {
@@ -82,7 +82,7 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		}
 		time.Sleep(8 * time.Millisecond)
 	}
-	return fillWarning(text, fieldValue(ctx, client, t.objSession(session), t.ObjectID)), nil
+	return fillWarning(text, fieldValue(ctx, client, t.ObjSession(session), t.ObjectID)), nil
 }
 
 // Select chooses an option in a native <select> or an ARIA combobox/listbox (by
@@ -90,13 +90,11 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 // widget ignored it, because a custom widget can highlight an option without
 // selecting it.
 func Select(ctx context.Context, client *cdp.Client, session string, t *Target, want string, p Presenter) (string, error) {
-	if t.InFrame() {
-		return "", ErrInFrame("select")
+	obj := t.ObjSession(session)
+	if isNativeSelect(ctx, client, obj, t.ObjectID) {
+		return selectNative(ctx, client, obj, t.ObjectID, want)
 	}
-	if isNativeSelect(ctx, client, session, t.ObjectID) {
-		return selectNative(ctx, client, session, t.ObjectID, want)
-	}
-	return selectARIA(ctx, client, session, want, p)
+	return selectARIA(ctx, client, session, t, want, p)
 }
 
 // isNativeSelect tells a real <select> from an ARIA widget.
@@ -167,23 +165,26 @@ func selectNative(ctx context.Context, client *cdp.Client, session, objectID, wa
 
 // selectARIA clicks the matching role=option with the real pointer (the same
 // path as `click`) and then checks the widget committed the choice.
-func selectARIA(ctx context.Context, client *cdp.Client, session, want string, p Presenter) (string, error) {
-	optionID, err := dom.EvalObject(ctx, client, session, ariaOptionExpression(want))
+// The options are looked for in the widget's document: inside a cross-origin
+// frame that is the frame's, and the option's box is moved onto the page.
+func selectARIA(ctx context.Context, client *cdp.Client, session string, widget *Target, want string, p Presenter) (string, error) {
+	obj := widget.ObjSession(session)
+	optionID, err := dom.EvalObject(ctx, client, obj, ariaOptionExpression(want))
 	if err != nil {
 		return "", err
 	}
 	if optionID == "" {
 		return "", fmt.Errorf("no visible option matching %q — open or filter the listbox first (type in the combobox, then select)", want)
 	}
-	rect, err := dom.BoxOf(ctx, client, session, optionID)
+	rect, err := widget.PageBox(ctx, client, session, optionID)
 	if err != nil {
 		return "", fmt.Errorf("the option %q has no visible area: %w", want, err)
 	}
-	notice, err := Click(ctx, client, session, &Target{ObjectID: optionID, Rect: rect}, "left", 1, p)
+	notice, err := Click(ctx, client, session, widget.Sibling(optionID, rect), "left", 1, p)
 	if err != nil || notice != "" {
 		return notice, err
 	}
-	if !optionCommitted(ctx, client, session, optionID) {
+	if !optionCommitted(ctx, client, obj, optionID) {
 		return "the selection did not commit — the option was highlighted but not selected (a custom combobox? try `type` then `press Enter`, or `eval`)", nil
 	}
 	return "", nil
@@ -258,7 +259,7 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 			};
 		}`,
 		"returnByValue": true,
-	}, t.objSession(session))
+	}, t.ObjSession(session))
 	if err != nil {
 		return false, "", err
 	}
@@ -292,5 +293,5 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 // ErrInFrame refuses an action not yet supported on an element of a
 // cross-origin iframe, naming the ones that are.
 func ErrInFrame(action string) error {
-	return fmt.Errorf("%s does not reach inside a cross-origin iframe yet — click, hover, fill, type, check and press do", action)
+	return fmt.Errorf("%s does not reach inside a cross-origin iframe yet — the actions, wait, find and snap within= do", action)
 }

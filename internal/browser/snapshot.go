@@ -50,6 +50,9 @@ type SnapshotOptions struct {
 	// ScopeLabel names a scope the tree has no node for (a plain div), which is
 	// then read as the nodes inside it.
 	ScopeLabel string
+	// ScopeFrame is the session of the cross-origin frame the Scope node lives
+	// in; empty = the page. Backend ids are per document, so it takes both.
+	ScopeFrame string
 	scopeNodes map[string]bool
 	// PrevRefs carries the previous reading's numbers (backend id -> N of eN),
 	// so an element keeps its ref across readings of the same page: a delta
@@ -115,7 +118,7 @@ func TakeSnapshot(ctx context.Context, client *cdp.Client, session string, opts 
 
 	// A plain container is not in the tree, but what it holds is: queryAXTree
 	// lists the tree nodes inside a DOM node, and those are read as the scope.
-	if opts.Scope > 0 && findBackend(nodes, opts.Scope) == nil {
+	if opts.Scope > 0 && opts.ScopeFrame == "" && findBackend(nodes, opts.Scope, "") == nil {
 		opts.scopeNodes = queryScope(ctx, client, session, opts.Scope)
 	}
 	if opts.Viewport {
@@ -218,7 +221,10 @@ func buildText(nodes []axNode, opts SnapshotOptions) (*Snapshot, error) {
 	auto := false
 	switch {
 	case opts.Scope > 0:
-		scope = findBackend(nodes, opts.Scope)
+		scope = findBackend(nodes, opts.Scope, opts.ScopeFrame)
+		if scope == nil && opts.ScopeFrame != "" {
+			return nil, fmt.Errorf("the element is not a node of its frame's tree — scope to a ref inside the frame")
+		}
 		if scope == nil && len(opts.scopeNodes) == 0 {
 			return nil, fmt.Errorf("nothing readable inside the element (empty, hidden, or inert behind a modal)")
 		}

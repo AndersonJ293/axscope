@@ -23,6 +23,9 @@ type Target struct {
 	// ObjectID lives in that frame's session, where every call on the object
 	// goes, while the input events go to the page at Point (page coordinates).
 	FrameSession string
+	// FrameOffset is where the frame's viewport starts on the page: a box
+	// measured in the frame's session plus this is a box on the page.
+	FrameOffset Point
 	// Matches counts the elements a css=/text= target could not tell apart
 	// (0 or 1 = no doubt); Note says so to the agent.
 	Matches int
@@ -569,13 +572,35 @@ func hiddenTextMessage(want string, total int) string {
 		total, want)
 }
 
-// objSession is the session where calls on the target's object run: the
+// ObjSession is the session where calls on the target's object run: the
 // frame's for an element of a cross-origin iframe, the page's otherwise.
-func (t *Target) objSession(page string) string {
+func (t *Target) ObjSession(page string) string {
 	if t.FrameSession != "" {
 		return t.FrameSession
 	}
 	return page
+}
+
+// PageBox measures an element of the target's document and returns its box
+// on the page: a frame's boxes are relative to the frame.
+func (t *Target) PageBox(ctx context.Context, client *cdp.Client, page, objectID string) (dom.Rect, error) {
+	r, err := dom.BoxOf(ctx, client, t.ObjSession(page), objectID)
+	if err != nil {
+		return r, err
+	}
+	r.X += t.FrameOffset.X
+	r.Y += t.FrameOffset.Y
+	return r, nil
+}
+
+// Sibling is another element of the target's document, measured on the page:
+// it keeps the frame, so the calls on it go where its object lives.
+func (t *Target) Sibling(objectID string, rect dom.Rect) *Target {
+	s := &Target{ObjectID: objectID, Rect: rect, FrameSession: t.FrameSession, FrameOffset: t.FrameOffset}
+	if s.InFrame() {
+		s.Point = &Point{X: rect.X + rect.Width/2, Y: rect.Y + rect.Height/2}
+	}
+	return s
 }
 
 // InFrame says the target is inside a cross-origin iframe.
@@ -626,5 +651,42 @@ func ResolveFrameTarget(ctx context.Context, client *cdp.Client, page string, fr
 		Description:   spec,
 		Point:         &Point{X: rect.X + rect.Width/2, Y: rect.Y + rect.Height/2},
 		FrameSession:  fr.Session,
+		FrameOffset:   Point{X: frameBox.X, Y: frameBox.Y},
 	}, nil
+}
+
+// ResolveInFrames looks for a css=/text= target inside the cross-origin frames
+// the reading reached (one FrameRef per frame is enough: its Session and
+// Owner), for a target the page's own document does not have. The first
+// frame that has it wins; its box is moved onto the page.
+func ResolveInFrames(ctx context.Context, client *cdp.Client, page string, frames []FrameRef, spec string) (*Target, error) {
+	for _, fr := range frames {
+		owner, err := ResolveBackend(ctx, client, page, fr.Owner)
+		if err != nil || owner == "" {
+			continue
+		}
+		if scrollIntoReach(ctx, client, page, owner) != "already" {
+			_ = dom.ScrollTo(ctx, client, page, owner)
+		}
+		t, err := ResolveTarget(ctx, client, fr.Session, nil, spec)
+		if err != nil {
+			continue
+		}
+		frameBox, err := dom.BoxOf(ctx, client, page, owner)
+		if err != nil {
+			continue
+		}
+		t.FrameSession = fr.Session
+		t.FrameOffset = Point{X: frameBox.X, Y: frameBox.Y}
+		t.Rect.X += frameBox.X
+		t.Rect.Y += frameBox.Y
+		if t.Point != nil {
+			t.Point = &Point{X: t.Point.X + frameBox.X, Y: t.Point.Y + frameBox.Y}
+		} else {
+			t.Point = &Point{X: t.Rect.X + t.Rect.Width/2, Y: t.Rect.Y + t.Rect.Height/2}
+		}
+		t.BackendNodeID = 0
+		return t, nil
+	}
+	return nil, fmt.Errorf("not found in the page nor in its cross-origin iframes")
 }
