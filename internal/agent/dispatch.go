@@ -74,6 +74,7 @@ func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Res
 	// batch and script only carry their steps; the steps are the commands.
 	if req.Cmd != "batch" && req.Cmd != "script" {
 		a.prevStart, a.curStart = a.curStart, time.Now()
+		a.cmd = req.Cmd
 	}
 	a.mu.Unlock()
 	r, found := a.routes()[req.Cmd]

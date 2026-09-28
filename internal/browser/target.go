@@ -19,6 +19,10 @@ type Target struct {
 	BackendNodeID int
 	Rect          dom.Rect
 	Description   string
+	// FrameSession is set for an element inside a cross-origin iframe: its
+	// ObjectID lives in that frame's session, where every call on the object
+	// goes, while the input events go to the page at Point (page coordinates).
+	FrameSession string
 	// Matches counts the elements a css=/text= target could not tell apart
 	// (0 or 1 = no doubt); Note says so to the agent.
 	Matches int
@@ -565,6 +569,18 @@ func hiddenTextMessage(want string, total int) string {
 		total, want)
 }
 
+// objSession is the session where calls on the target's object run: the
+// frame's for an element of a cross-origin iframe, the page's otherwise.
+func (t *Target) objSession(page string) string {
+	if t.FrameSession != "" {
+		return t.FrameSession
+	}
+	return page
+}
+
+// InFrame says the target is inside a cross-origin iframe.
+func (t *Target) InFrame() bool { return t.FrameSession != "" }
+
 // actionPoint returns where the action happens: the requested point for a
 // `pos=x,y` target, otherwise the element's center.
 func (t *Target) actionPoint() (float64, float64) {
@@ -572,4 +588,43 @@ func (t *Target) actionPoint() (float64, float64) {
 		return t.Point.X, t.Point.Y
 	}
 	return t.Rect.X + t.Rect.Width/2, t.Rect.Y + t.Rect.Height/2
+}
+
+// ResolveFrameTarget resolves a ref of an element inside a cross-origin iframe.
+// The element is brought into view inside its frame and measured there; its box
+// is then moved by the <iframe>'s content box in the page, since the input
+// events go to the page at page coordinates. The object stays the frame's, so
+// the checks (covered, disabled, reached) run where the element lives.
+func ResolveFrameTarget(ctx context.Context, client *cdp.Client, page string, fr FrameRef, spec string) (*Target, error) {
+	owner, err := ResolveBackend(ctx, client, page, fr.Owner)
+	if err != nil || owner == "" {
+		return nil, fmt.Errorf("the iframe of %q is gone — run `snap` again", spec)
+	}
+	if scrollIntoReach(ctx, client, page, owner) != "already" {
+		_ = dom.ScrollTo(ctx, client, page, owner)
+	}
+	objectID, err := ResolveBackend(ctx, client, fr.Session, fr.Backend)
+	if err != nil || objectID == "" {
+		return nil, fmt.Errorf("ref %q no longer resolves inside its frame (did the frame change?) — run `snap` again", spec)
+	}
+	if scrollIntoReach(ctx, client, fr.Session, objectID) != "already" {
+		_ = dom.ScrollTo(ctx, client, fr.Session, objectID)
+	}
+	frameBox, err := dom.BoxOf(ctx, client, page, owner)
+	if err != nil {
+		return nil, fmt.Errorf("the iframe of %q has no visible area: %w", spec, err)
+	}
+	inner, err := dom.BoxOf(ctx, client, fr.Session, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("target %q has no visible area inside its frame: %w", spec, err)
+	}
+	rect := dom.Rect{X: frameBox.X + inner.X, Y: frameBox.Y + inner.Y, Width: inner.Width, Height: inner.Height}
+	return &Target{
+		ObjectID:      objectID,
+		BackendNodeID: fr.Backend,
+		Rect:          rect,
+		Description:   spec,
+		Point:         &Point{X: rect.X + rect.Width/2, Y: rect.Y + rect.Height/2},
+		FrameSession:  fr.Session,
+	}, nil
 }

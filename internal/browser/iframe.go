@@ -1,10 +1,12 @@
 // Iframes in the reading: each frame's accessibility tree is grafted onto the
-// iframe's node so the inner content appears. OOPIFs (different origin) stay out.
+// iframe's node so the inner content appears. A cross-origin frame (OOPIF) runs
+// in another process: its tree is read through a CDP session of its own.
 package browser
 
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/AndersonJ293/axscope/internal/cdp"
 )
@@ -37,6 +39,11 @@ func hasIframe(nodes []axNode) bool {
 // corresponding iframe node. With no child frame, it returns the same thing it
 // received.
 func joinFrames(ctx context.Context, client *cdp.Client, session string, nodes []axNode) []axNode {
+	return joinCrossOrigin(ctx, client, session, joinSameOrigin(ctx, client, session, nodes))
+}
+
+// joinSameOrigin grafts the frames the page's own session can read.
+func joinSameOrigin(ctx context.Context, client *cdp.Client, session string, nodes []axNode) []axNode {
 	frames := childFrames(ctx, client, session)
 	if len(frames) == 0 {
 		return nodes
@@ -136,4 +143,106 @@ func graftFrame(nodes []axNode, prefix, parent string) []axNode {
 		out = append(out, n)
 	}
 	return out
+}
+
+// joinCrossOrigin grafts the frames left empty: a cross-origin frame (OOPIF)
+// lives in another process, the page's frame tree does not even list it, and
+// its accessibility tree is only in the frame's own session. The <iframe>
+// element names its frame (DOM.describeNode's frameId), and that id is the
+// frame target's. Best effort: a frame out of reach keeps the line that says so.
+func joinCrossOrigin(ctx context.Context, client *cdp.Client, session string, nodes []axNode) []axNode {
+	hasChild := map[string]bool{}
+	for i := range nodes {
+		if nodes[i].ParentID != "" {
+			hasChild[nodes[i].ParentID] = true
+		}
+	}
+	out := nodes
+	for i := range nodes {
+		n := nodes[i]
+		if !frameRoles[n.Role.str()] || hasChild[n.NodeID] || n.BackendDOMNodeID == 0 {
+			continue
+		}
+		frameID := contentFrameID(ctx, client, session, n.BackendDOMNodeID)
+		if frameID == "" {
+			continue
+		}
+		tree, child := oopifTree(ctx, client, frameID)
+		if len(tree) == 0 {
+			continue
+		}
+		host := &frameHost{Session: child, Owner: n.BackendDOMNodeID}
+		grafted := graftFrame(tree, fmt.Sprintf("x%d:", i), n.NodeID)
+		for j := range grafted {
+			grafted[j].frame = host
+		}
+		out = append(out, grafted...)
+	}
+	return out
+}
+
+// contentFrameID returns the id of the frame an <iframe> element shows.
+func contentFrameID(ctx context.Context, client *cdp.Client, session string, backend int) string {
+	var res struct {
+		Node struct {
+			FrameID string `json:"frameId"`
+		} `json:"node"`
+	}
+	if err := client.SendJSON(ctx, "DOM.describeNode", map[string]any{"backendNodeId": backend}, session, &res); err != nil {
+		return ""
+	}
+	return res.Node.FrameID
+}
+
+// oopifSessions caches the session attached to each cross-origin frame (by
+// frame id, which is the frame target's id), so a reading does not attach again.
+var (
+	oopifMu       sync.Mutex
+	oopifSessions = map[string]string{}
+)
+
+// oopifTree reads a cross-origin frame's accessibility tree through the frame's
+// own session, attaching to it the first time. A cached session that stopped
+// answering (the frame navigated, the target went away) is dropped and attached
+// once more.
+func oopifTree(ctx context.Context, client *cdp.Client, frameID string) ([]axNode, string) {
+	for attempt := 0; attempt < 2; attempt++ {
+		child, err := oopifSession(ctx, client, frameID)
+		if err != nil {
+			return nil, ""
+		}
+		var t struct {
+			Nodes []axNode `json:"nodes"`
+		}
+		if err := client.SendJSON(ctx, "Accessibility.getFullAXTree", map[string]any{}, child, &t); err == nil && len(t.Nodes) > 0 {
+			return t.Nodes, child
+		}
+		oopifMu.Lock()
+		delete(oopifSessions, frameID)
+		oopifMu.Unlock()
+	}
+	return nil, ""
+}
+
+func oopifSession(ctx context.Context, client *cdp.Client, frameID string) (string, error) {
+	oopifMu.Lock()
+	child := oopifSessions[frameID]
+	oopifMu.Unlock()
+	if child != "" {
+		return child, nil
+	}
+	var res struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := client.SendJSON(ctx, "Target.attachToTarget",
+		map[string]any{"targetId": frameID, "flatten": true}, "", &res); err != nil || res.SessionID == "" {
+		return "", fmt.Errorf("attach to frame %s: %v", frameID, err)
+	}
+	for _, m := range []string{"DOM.enable", "Accessibility.enable"} {
+		_, _ = client.Send(ctx, m, map[string]any{}, res.SessionID)
+	}
+	oopifMu.Lock()
+	oopifSessions[frameID] = res.SessionID
+	oopifMu.Unlock()
+	return res.SessionID, nil
 }

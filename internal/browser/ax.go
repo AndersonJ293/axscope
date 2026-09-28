@@ -108,6 +108,23 @@ type axNode struct {
 		} `json:"value"`
 	} `json:"properties"`
 	BackendDOMNodeID int `json:"backendDOMNodeId"`
+	// frame is set on the nodes grafted from a cross-origin iframe: their
+	// backend ids live in that frame's own session, not the page's.
+	frame *frameHost
+}
+
+// frameHost says where a grafted node lives: the frame's CDP session and the
+// <iframe> element (in the page) that shows it.
+type frameHost struct {
+	Session string
+	Owner   int
+}
+
+// FrameRef is a ref of an element inside a cross-origin iframe.
+type FrameRef struct {
+	Session string // the frame's CDP session
+	Backend int    // the element, in the frame's DOM
+	Owner   int    // the <iframe> element, in the page's DOM
 }
 
 type axVal struct {

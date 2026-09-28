@@ -204,6 +204,15 @@ matches tied at the best preference (exact name, in view, uncovered), counted
 once per target (the `<span>` inside a `<button>` is the same target); for `css=`
 it indexes `querySelectorAll`.
 
+**Cross-origin iframes** (a payment form, an embedded widget) are read too: the
+frame runs in another process, so axscope reads its tree through a CDP session
+of the frame's own and grafts it on the `<iframe>` line, refs included. By such a
+ref, `click`, `hover`, `fill`, `type`, `check` and `uncheck` act inside the
+frame (the element is measured there and the input lands at its point in the
+page); the other commands refuse it with the list of those that work. Through
+the browser extension (`ext` engine) the frame is still out of reach and the
+line says so.
+
 `snap` prints each ref with the reading's generation (`e12#7`), because an old
 ref can point at whatever now occupies that position. You do not have to repeat
 it: a plain `e12` means the **current** reading, and an explicit older

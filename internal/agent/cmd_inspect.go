@@ -46,7 +46,10 @@ func (a *Agent) status(ctx context.Context, _ *browser.Session, _ protocol.Reque
 		}
 		fmt.Fprintf(&b, "%s[%d] %s — %s\n", marker, t.Index, label, t.URL)
 	}
-	fmt.Fprintf(&b, "active refs: %d\n", len(a.currentRefs()))
+	a.mu.Lock()
+	inFrames := len(a.frameRefs)
+	a.mu.Unlock()
+	fmt.Fprintf(&b, "active refs: %d\n", len(a.currentRefs())+inFrames)
 	return ok(strings.TrimRight(b.String(), "\n"))
 }
 
@@ -125,6 +128,7 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 	if prev != nil {
 		opts.PrevRefs = prev.nums
+		opts.PrevFrameRefs = prev.frameNums
 	}
 	gen := a.nextGen()
 	opts.Gen = gen
@@ -133,19 +137,22 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 		return protocol.Fail(err)
 	}
 	a.setRefs(snap.Refs, gen)
+	a.mu.Lock()
+	a.frameRefs = snap.FrameRefs
+	a.mu.Unlock()
 	lines := strings.Split(snap.Text, "\n")
 	a.mu.Lock()
 	if a.readings == nil {
 		a.readings = map[string]*reading{}
 	}
-	a.readings[sid] = &reading{url: tabURL, key: key, gen: gen, lines: lines, nums: refNumbers(snap.Refs)}
+	a.readings[sid] = &reading{url: tabURL, key: key, gen: gen, lines: lines, nums: refNumbers(snap.Refs), frameNums: frameRefNumbers(snap.FrameRefs)}
 	a.mu.Unlock()
 	sess.UpdateHUD(ctx, "snap")
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "title: %s\n", snap.Title)
 	fmt.Fprintf(&b, "url: %s\n", snap.URL)
-	fmt.Fprintf(&b, "-- %d lines, %d refs%s\n", snap.Count, len(snap.Refs), scrollLine(snap))
+	fmt.Fprintf(&b, "-- %d lines, %d refs%s\n", snap.Count, len(snap.Refs)+len(snap.FrameRefs), scrollLine(snap))
 	if line := scopeLine(snap); line != "" {
 		b.WriteString(line + "\n")
 	}

@@ -12,8 +12,11 @@ import (
 
 // Snapshot is the screen read, with the ref map for the next step.
 type Snapshot struct {
-	Text      string
-	Refs      map[string]int // "e12" -> backendNodeId
+	Text string
+	Refs map[string]int // "e12" -> backendNodeId
+	// FrameRefs are the refs of elements inside cross-origin iframes, which
+	// resolve in the frame's session instead of the page's.
+	FrameRefs map[string]FrameRef
 	Count     int
 	Title     string
 	URL       string
@@ -52,6 +55,9 @@ type SnapshotOptions struct {
 	// so an element keeps its ref across readings of the same page: a delta
 	// that does not repeat a line must not renumber it behind the agent's back.
 	PrevRefs map[int]int
+	// PrevFrameRefs does the same for refs inside cross-origin frames, keyed
+	// by FrameKey (a frame's backend ids are its own, not the page's).
+	PrevFrameRefs map[string]int
 	// Viewport reads only what is inside the window.
 	Viewport  bool
 	offscreen map[int]bool
@@ -80,7 +86,9 @@ type snapBuilder struct {
 	maxDepth    int
 	offscreen   map[int]bool
 	prev        map[int]int
+	prevFrame   map[string]int
 	used        map[int]bool
+	frameRefs   map[string]FrameRef
 	skipped     int
 	truncated   bool
 }
@@ -177,9 +185,14 @@ func buildText(nodes []axNode, opts SnapshotOptions) (*Snapshot, error) {
 		maxDepth:    opts.MaxDepth,
 		offscreen:   opts.offscreen,
 		prev:        opts.PrevRefs,
+		prevFrame:   opts.PrevFrameRefs,
 		used:        map[int]bool{},
+		frameRefs:   map[string]FrameRef{},
 	}
 	for _, n := range opts.PrevRefs {
+		b.nextRef = max(b.nextRef, n)
+	}
+	for _, n := range opts.PrevFrameRefs {
 		b.nextRef = max(b.nextRef, n)
 	}
 	var root *axNode
@@ -235,6 +248,7 @@ func buildText(nodes []axNode, opts SnapshotOptions) (*Snapshot, error) {
 	snap := &Snapshot{
 		Text:      strings.Join(b.out, "\n"),
 		Refs:      b.refs,
+		FrameRefs: b.frameRefs,
 		Count:     len(b.out),
 		Truncated: b.truncated,
 		ScopeAuto: auto,

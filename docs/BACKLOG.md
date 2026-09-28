@@ -6,9 +6,10 @@ nothing here is a guess.
 
 **Open today:**
 
-- **Iframe from another origin (OOPIF)** is not read: that accessibility tree
-  lives in the other site's process and requires its own CDP session per frame
-  (item 3).
+- **Iframe from another origin (OOPIF) through the extension** (`ext` engine):
+  read and acted on with the `chrome`/`shell`/attach engines (item 3), but the
+  extension only forwards tab sessions, so the frame's own session is out of
+  reach there.
 
 The rest below is history: what closed, with what it taught.
 
@@ -104,7 +105,13 @@ Three details the implementation demanded:
 The cost stays with whoever has an iframe: without an `Iframe` role node in the
 tree, nothing is fetched.
 
-**What remains (OOPIF):** a different origin still shows `- Iframe` with no
+**OOPIF, done for CDP engines:** the page's frame tree does not even list a
+cross-origin frame, but the `<iframe>` element names it (`DOM.describeNode`'s
+`frameId`, which is the frame target's id). axscope attaches to that target,
+reads its tree there and grafts it; its refs remember the frame session and the
+`<iframe>`, so an action measures the element in the frame, adds the
+`<iframe>`'s content box, and lands at that page point. **Before that,** a
+different origin showed `- Iframe` with no
 content. Measured with the harness (`file://` with an iframe to
 `https://example.com`): the tree does not come, because it lives in the other
 site's process. Reaching it requires its own CDP session per frame

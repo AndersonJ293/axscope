@@ -2,6 +2,8 @@ package agent
 
 import (
 	"fmt"
+
+	"github.com/AndersonJ293/axscope/internal/browser"
 	"os"
 	"regexp"
 	"strconv"
@@ -16,6 +18,8 @@ type reading struct {
 	gen   int
 	lines []string
 	nums  map[int]int // backend id -> N of eN
+	// frameNums is nums for the refs inside cross-origin frames (FrameRef.Key).
+	frameNums map[string]int
 }
 
 var refGenRe = regexp.MustCompile(`\[ref=(e\d+)#\d+\]`)
@@ -32,6 +36,18 @@ func refNumbers(refs map[string]int) map[int]int {
 		name, _, _ := strings.Cut(strings.TrimPrefix(ref, "e"), "#")
 		if n, err := strconv.Atoi(name); err == nil {
 			out[backend] = n
+		}
+	}
+	return out
+}
+
+// frameRefNumbers is refNumbers for the refs inside cross-origin frames.
+func frameRefNumbers(refs map[string]browser.FrameRef) map[string]int {
+	out := make(map[string]int, len(refs))
+	for ref, fr := range refs {
+		name, _, _ := strings.Cut(strings.TrimPrefix(ref, "e"), "#")
+		if n, err := strconv.Atoi(name); err == nil {
+			out[fr.Key()] = n
 		}
 	}
 	return out

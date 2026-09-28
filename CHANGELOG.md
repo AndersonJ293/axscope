@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `snap` reads cross-origin iframes (OOPIF) through a CDP session of the frame's
+  own, refs included; `click`, `hover`, `fill`, `type`, `check` and `uncheck`
+  act inside them by ref. Not yet through the extension engine.
+
 - An action's answer says what it did beyond `ok`, only when it happened: a
   dialog that opened or closed, a new tab, a title that changed.
 

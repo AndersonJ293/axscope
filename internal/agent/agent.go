@@ -37,6 +37,11 @@ type Agent struct {
 	handle *browser.Handle
 	sess   *browser.Session
 	refs   map[string]int
+	// frameRefs are the current reading's refs inside cross-origin iframes.
+	frameRefs map[string]browser.FrameRef
+	// cmd is the command running now (in a batch, the step), for what a
+	// resolution may depend on.
+	cmd string
 	// snapGen is the last read's generation; a ref born in an older generation
 	// is refused rather than clicking whatever now occupies that position.
 	snapGen int
