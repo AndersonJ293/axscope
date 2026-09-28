@@ -113,6 +113,18 @@ func (s *Session) has(targetID string) bool {
 	return ok
 }
 
+// subframeRequest is a request made by an iframe, not by the page. Only the
+// page's own requests count as its work in flight: a cross-origin iframe
+// reports the end of its loads in its own session — reCAPTCHA's anchor document
+// and its webworker.js looked open here until longLived, so the first five
+// seconds of every page with reCAPTCHA paid the settle cap on each action. A
+// same-origin iframe's fetches no longer hold an action back either; `wait`
+// by text or --change is how to wait for what an iframe loads. A page target's
+// main frame has the target's id.
+func subframeRequest(frameID, targetID string) bool {
+	return frameID != "" && frameID != targetID
+}
+
 func (s *Session) initTab(tab *Tab) error {
 	sid := tab.SessionID
 	for _, method := range []string{
@@ -141,11 +153,13 @@ func (s *Session) initTab(tab *Tab) error {
 		}
 		var p struct {
 			RequestID string `json:"requestId"`
+			Type      string `json:"type"`
+			FrameID   string `json:"frameId"`
 			Request   struct {
 				URL string `json:"url"`
 			} `json:"request"`
 		}
-		if json.Unmarshal(params, &p) == nil {
+		if json.Unmarshal(params, &p) == nil && !subframeRequest(p.FrameID, tab.TargetID) {
 			s.startReq(sid, p.RequestID, p.Request.URL)
 		}
 	})
