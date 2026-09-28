@@ -80,6 +80,22 @@ func EvalString(ctx context.Context, c *cdp.Client, session, expr string) (strin
 	return s, nil
 }
 
+// EvalAwaitString is EvalString awaiting a promise the expression returns.
+func EvalAwaitString(ctx context.Context, c *cdp.Client, session, expr string) (string, error) {
+	raw, err := EvalAwait(ctx, c, session, expr)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return "", err
+	}
+	return s, nil
+}
+
 // EvalObject evaluates `expr` and returns the element's objectId (empty if null).
 func EvalObject(ctx context.Context, c *cdp.Client, session, expr string) (string, error) {
 	raw, err := c.Send(ctx, "Runtime.evaluate", map[string]any{

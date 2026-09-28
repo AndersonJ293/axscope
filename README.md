@@ -135,6 +135,7 @@ axscope find css=#submit             # the ref the last snap gave a css=/text= t
 axscope download e7                  # saves the file a target offers, returns its path
 axscope read --links                 # the links of the page as `label — href` (absolute)
 axscope read --links match=job/       # only the links whose label or URL has it ("A|B" for either)
+axscope read "#results" --links --scroll   # a virtualized/infinite list: scrolls it and gathers every link
 axscope read --table                 # an HTML <table> as aligned rows
 axscope reload --hard                # reloads bypassing the cache — the remedy for a dead UI
 axscope tabs                         # open tabs (the active one is marked *)

@@ -287,7 +287,9 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 	if err != nil {
 		return protocol.Fail(err)
 	}
-	raw := req.String("selector")
+	// A css= prefix is what every other command takes: the selector is CSS
+	// here already, so the prefix is dropped instead of breaking the query.
+	raw := strings.TrimPrefix(req.String("selector"), "css=")
 	sel := raw
 	if sel == "" {
 		sel = "main, article, [role=main], #content, .content, body"
@@ -311,9 +313,22 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 		return ok(fmt.Sprintf("url: %s\n\n%s", url, res.Text))
 	}
 	if req.Bool("links", false) {
-		links, err := dom.EvalString(ctx, a.client(), sid, linksExpression(sel, req.String("match")))
+		expr := linksExpression(sel, req.String("match"))
+		if req.Bool("scroll", false) {
+			pages := req.Int("pages", 10)
+			if pages < 1 {
+				pages = 1
+			}
+			// The whole page is the scope when none is named: the default
+			// main-content guess would keep the scroll off a side list.
+			expr = scrollLinksExpression(raw, req.String("match"), pages)
+		}
+		links, err := dom.EvalAwaitString(ctx, a.client(), sid, expr)
 		if err != nil {
 			return protocol.Fail(err)
+		}
+		if msg, bad := strings.CutPrefix(links, "error: "); bad {
+			return protocol.Fail(fmt.Errorf("%s", msg))
 		}
 		links = strings.TrimRight(links, "\n")
 		if links == "" {
@@ -376,18 +391,15 @@ func readExpression(sel string) string {
 	})()`, strconv.Quote(sel))
 }
 
-// linksExpression lists the links of the scope as `label — href`, resolving
-// relative URLs (the `href` property is absolute) and dropping `javascript:`
-// and the anchors without an href. A URL is listed once, with its first
-// label: a card links the same page from its title, logo and company name.
-// match keeps the links whose label or URL contains one of its "|"-separated
-// parts, ignoring case — the job links, not the site's navigation.
-func linksExpression(sel, match string) string {
-	return fmt.Sprintf(`(() => {
-		const scope = document.querySelector(%s) || document.body;
-		if (!scope) return '';
-		const wants = %s.split('|').map(s => s.trim().toLowerCase()).filter(Boolean);
-		const byHref = new Map();
+// jsLinks defines gather(scope, byHref), which adds the scope's links to an
+// insertion-ordered map href -> label, and list(byHref, wants), which prints
+// them. It resolves relative URLs (the `href` property is absolute) and drops
+// `javascript:` and the anchors without an href. A URL is listed once, with
+// its first label: a card links the same page from its title, logo and
+// company name. wants keeps the links whose label or URL contains one of the
+// parts, ignoring case — the items, not the site's navigation.
+const jsLinks = `
+	const gather = (scope, byHref) => {
 		for (const a of scope.querySelectorAll('a[href]')) {
 			const href = a.href;
 			if (!href || href.startsWith('javascript:')) continue;
@@ -400,18 +412,97 @@ func linksExpression(sel, match string) string {
 			}
 			byHref.set(href, label);
 		}
+	};
+	const keep = (wants, href, label) => {
+		if (!wants.length) return true;
+		const hay = (label + ' ' + href).toLowerCase();
+		return wants.some(w => hay.includes(w));
+	};
+	const list = (byHref, wants, cap) => {
 		const out = [];
-		for (const [href, label] of byHref) {
-			if (wants.length) {
-				const hay = (label + ' ' + href).toLowerCase();
-				if (!wants.some(w => hay.includes(w))) continue;
-			}
-			out.push((label || href) + ' — ' + href);
-		}
-		const capped = out.slice(0, 200);
+		for (const [href, label] of byHref) if (keep(wants, href, label)) out.push((label || href) + ' — ' + href);
+		const capped = out.slice(0, cap);
 		if (out.length > capped.length) capped.push('(... ' + (out.length - capped.length) + ' more — narrow it with match= or a selector)');
-		return capped.join('\n');
+		return capped;
+	};
+`
+
+// linksExpression lists the links of the scope as `label — href`.
+func linksExpression(sel, match string) string {
+	return fmt.Sprintf(`(() => {`+jsLinks+`
+		const scope = document.querySelector(%s) || document.body;
+		if (!scope) return '';
+		const wants = %s.split('|').map(s => s.trim().toLowerCase()).filter(Boolean);
+		const byHref = new Map();
+		gather(scope, byHref);
+		return list(byHref, wants, 200).join('\n');
 	})()`, strconv.Quote(sel), strconv.Quote(match))
+}
+
+// scrollLinksExpression is read --links --scroll: it scrolls the list and
+// gathers the links at every step. A virtualized list keeps only the rows in
+// view in the DOM, so one reading shows a handful and scrolling first loses
+// the top; gathering along the way sees them all. It scrolls the scope's own
+// scroller (the scope, or its nearest scrollable ancestor), else the page, else
+// the largest scrollable area in view; it stops at the end once nothing new
+// arrives (an infinite list loads on reaching it) or after `pages` steps.
+func scrollLinksExpression(sel, match string, pages int) string {
+	return fmt.Sprintf(`(async () => {`+jsLinks+`
+		const sel = %s, pages = %d;
+		let scope;
+		try { scope = sel ? document.querySelector(sel) : document.body; } catch (e) { return 'error: invalid selector ' + sel; }
+		if (!scope) return 'error: no element for selector ' + sel;
+		const wants = %s.split('|').map(s => s.trim().toLowerCase()).filter(Boolean);
+		const canScroll = (el) => {
+			if (!el || !el.scrollHeight) return false;
+			if (el === document.scrollingElement) return el.scrollHeight > innerHeight + 1;
+			return /(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight + 1;
+		};
+		let scroller = null;
+		for (let el = scope; el && el !== document.body; el = el.parentElement) if (canScroll(el)) { scroller = el; break; }
+		if (!scroller && !sel) {
+			const page = document.scrollingElement || document.documentElement;
+			if (canScroll(page)) scroller = page;
+			else {
+				let best = 0;
+				for (const el of document.querySelectorAll('*')) {
+					if (!canScroll(el)) continue;
+					const r = el.getBoundingClientRect(), area = Math.max(0, r.width) * Math.max(0, r.height);
+					if (area > best) { best = area; scroller = el; }
+				}
+			}
+		}
+		if (!scroller) scroller = document.scrollingElement || document.documentElement;
+		const page = scroller === (document.scrollingElement || document.documentElement);
+		const view = page ? innerHeight : scroller.clientHeight;
+		const byHref = new Map();
+		const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+		// From the top: what is above the current position is part of the list,
+		// and a virtualized one dropped it from the DOM.
+		if (scroller.scrollTop > 0) { scroller.scrollTo(0, 0); scroller.dispatchEvent(new Event('scroll')); await sleep(250); }
+		let steps = 0, idle = 0, ended = false;
+		gather(scope, byHref);
+		while (steps < pages) {
+			const before = byHref.size, height = scroller.scrollHeight;
+			scroller.scrollBy(0, Math.max(100, view * 0.8));
+			scroller.dispatchEvent(new Event('scroll'));
+			steps++;
+			// Rows render on the scroll event; a next page arrives from the network.
+			for (let t = 0; t < 8; t++) {
+				await sleep(150);
+				gather(scope, byHref);
+				if (byHref.size > before && t >= 1) break;
+			}
+			const atEnd = scroller.scrollTop + view >= scroller.scrollHeight - 2;
+			if (byHref.size === before && scroller.scrollHeight === height) idle++; else idle = 0;
+			if (atEnd && idle >= 2) { ended = true; break; }
+		}
+		const name = page ? 'the page' : (scroller.id ? '#' + scroller.id : scroller.tagName.toLowerCase());
+		const lines = list(byHref, wants, 500);
+		const why = ended ? 'the end, nothing more loaded' : 'the ' + pages + '-step limit (pages= for more)';
+		lines.push('-- scrolled ' + name + ' ' + steps + ' step(s), stopped at ' + why + (document.hidden ? ' — the tab is hidden: what loads via IntersectionObserver does not fire (axscope tab <n> --focus)' : ''));
+		return lines.join('\n');
+	})()`, strconv.Quote(sel), pages, strconv.Quote(match))
 }
 
 // tableExpression reads an HTML table as aligned rows: the cells of each `tr`

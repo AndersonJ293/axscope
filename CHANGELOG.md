@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `read --links --scroll` scrolls the list (a selector's scroller, else the
+  page, else the largest scrollable area) from the top and gathers the links
+  at every step, up to `pages=` steps (10): a virtualized list keeps only the
+  rows in view in the DOM, and an infinite one loads on reaching its end.
+  `read` also takes its selector with a `css=` prefix.
 - `read --links match=job/` keeps the links whose label or URL has the text
   (`"A|B"` for either, case ignored), and a URL is listed once with its first
   label: a card's title, logo and company no longer print three lines.
