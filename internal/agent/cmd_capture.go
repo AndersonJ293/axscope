@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
-	"github.com/AndersonJ293/axscope/internal/command"
 	"github.com/AndersonJ293/axscope/internal/protocol"
 )
 
@@ -36,7 +34,8 @@ func (a *Agent) shot(ctx context.Context, sess *browser.Session, req protocol.Re
 	return ok(fmt.Sprintf("ok: %s (%d bytes)", path, len(data)))
 }
 
-// runScript runs a script line by line, stopping at the first error.
+// runScript runs a script line by line, stopping at the first error. It is the
+// text form of a batch: the same runner, one command per line.
 func (a *Agent) runScript(ctx context.Context, _ *browser.Session, req protocol.Request) protocol.Response {
 	content := req.String("content")
 	if content == "" {
@@ -50,35 +49,5 @@ func (a *Agent) runScript(ctx context.Context, _ *browser.Session, req protocol.
 		}
 		content = string(data)
 	}
-
-	var b strings.Builder
-	for _, line := range strings.Split(content, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		tokens, err := splitTokens(trimmed)
-		if err != nil {
-			fmt.Fprintf(&b, "> %s\n!! %v\n", trimmed, err)
-			continue
-		}
-		sub, err := command.Parse(tokens)
-		if err != nil {
-			fmt.Fprintf(&b, "> %s\n!! %v\n", trimmed, err)
-			continue
-		}
-		fmt.Fprintf(&b, "> %s\n", trimmed)
-		if sub.Cmd == "script" {
-			fmt.Fprintf(&b, "!! script cannot call script\n")
-			continue
-		}
-		res := a.dispatch(ctx, sub)
-		if res.OK {
-			fmt.Fprintf(&b, "%s\n", res.Text)
-		} else {
-			fmt.Fprintf(&b, "!! %s\n", res.Error)
-			break // script stops at the first error
-		}
-	}
-	return ok(strings.TrimRight(b.String(), "\n"))
+	return a.runSteps(ctx, linesToSteps(content), true, "")
 }

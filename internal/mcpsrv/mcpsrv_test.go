@@ -388,3 +388,49 @@ func TestSlowCallDoesNotBlockPing(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// The tip speaks at the third action in a row, then only every tipEvery, and a
+// read or a pause breaks the streak — it informs, it does not nag.
+func TestBatchTipCadence(t *testing.T) {
+	var tip batchTip
+	now := time.Now()
+	var spoke []int
+	for i := 1; i <= 3+2*tipEvery; i++ {
+		if tip.observe("click", now) != "" {
+			spoke = append(spoke, i)
+		}
+	}
+	want := []int{3, 3 + tipEvery, 3 + 2*tipEvery}
+	if len(spoke) != len(want) || spoke[0] != want[0] || spoke[1] != want[1] || spoke[2] != want[2] {
+		t.Errorf("spoke at %v, want %v", spoke, want)
+	}
+
+	tip = batchTip{}
+	tip.observe("click", now)
+	tip.observe("click", now)
+	tip.observe("snap", now)
+	if tip.observe("click", now) != "" {
+		t.Error("a read must reset the streak")
+	}
+	tip.observe("click", now)
+	if tip.observe("click", now.Add(2*tipGap)) != "" {
+		t.Error("a long pause must reset the streak")
+	}
+}
+
+// A batch's steps are a list in the schema; a string would push the model into
+// JSON-in-a-string quoting.
+func TestBatchStepsSchemaIsAList(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TOOLS", "")
+	for _, td := range tools() {
+		if td.Name != "batch" {
+			continue
+		}
+		props := td.InputSchema["properties"].(map[string]any)
+		if props["steps"].(map[string]any)["type"] != "array" {
+			t.Errorf("steps schema = %v", props["steps"])
+		}
+		return
+	}
+	t.Error("batch is not in the default catalog")
+}

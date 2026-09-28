@@ -28,6 +28,7 @@ func (a *Agent) routes() map[string]route {
 		"status": {handle: a.status},
 		"help":   {handle: a.help},
 		"script": {handle: a.runScript},
+		"batch":  {handle: a.batch},
 
 		"open":     {needsSession: true, handle: a.open},
 		"snap":     {needsSession: true, handle: a.snap},

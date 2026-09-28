@@ -20,7 +20,7 @@ axscope install     # downloads Chrome for Testing
    never the first option.
 3. **Converge, don't sleep** (`wait`/`waitgone`, `Settle`) — fail loudly when
    the page will not settle instead of masking it with `sleep`.
-4. **Batch** (`script`) — N steps on one connection, no cold start per step.
+4. **Batch** (`batch`, `script`) — N steps in one call, no round trip per step.
 5. **See** — cursor, halo, target spotlight and a tab HUD injected into the page.
 
 ## Why raw CDP (and not Playwright)
@@ -71,7 +71,7 @@ survive across runs.
 ```
 
 The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **33 of the 37 commands** (including `help`, `ping` and `status`). The rest are not missing — set
+request): **34 of the 38 commands** (including `help`, `ping` and `status`). The rest are not missing — set
 `AXSCOPE_MCP_TOOLS=all` to expose every command, and the **`help` tool** lists them all
 with their arguments. The server repeats this in the `instructions` of the
 `initialize` handshake, so a client that sees a partial catalog knows it is a
@@ -116,8 +116,46 @@ axscope tabs                         # open tabs (the active one is marked *)
 axscope status                       # session, engine, connection, CDP endpoint, live tabs, refs
 axscope viewport 360x800 mobile=1    # emulates a phone (metrics + touch); --reset restores
 axscope shot /tmp/evidence.png       # capture (with cursor and spotlight)
-axscope script scenario.txt          # batch script
+axscope script scenario.txt          # the same, one command per line from a file
 ```
+
+### Batch: the fast path
+
+`batch` runs a list of commands in one call. Over MCP that is one round trip
+instead of N, and the answer says how far it got:
+
+```
+batch steps=["fill css=#username tomsmith", "fill css=#password s3cret",
+             {"cmd":"click","target":"css=button[type=submit]"},
+             "wait \"You logged into\""] snap=final
+
+[1/4 106ms] > fill css=#username tomsmith
+ok: fill css=#username = "tomsmith"
+url: https://the-internet.herokuapp.com/login
+[2/4 85ms] > fill css=#password s3cret
+ok: fill css=#password = "s3cret"
+[3/4 873ms] > click target=css=button[type=submit]
+ok: click css=button[type=submit]
+url: https://the-internet.herokuapp.com/secure
+[4/4 1ms] > wait "You logged into"
+ok: "You logged into" appeared in 1ms — at div.row — …
+-- 4/4 ok in 1.1s
+
+title: The Internet
+…
+```
+
+- A step is a command line (`"click e3"`) or an object (`{"cmd":"fill",
+  "target":"e5","value":"x"}`); an object's argument names are checked, so a typo
+  is refused instead of ignored.
+- It stops at the first error (`-- stopped at step 3/4 (1 not run)`); `--continue`
+  runs the rest anyway.
+- `snap=final` reads the screen after the last step — act and look in one call.
+- A `url:` line appears only when the step changed the URL.
+- From the CLI, `steps` is the same list as JSON text: `axscope batch '["press Tab","press Enter"]'`.
+
+When an MCP client drives the page one action per call, the answer eventually
+carries a tip pointing at `batch` (after three actions in a row, then sparingly).
 
 `open` and `newtab` name the tab they landed on (`tab: [2] <targetId>`), so you do
 not need a `tabs` round trip to know where you are.
