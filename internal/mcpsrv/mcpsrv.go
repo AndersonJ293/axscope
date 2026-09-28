@@ -601,6 +601,9 @@ func stepGrammar() string {
 		for _, f := range spec.Flags {
 			line += " [--" + f + "]"
 		}
+		if spec.Rest {
+			line += " (" + spec.Positional[len(spec.Positional)-1] + " = the rest of the line)"
+		}
 		parts = append(parts, line)
 	}
 	return "Every other command runs as a step (`help` explains each): " + strings.Join(parts, "; ")

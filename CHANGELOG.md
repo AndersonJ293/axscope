@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `eval` takes the rest of the line as JavaScript, in a `batch` or `script`
+  step too: `eval () => document.title` no longer fails on "extra argument".
+  A function written as the whole expression is called (awaited when async)
+  instead of printing `{}`.
 - Through the extension, an action waited for none of the page's requests: a
   tab there is a browser tab number, not the main frame's id, so every request
   counted as an iframe's. The main frame's id is now read from the page.

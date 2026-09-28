@@ -185,12 +185,51 @@ func linesToSteps(content string) []step {
 }
 
 func lineStep(line string) step {
+	if st, ok := restStep(line); ok {
+		return st
+	}
 	tokens, err := splitTokens(line)
 	if err != nil {
 		return step{line: line, err: err}
 	}
 	req, err := command.Parse(tokens)
 	return step{line: line, req: req, err: err}
+}
+
+// restStep reads a command whose last argument is the rest of the line (eval)
+// from the raw text, so the quotes and spaces inside the JavaScript survive. A
+// whole argument in quotes keeps meaning what it meant: the text inside them.
+func restStep(line string) (step, bool) {
+	name, raw, _ := strings.Cut(line, " ")
+	spec, ok := command.Lookup(name)
+	if !ok || !spec.Rest || len(spec.Positional) != 1 {
+		return step{}, false
+	}
+	raw = strings.TrimSpace(raw)
+	args := map[string]any{}
+	for {
+		cut := false
+		for _, f := range spec.Flags {
+			if rest, found := strings.CutSuffix(raw, " --"+f); found {
+				args[f], raw, cut = true, strings.TrimSpace(rest), true
+			} else if rest, found := strings.CutPrefix(raw, "--"+f+" "); found {
+				args[f], raw, cut = true, strings.TrimSpace(rest), true
+			}
+		}
+		if !cut {
+			break
+		}
+	}
+	if raw == "" {
+		return step{}, false
+	}
+	if q := raw[0]; (q == '\'' || q == '"') && raw[len(raw)-1] == q && len(raw) > 1 {
+		if tokens, err := splitTokens(raw); err == nil && len(tokens) == 1 {
+			raw = tokens[0]
+		}
+	}
+	args[spec.Positional[0]] = raw
+	return step{line: line, req: protocol.Request{Cmd: spec.Cmd, Args: args}}, true
 }
 
 // objectStep validates the object against the command table, so a typo in an

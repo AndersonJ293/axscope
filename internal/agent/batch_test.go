@@ -113,3 +113,38 @@ func TestDropRepeatedURL(t *testing.T) {
 		t.Errorf("new url dropped: %q", text)
 	}
 }
+
+func TestEvalTakesTheRestOfTheLine(t *testing.T) {
+	cases := map[string]string{
+		`eval () => document.title`:                   `() => document.title`,
+		`eval document.querySelector('a b').href`:     `document.querySelector('a b').href`,
+		`eval 'document.title'`:                       `document.title`,
+		`eval "[...document.links].map(a => a.href)"`: `[...document.links].map(a => a.href)`,
+		`eval () => 1 --raw`:                          `() => 1`,
+	}
+	for line, want := range cases {
+		st := lineStep(line)
+		if st.err != nil || st.req.String("js") != want {
+			t.Errorf("%s: got %q (%v)", line, st.req.String("js"), st.err)
+		}
+	}
+	if !lineStep(`eval () => 1 --raw`).req.Bool("raw", false) {
+		t.Error("--raw is a flag, not JS")
+	}
+}
+
+func TestCallIfFunction(t *testing.T) {
+	for in, want := range map[string]string{
+		`() => document.title`:     `(() => document.title)()`,
+		`async () => { return 1 }`: `(async () => { return 1 })()`,
+		`x => x`:                   `(x => x)()`,
+		`function () { return 2 }`: `(function () { return 2 })()`,
+		`document.title`:           `document.title`,
+		`[1,2].map(x => x)`:        `[1,2].map(x => x)`,
+		`(() => 1)()`:              `(() => 1)()`,
+	} {
+		if got := callIfFunction(in); got != want {
+			t.Errorf("%s: got %s", in, got)
+		}
+	}
+}
