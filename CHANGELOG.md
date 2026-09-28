@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `initialize` instructions carry the grammar of the `batch` steps, not
+  only `batch`'s description: a client may serve a tool schema cached from an
+  earlier connection.
+
 - The MCP catalog is 8 tools (`batch`, `snap`, `open`, `click`, `fill`, `wait`,
   `shot`, `help`) instead of 34: every other command runs as a `batch` step,
   and `batch`'s description lists their grammar. `AXSCOPE_MCP_TOOLS=all` keeps

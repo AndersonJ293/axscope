@@ -660,7 +660,11 @@ func instructions() string {
 	if exposed >= total {
 		note += fmt.Sprintf("All %d commands are exposed; call the `help` tool for the list with their arguments.", total)
 	} else {
-		note += fmt.Sprintf("%d tools cover the %d commands: the rest (type, press, select, check, scroll, read, find, eval, tabs, back, reload…) run as steps of `batch`, whose description lists them; `help` explains each. AXSCOPE_MCP_TOOLS=all exposes one tool per command instead.", exposed, total)
+		// The grammar is repeated here, not only in batch's description: a client
+		// may keep a tool's schema from an earlier connection (Claude Code served
+		// batch without it after a reconnect), while the instructions arrive
+		// fresh with every handshake.
+		note += fmt.Sprintf("%d tools cover the %d commands: the rest run as steps of `batch`. AXSCOPE_MCP_TOOLS=all exposes one tool per command instead. %s.", exposed, total, stepGrammar())
 	}
 	return note + " This MCP server has a browser session of its own (`status` names it; set AXSCOPE_SESSION to share one)."
 }
