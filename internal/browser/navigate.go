@@ -12,6 +12,19 @@ import (
 	"github.com/AndersonJ293/axscope/internal/dom"
 )
 
+// longLived is how old an open request must be to stop counting as the page
+// being busy. Some requests never finish from this tab's point of view: the
+// document of a cross-origin iframe (reCAPTCHA's anchor) reports its start here
+// and its end in the frame's own session, and an EventSource or long poll is
+// open by design. Counted, they kept every action waiting out the settle cap
+// (~1.5s a click on any page with reCAPTCHA) and network-idle waits failing.
+const longLived = 5 * time.Second
+
+type pendingReq struct {
+	url   string
+	start time.Time
+}
+
 func (s *Session) startReq(sid, requestID, url string) {
 	if requestID == "" {
 		return
@@ -20,11 +33,32 @@ func (s *Session) startReq(sid, requestID, url string) {
 	defer s.mu.Unlock()
 	set := s.inflight[sid]
 	if set == nil {
-		set = make(map[string]string)
+		set = make(map[string]pendingReq)
 		s.inflight[sid] = set
 	}
-	set[requestID] = url
+	set[requestID] = pendingReq{url: url, start: time.Now()}
 	s.lastActivity[sid] = time.Now()
+}
+
+// resetReqs forgets a tab's open requests when its main frame commits a new
+// document: whatever the old page left open (a request whose end was reported
+// elsewhere) is not the new page's work.
+func (s *Session) resetReqs(sid string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.inflight, sid)
+}
+
+// busyReqs returns the URLs of a tab's requests that still count as work in
+// flight: the open ones younger than longLived. The caller holds s.mu.
+func (s *Session) busyReqs(sid string, now time.Time) []string {
+	var out []string
+	for _, r := range s.inflight[sid] {
+		if now.Sub(r.start) < longLived {
+			out = append(out, r.url)
+		}
+	}
+	return out
 }
 
 func (s *Session) doneReq(sid, requestID string) {
@@ -271,10 +305,7 @@ func (s *Session) WaitForNetworkIdle(ctx context.Context, sid string, idle, time
 	deadline := time.Now().Add(timeout)
 	for {
 		s.mu.Lock()
-		pending := make([]string, 0, len(s.inflight[sid]))
-		for _, url := range s.inflight[sid] {
-			pending = append(pending, url)
-		}
+		pending := s.busyReqs(sid, time.Now())
 		last := s.lastActivity[sid]
 		s.mu.Unlock()
 		if len(pending) == 0 && time.Since(last) >= idle {
@@ -353,7 +384,7 @@ func (s *Session) Settle(ctx context.Context, sid string, idle time.Duration) {
 	deadline := time.Now().Add(settleCap)
 	for time.Now().Before(deadline) {
 		s.mu.Lock()
-		inflight := len(s.inflight[sid])
+		inflight := len(s.busyReqs(sid, time.Now()))
 		last := s.lastActivity[sid]
 		s.mu.Unlock()
 		if inflight <= 0 && time.Since(last) >= idle {
