@@ -84,17 +84,17 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 	}
 
 	present := req.Cmd == "wait"
+	alts := alternatives(asked)
 	for time.Now().Before(deadline) {
 		if err := ctx.Err(); err != nil {
 			return protocol.Fail(fmt.Errorf("%q wait cancelled: %w", asked, err))
 		}
-		where, err := locateText(ctx, a.client(), in, asked, root)
-		if err == nil && (where != "") == present {
-			verb := "appeared"
+		found, where, err := a.firstPresent(ctx, in, root, alts)
+		if err == nil && (found != "") == present {
 			if !present {
-				verb = "disappeared"
+				return ok(fmt.Sprintf("ok: %q disappeared in %dms", asked, time.Since(start).Milliseconds()))
 			}
-			msg := fmt.Sprintf("ok: %q %s in %dms", asked, verb, time.Since(start).Milliseconds())
+			msg := fmt.Sprintf("ok: %q appeared in %dms", found, time.Since(start).Milliseconds())
 			if where != "" {
 				msg += " — at " + where
 			}
@@ -103,9 +103,64 @@ func (a *Agent) wait(ctx context.Context, sess *browser.Session, req protocol.Re
 		time.Sleep(120 * time.Millisecond)
 	}
 	if present {
-		return protocol.Fail(fmt.Errorf("%q did not appear within %s", asked, timeout))
+		// The text an agent waits for is a guess at the page's wording; the
+		// headings it does have are the next guess, and save a snap.
+		msg := fmt.Sprintf("%q did not appear within %s", asked, timeout)
+		if heads := pageHeadings(ctx, a.client(), in); heads != "" {
+			msg += " — the page's headings: " + heads + ` (wait "A|B" takes the first of several)`
+		}
+		return protocol.Fail(fmt.Errorf("%s", msg))
 	}
 	return protocol.Fail(fmt.Errorf("%q did not disappear within %s", asked, timeout))
+}
+
+// alternatives splits `wait "A|B"` into the texts it accepts. A single text
+// is the usual case; "|" around nothing is kept as a literal.
+func alternatives(text string) []string {
+	var out []string
+	for _, part := range strings.Split(text, "|") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{text}
+	}
+	return out
+}
+
+// firstPresent returns the first alternative on the page and where it is, or
+// "" when none is (for waitgone: all of them are gone).
+func (a *Agent) firstPresent(ctx context.Context, session, root string, alts []string) (string, string, error) {
+	for _, alt := range alts {
+		where, err := locateText(ctx, a.client(), session, alt, root)
+		if err != nil {
+			return "", "", err
+		}
+		if where != "" {
+			return alt, where, nil
+		}
+	}
+	return "", "", nil
+}
+
+// pageHeadings lists the visible headings (h1–h3 and role=heading), deduped
+// and cut short, for the answer of a text that did not appear.
+func pageHeadings(ctx context.Context, client *cdp.Client, session string) string {
+	v, err := dom.EvalString(ctx, client, session, `(() => {
+		const seen = new Set(), out = [];
+		for (const h of document.querySelectorAll('h1,h2,h3,[role=heading]')) {
+			const t = (h.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+			if (!t || seen.has(t) || !h.getClientRects().length) continue;
+			seen.add(t); out.push(JSON.stringify(t));
+			if (out.length >= 8) break;
+		}
+		return out.join(', ');
+	})()`)
+	if err != nil {
+		return ""
+	}
+	return v
 }
 
 // waitURL waits for location.href to contain `want` or match `re`, and for

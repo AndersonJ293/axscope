@@ -148,3 +148,15 @@ func TestCallIfFunction(t *testing.T) {
 		}
 	}
 }
+
+func TestWaitAlternatives(t *testing.T) {
+	if got := alternatives("About the job | Company description"); len(got) != 2 || got[1] != "Company description" {
+		t.Fatalf("got %q", got)
+	}
+	if got := alternatives("Saved"); len(got) != 1 || got[0] != "Saved" {
+		t.Fatalf("got %q", got)
+	}
+	if got := alternatives("|"); len(got) != 1 || got[0] != "|" {
+		t.Fatalf("a bare pipe stays literal, got %q", got)
+	}
+}
