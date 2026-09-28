@@ -209,9 +209,9 @@ frame runs in another process, so axscope reads its tree through a CDP session
 of the frame's own and grafts it on the `<iframe>` line, refs included. By such a
 ref, `click`, `hover`, `fill`, `type`, `check` and `uncheck` act inside the
 frame (the element is measured there and the input lands at its point in the
-page); the other commands refuse it with the list of those that work. Through
-the browser extension (`ext` engine) the frame is still out of reach and the
-line says so.
+page); the other commands refuse it with the list of those that work. It works
+through the browser extension too (0.1.5+: reload it after updating), which
+auto-attaches each cross-origin frame of its tabs as a child debugger session.
 
 `snap` prints each ref with the reading's generation (`e12#7`), because an old
 ref can point at whatever now occupies that position. You do not have to repeat

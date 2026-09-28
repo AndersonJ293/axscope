@@ -79,7 +79,7 @@ function connectPort(port) {
     if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return;
   }
   if (!existing) {
-    conns.set(port, { port, ws: null, session: null, groupId: null, tabBySession: new Map() });
+    conns.set(port, { port, ws: null, session: null, groupId: null, tabBySession: new Map(), frames: new Map() });
   }
   const st = conns.get(port);
 
@@ -105,6 +105,7 @@ function connectPort(port) {
       if (owner === st) ownerByTab.delete(tabId);
     }
     st.tabBySession.clear();
+    st.frames.clear();
     refreshStatus();
   };
   ws.onerror = () => {
@@ -198,6 +199,14 @@ async function handleMessage(st, msg) {
   }
 
   if (!sessionId) throw new Error(`command ${method} without a session (tab)`);
+  // A cross-origin iframe's session: `f<tabId>:<child session>`, a flat child
+  // session of the tab's debugger (Target.setAutoAttach at attach time).
+  if (sessionId.startsWith('f')) {
+    const frame = parseFrameSession(sessionId);
+    if (!frame) throw new Error(`invalid frame session ${sessionId}`);
+    respond(st, id, await chrome.debugger.sendCommand({ tabId: frame.tabId, sessionId: frame.child }, method, params || {}));
+    return;
+  }
   const tabId = st.tabBySession.get(sessionId);
   if (tabId === undefined) throw new Error(`session ${sessionId} is no longer active`);
   respond(st, id, await chrome.debugger.sendCommand({ tabId }, method, params || {}));
@@ -327,6 +336,13 @@ async function handleTarget(st, method, params) {
     }
 
     case 'Target.attachToTarget':
+      // A frame target id is not a tab id: it names a cross-origin iframe the
+      // tab's debugger already attached as a child session.
+      if (Number.isNaN(Number(params.targetId))) {
+        const frame = st.frames.get(params.targetId);
+        if (!frame) throw new Error(`frame ${params.targetId} is not attached (not a cross-origin iframe of a tab of this session)`);
+        return { sessionId: `f${frame.tabId}:${frame.child}` };
+      }
       return attach(st, params.targetId);
 
     case 'Target.detachFromTarget': {
@@ -380,7 +396,22 @@ async function attach(st, targetId) {
   }
   st.tabBySession.set(sessionId, tabId);
   ownerByTab.set(tabId, st);
+  // Cross-origin iframes run in their own process: auto-attach makes each one a
+  // flat child session of this debugger, which is how the daemon reads and acts
+  // inside them. Best effort — without it the frame stays out of reach.
+  try {
+    await chrome.debugger.sendCommand({ tabId }, 'Target.setAutoAttach',
+      { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  } catch {
+    /* an older browser without child sessions */
+  }
   return { sessionId };
+}
+
+/** `f<tabId>:<child>` -> { tabId, child }. */
+function parseFrameSession(sessionId) {
+  const m = /^f(\d+):(.+)$/.exec(sessionId);
+  return m ? { tabId: Number(m[1]), child: m[2] } : null;
 }
 
 // --------------------------------------------------------------------- events
@@ -388,7 +419,20 @@ async function attach(st, targetId) {
 chrome.debugger.onEvent.addListener((source, method, params) => {
   const st = ownerByTab.get(source.tabId);
   if (!st) return;
-  sendOn(st, { method, params, sessionId: `t${source.tabId}` });
+  // The frames the tab's auto-attach reports are bookkeeping for the extension:
+  // the daemon asks for one by its target id (Target.attachToTarget).
+  if (method === 'Target.attachedToTarget' && params && params.targetInfo && params.targetInfo.type === 'iframe') {
+    st.frames.set(params.targetInfo.targetId, { tabId: source.tabId, child: params.sessionId });
+    return;
+  }
+  if (method === 'Target.detachedFromTarget' && params && params.sessionId) {
+    for (const [targetId, f] of st.frames) {
+      if (f.tabId === source.tabId && f.child === params.sessionId) st.frames.delete(targetId);
+    }
+    if (!source.sessionId) return;
+  }
+  const sessionId = source.sessionId ? `f${source.tabId}:${source.sessionId}` : `t${source.tabId}`;
+  sendOn(st, { method, params, sessionId });
 });
 
 chrome.debugger.onDetach.addListener((source, reason) => {
@@ -397,6 +441,9 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   const sessionId = `t${source.tabId}`;
   st.tabBySession.delete(sessionId);
   ownerByTab.delete(source.tabId);
+  for (const [targetId, f] of st.frames) {
+    if (f.tabId === source.tabId) st.frames.delete(targetId);
+  }
   sendOn(st, { method: 'Target.detachedFromTarget', params: { sessionId, reason }, sessionId });
 });
 

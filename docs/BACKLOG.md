@@ -4,12 +4,8 @@ What was left out of the work, why it was left out, and what has already been
 decided **not** to do. Each item carries the measurement that justifies it —
 nothing here is a guess.
 
-**Open today:**
-
-- **Iframe from another origin (OOPIF) through the extension** (`ext` engine):
-  read and acted on with the `chrome`/`shell`/attach engines (item 3), but the
-  extension only forwards tab sessions, so the frame's own session is out of
-  reach there.
+**Open today:** nothing measured is left open. The last item, cross-origin
+iframes (item 3), closed for every engine, the extension included.
 
 The rest below is history: what closed, with what it taught.
 
