@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On a page whose requests never stop (polling, telemetry), an action no longer
+  waits out the 1.5 s settle cap and `wait --change` no longer waits out its
+  timeout: they wait for the requests in flight after the action, not for a
+  window with none.
+
 - Only the page's own requests count as its work in flight: an iframe's loads
   (a cross-origin one reports their end in its own session) no longer make the
   first seconds after a load wait out the settle cap on every action.
