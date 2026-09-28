@@ -1,6 +1,7 @@
 package mcpsrv
 
 import (
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,9 +19,12 @@ import (
 // real session left six of them behind. Two signals end it:
 //
 //   - the parent died (the server was reparented), so nobody can ever call it;
-//   - a newer server of the same parent took over and this one sat idle for
-//     supersededIdle — an active server is never cut, since a client could run
-//     two on purpose.
+//   - a newer server of the same parent, in the same directory and session,
+//     took over and this one sat idle for supersededIdle — an active server
+//     is never cut. A client can run several on purpose: opencode starts one
+//     per project directory under one process, and keying by the parent alone
+//     cut all but the newest after ten idle minutes, which the client showed
+//     as the server disconnecting over and over.
 const (
 	supersededIdle = 10 * time.Minute
 	watchEvery     = 30 * time.Second
@@ -33,10 +37,21 @@ func touch() { lastCall.Store(time.Now().UnixNano()) }
 
 func idleFor() time.Duration { return time.Since(time.Unix(0, lastCall.Load())) }
 
-// newestPath names the file where the newest server of a parent process writes
-// its pid. It lives in the runtime dir: it means nothing after a reboot.
+// newestPath names the file where the newest server of a parent process — for
+// this directory and session — writes its pid. A reconnect replaces a server
+// with one just like it; a server for another directory or session is a
+// sibling, not a replacement. It lives in the runtime dir: it means nothing
+// after a reboot.
 func newestPath(ppid int) string {
-	return filepath.Join(paths.RuntimeDir(), "mcp", strconv.Itoa(ppid)+".newest")
+	return filepath.Join(paths.RuntimeDir(), "mcp", strconv.Itoa(ppid)+"-"+instanceKey()+".newest")
+}
+
+// instanceKey tells apart the servers one client runs side by side.
+func instanceKey() string {
+	cwd, _ := os.Getwd()
+	h := fnv.New32a()
+	h.Write([]byte(cwd + "\x00" + os.Getenv("AXSCOPE_SESSION")))
+	return strconv.FormatUint(uint64(h.Sum32()), 16)
 }
 
 // claimNewest records this server as the newest of its parent.

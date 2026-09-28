@@ -63,3 +63,21 @@ func TestNewestRecord(t *testing.T) {
 		t.Error("release kept this server's own record")
 	}
 }
+
+// A client that runs one server per project directory under one process
+// (opencode) must not have its servers read as replacements of each other.
+func TestNewestIsPerDirectory(t *testing.T) {
+	here := newestPath(4242)
+	wd, _ := os.Getwd()
+	defer os.Chdir(wd)
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if newestPath(4242) == here {
+		t.Error("two directories share the newest record")
+	}
+	t.Setenv("AXSCOPE_SESSION", "other")
+	if newestPath(4242) == here {
+		t.Error("two sessions share the newest record")
+	}
+}
