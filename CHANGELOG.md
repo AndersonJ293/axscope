@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MCP `steps` is a typed list, and an agent issuing single actions in a row gets
   an occasional tip pointing at it.
 - `script` accepts `content=` over MCP, so a script no longer needs a file.
+- `snap --delta` prints only the lines that changed since the tab's previous
+  reading, with one line of context.
+- A `snap` answer has a ceiling (24 KB, `AXSCOPE_SNAP_MAX_BYTES`): past it the
+  answer keeps the start and saves the whole reading to a file.
+
+### Changed
+
+- Refs are stable across readings of the same page: an element keeps its
+  number, and a new one gets a number above every earlier one.
+
 - `snap within=<target>` reads one element (a ref, `css=`, `text=`, or a plain
   `<div>` the tree drops), without scrolling the page.
 - `snap` reads an open modal dialog alone (`aria-modal` or `showModal()`), and

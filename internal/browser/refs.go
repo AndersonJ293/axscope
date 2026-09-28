@@ -19,12 +19,23 @@ func (b *snapBuilder) refFor(n *axNode) string {
 	if !b.eligibleRef(n) {
 		return ""
 	}
-	b.nextRef++
-	ref := "e" + strconv.Itoa(b.nextRef)
+	return b.name(n.BackendDOMNodeID)
+}
+
+// name numbers a node: the number it had in the previous reading when it had
+// one, a fresh one (above every earlier number) otherwise.
+func (b *snapBuilder) name(backend int) string {
+	num := b.prev[backend]
+	if num == 0 || b.used[num] {
+		b.nextRef++
+		num = b.nextRef
+	}
+	b.used[num] = true
+	ref := "e" + strconv.Itoa(num)
 	if b.gen > 0 {
 		ref += "#" + strconv.Itoa(b.gen)
 	}
-	b.refs[ref] = n.BackendDOMNodeID
+	b.refs[ref] = backend
 	return ref
 }
 
