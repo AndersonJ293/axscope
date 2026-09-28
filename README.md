@@ -434,6 +434,28 @@ criterion. The selector is checked against the page itself and prefers the data
 attribute over the class: a state class (`active`) changes, and a selector that
 carries it breaks on its own.
 
+### Patterns that save calls
+
+What agents on real listing and search pages kept rediscovering:
+
+- **Check the browser first.** `status` says `connection: ok` and the engine
+  before a long run. Through the extension, a browser with no extension
+  connected fails the first command; knowing that up front beats finding it
+  mid-task.
+- **A filter often lives in the URL.** Many SPAs keep their search state in
+  the query string (`?q=…&page=2`, sometimes a JSON blob). Set a filter once in
+  the UI, read the URL, and `open` variations of it: one call instead of a
+  form per search, and a page number becomes a parameter.
+- **Exact wording is a guess.** `wait "About the job|Job description"` takes
+  whichever section title the page uses; a text that never came is answered
+  with the headings the page does have.
+- **A long or virtualized list:** `read --links --scroll match=<path>` scrolls
+  it and gathers every item link, then `read <selector>` or `open` each one.
+- **A JS-rendered board with no text to wait for:** `wait --network-idle`, or
+  `wait --change within=<list>` after the action that loads it.
+- **Read-only extraction** that no command covers is `eval` with a function:
+  `eval () => [...document.querySelectorAll('time')].map(t => t.dateTime)`.
+
 ### Keys and evidence
 
 `press` sends a key or a shortcut to whatever has focus. The named keys are
