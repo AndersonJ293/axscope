@@ -94,6 +94,13 @@ A tool call runs in its own goroutine and is capped by
 command when the connection closes: a slow `wait` blocks neither `ping` nor the
 next call, and a command that never returns cannot hold the session forever.
 
+**A server does not outlive its client.** It exits on stdin EOF, on SIGTERM
+(which it used to swallow while blocked reading stdin), and — for a client that
+reconnects and abandons the old server with its stdin still open — when its
+client process is gone, or when a newer axscope server of the same client took
+over and this one sat idle for 10 minutes with nothing in flight. A busy server
+is never cut, so a client that runs two on purpose keeps both.
+
 **Each MCP server gets its own session** (e.g. `opencode-a1b2`), so two opencode
 instances do not see each other's tabs or refs. The CLI keeps `default`, so it no
 longer shares the browser with the MCP by accident: run `axscope sessions` to see
