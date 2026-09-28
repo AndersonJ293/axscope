@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `snap` summarizes a closed `<select>` with more than 10 options into one line
+  with the value and the count, counts a list's empty placeholder rows instead
+  of listing them, and `depth=` no longer cuts a target whose only content is
+  its own label.
+
 - The `initialize` instructions carry the grammar of the `batch` steps, not
   only `batch`'s description: a client may serve a tool schema cached from an
   earlier connection.

@@ -4,6 +4,7 @@ package browser
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -131,7 +132,11 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 	inside := 0
 	if cut {
 		inside = b.countTargets(nodeID)
-		if ref == "" {
+		// A named target whose children are only its own text (a button, a
+		// link) is a leaf, not a container to open.
+		if inside == 0 && name != "" {
+			cut = false
+		} else if ref == "" {
 			ref = b.scopeRef(n)
 		}
 	}
@@ -140,8 +145,21 @@ func (b *snapBuilder) walk(nodeID string, depth int, parentName string) {
 		line += " [ref=" + ref + "]"
 	}
 	line += b.props(n)
+	// A closed <select> lists every option as a target: a country picker is
+	// 250 lines of which the agent needs the value. `select` picks by label, so
+	// the options are summarized, and they come back when the list is open.
+	if role == "combobox" && collapsedProp(n) {
+		if options := b.countRole(nodeID, "option"); options > collapseOptions {
+			bare, _, _ := strings.Cut(ref, "#")
+			line += fmt.Sprintf(" (%d options — `select %s \"<label>\"` picks one)", options, bare)
+			b.emit(depth, line)
+			return
+		}
+	}
 	if cut {
-		if inside > 0 {
+		if inside == 1 {
+			line += " (1 target inside)"
+		} else if inside > 0 {
 			line += fmt.Sprintf(" (%d targets inside)", inside)
 		} else {
 			line += " (text inside)"
@@ -198,6 +216,7 @@ func (b *snapBuilder) walkChildren(nodeID, name string, depth int, parentName st
 	}
 
 	seen := map[string]bool{}
+	empty := 0
 	for i, cid := range ids {
 		k := keys[i]
 		if k != "" {
@@ -208,13 +227,30 @@ func (b *snapBuilder) walkChildren(nodeID, name string, depth int, parentName st
 		}
 		mark := len(b.out)
 		b.walk(cid, depth, childParent)
+		// A virtualized list keeps placeholders for the rows it has not
+		// rendered: each is an empty listitem. They are counted, not listed —
+		// eighteen bare lines say less than one that says what they are.
+		if len(b.out) == mark+1 && emptyItemRe.MatchString(b.out[mark]) {
+			b.out = b.out[:mark]
+			empty++
+			continue
+		}
 		// The child's own line is the first one it emits, and the tree is read
 		// from top to bottom.
 		if k != "" && count[k] > 1 && len(b.out) > mark {
 			b.out[mark] += fmt.Sprintf(" (+%d same)", count[k]-1)
 		}
 	}
+	if empty > 0 {
+		noun := "items"
+		if empty == 1 {
+			noun = "item"
+		}
+		b.emit(depth, fmt.Sprintf("- (%d empty %s — not rendered yet; scroll to load them)", empty, noun))
+	}
 }
+
+var emptyItemRe = regexp.MustCompile(`^\s*- listitem( \[level=\d+\])?$`)
 
 // childIDs returns the children to walk, skipping wrappers that only repeat the
 // parent's name; their grandchildren rise into the wrapper's place.
@@ -232,6 +268,35 @@ func (b *snapBuilder) childIDs(nodeID, name string) []string {
 		out = append(out, cid)
 	}
 	return out
+}
+
+// collapseOptions is how many options a closed combobox may list before they
+// are summarized; a language picker's four stay visible.
+const collapseOptions = 10
+
+// collapsedProp is true when the node says it is collapsed (expanded=false), not
+// merely when it lacks the property.
+func collapsedProp(n *axNode) bool {
+	for _, p := range n.Properties {
+		if p.Name == "expanded" {
+			return !rawBool(p.Value.Value)
+		}
+	}
+	return false
+}
+
+// countRole counts the descendants with a role.
+func (b *snapBuilder) countRole(nodeID, role string) int {
+	total := 0
+	for _, c := range b.children[nodeID] {
+		if n := b.nodes[c]; n != nil {
+			if !n.Ignored && n.Role.str() == role {
+				total++
+			}
+			total += b.countRole(c, role)
+		}
+	}
+	return total
 }
 
 func (b *snapBuilder) emit(depth int, line string) {

@@ -340,6 +340,14 @@ earlier reading, gives the full reading with a note.
 answer keeps the start, cut at a line, and saves the whole reading to a file:
 `-- cut at 805 of 1504 lines (38 KB); the whole reading is in /tmp/axscope-snap-….txt — or narrow it: within=<target>, depth=2, --viewport`.
 
+**What would be noise is summarized.** A closed `<select>` with more than 10
+options is one line — `combobox "Phone country code" [collapsed] value="Brazil
+(+55)" (250 options — \`select e1 "<label>"\` picks one)` — since `select` picks by
+label (in a real application dialog those options were ~250 of 285 lines); open, it
+lists them all. A virtualized list's placeholder rows become
+`- (18 empty items — not rendered yet; scroll to load them)`, and `depth=` cuts
+containers, never a button whose only content is its label.
+
 **An open modal is read alone.** When a dialog is modal (`aria-modal=true` or
 `<dialog>.showModal()`), the page behind it cannot be used, so `snap` reads the
 dialog and says so:
