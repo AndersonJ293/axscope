@@ -52,7 +52,7 @@ func TestTabIndex(t *testing.T) {
 // timeout names the URLs still in flight.
 func TestWaitForNetworkIdle(t *testing.T) {
 	quiet := &Session{
-		inflight:     map[string]map[string]string{"sid": {}},
+		inflight:     map[string]map[string]pendingReq{"sid": {}},
 		lastActivity: map[string]time.Time{"sid": time.Now().Add(-time.Second)},
 	}
 	if pending, idle := quiet.WaitForNetworkIdle(context.Background(), "sid", 50*time.Millisecond, time.Second); !idle || len(pending) != 0 {
@@ -60,9 +60,9 @@ func TestWaitForNetworkIdle(t *testing.T) {
 	}
 
 	busy := &Session{
-		inflight: map[string]map[string]string{"sid": {
-			"r1": "https://a/one",
-			"r2": "https://a/two",
+		inflight: map[string]map[string]pendingReq{"sid": {
+			"r1": {url: "https://a/one", start: time.Now()},
+			"r2": {url: "https://a/two", start: time.Now()},
 		}},
 		lastActivity: map[string]time.Time{"sid": time.Now()},
 	}
@@ -72,5 +72,29 @@ func TestWaitForNetworkIdle(t *testing.T) {
 	}
 	if len(pending) != 2 || pending[0] != "https://a/one" || pending[1] != "https://a/two" {
 		t.Errorf("pending = %v, want the two sorted URLs", pending)
+	}
+}
+
+// A request open past longLived (a cross-origin iframe's document, an
+// EventSource) stops counting as work, and a new main document clears the old
+// page's leftovers — otherwise every action on a reCAPTCHA page waited out the
+// settle cap.
+func TestBusyRequestsIgnoreLongLived(t *testing.T) {
+	s := &Session{inflight: map[string]map[string]pendingReq{}, lastActivity: map[string]time.Time{}}
+	s.startReq("t1", "fresh", "https://example.com/api")
+	s.startReq("t1", "anchor", "https://www.google.com/recaptcha/enterprise/anchor")
+	s.inflight["t1"]["anchor"] = pendingReq{url: "https://www.google.com/recaptcha/enterprise/anchor", start: time.Now().Add(-2 * longLived)}
+
+	busy := s.busyReqs("t1", time.Now())
+	if len(busy) != 1 || busy[0] != "https://example.com/api" {
+		t.Errorf("busy = %v, want only the fresh request", busy)
+	}
+	s.doneReq("t1", "fresh")
+	if busy := s.busyReqs("t1", time.Now()); len(busy) != 0 {
+		t.Errorf("busy after done = %v", busy)
+	}
+	s.resetReqs("t1")
+	if len(s.inflight["t1"]) != 0 {
+		t.Error("a new document must clear the old page's open requests")
 	}
 }

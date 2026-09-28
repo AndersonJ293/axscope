@@ -75,7 +75,7 @@ type Session struct {
 	booted  bool
 	bootSet map[string]bool
 
-	inflight     map[string]map[string]string
+	inflight     map[string]map[string]pendingReq
 	lastActivity map[string]time.Time
 
 	acceptDialogs bool
@@ -115,7 +115,7 @@ func NewSession(ctx context.Context, client *cdp.Client, acceptDialogs bool, pre
 		tabs:          make(map[string]*Tab),
 		attaching:     make(map[string]bool),
 		bootSet:       make(map[string]bool),
-		inflight:      make(map[string]map[string]string),
+		inflight:      make(map[string]map[string]pendingReq),
 		lastActivity:  make(map[string]time.Time),
 		acceptDialogs: acceptDialogs,
 	}

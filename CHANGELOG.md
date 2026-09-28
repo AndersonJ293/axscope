@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A request open for more than 5 s (a cross-origin iframe's document such as
+  reCAPTCHA's, an EventSource, a long poll) no longer counts as the page being
+  busy, and a new main document forgets the old page's open requests. On a page
+  with reCAPTCHA every action used to wait out the 1.5 s settle cap and
+  `wait --network-idle` never went idle: a `press` goes from 1.5 s to 3 ms.
+
 - The MCP server exits on SIGTERM (it swallowed the signal while blocked
   reading stdin), when its client process is gone, and when a newer server of
   the same client took over and it sat idle for 10 minutes: a client that

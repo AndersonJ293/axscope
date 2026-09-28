@@ -159,6 +159,21 @@ func (s *Session) initTab(tab *Tab) error {
 	}
 	s.client.On("Network.loadingFinished", done)
 	s.client.On("Network.loadingFailed", done)
+	s.client.On("Page.frameNavigated", func(params json.RawMessage, s2 string) {
+		if s2 != sid {
+			return
+		}
+		var p struct {
+			Frame struct {
+				ParentID string `json:"parentId"`
+			} `json:"frame"`
+		}
+		// A new document of the main frame (a pushState is not a
+		// frameNavigated, so a SPA route change keeps its requests).
+		if json.Unmarshal(params, &p) == nil && p.Frame.ParentID == "" {
+			s.resetReqs(sid)
+		}
+	})
 
 	s.client.On("Page.javascriptDialogOpening", func(params json.RawMessage, s2 string) {
 		if s2 != sid {
