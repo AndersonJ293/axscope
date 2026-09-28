@@ -2,6 +2,7 @@ package browser
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -177,6 +178,35 @@ func TestRectIntersects(t *testing.T) {
 	for _, c := range cases {
 		if got := win.intersects(c.r); got != c.want {
 			t.Errorf("intersects(%+v) = %v, want %v", c.r, got, c.want)
+		}
+	}
+}
+
+// An element keeps its number across readings; a new one gets a number above
+// every earlier one, so it can never take an old element's ref.
+func TestRefsStayStableAcrossReadings(t *testing.T) {
+	nodes := modalPage()
+	first := build(t, nodes, SnapshotOptions{Page: true, Gen: 1})
+	prev := map[int]int{}
+	top := 0
+	for ref, backend := range first.Refs {
+		n, _ := strconv.Atoi(strings.TrimPrefix(strings.Split(ref, "#")[0], "e"))
+		prev[backend] = n
+		top = max(top, n)
+	}
+	// A new link enters at the top of the nav, ahead of every old target.
+	nodes = append(nodes[:2], append([]axNode{ax("l0", "nav", "link", "New", 7)}, nodes[2:]...)...)
+	second := build(t, nodes, SnapshotOptions{Page: true, Gen: 2, PrevRefs: prev})
+	for ref, backend := range second.Refs {
+		n, _ := strconv.Atoi(strings.TrimPrefix(strings.Split(ref, "#")[0], "e"))
+		if backend == 7 {
+			if n <= top {
+				t.Errorf("the new link took number %d, not above %d", n, top)
+			}
+			continue
+		}
+		if n != prev[backend] {
+			t.Errorf("backend %d: e%d, want e%d", backend, n, prev[backend])
 		}
 	}
 }

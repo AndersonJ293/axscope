@@ -43,7 +43,9 @@ type Agent struct {
 	// note is what resolving this command's target has to tell the agent (a
 	// target that matched several elements); finish appends it. Commands run
 	// one at a time (runMu), and dispatch clears it before each.
-	note      string
+	note string
+	// readings is each tab's last snap, for --delta and stable ref numbers.
+	readings  map[string]*reading
 	bridge    *bridge.Server
 	extClient *cdp.Client
 	agent     string

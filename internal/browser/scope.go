@@ -81,11 +81,5 @@ func (b *snapBuilder) scopeRef(n *axNode) string {
 	if n.BackendDOMNodeID == 0 {
 		return ""
 	}
-	b.nextRef++
-	ref := fmt.Sprintf("e%d", b.nextRef)
-	if b.gen > 0 {
-		ref += fmt.Sprintf("#%d", b.gen)
-	}
-	b.refs[ref] = n.BackendDOMNodeID
-	return ref
+	return b.name(n.BackendDOMNodeID)
 }

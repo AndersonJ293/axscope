@@ -48,6 +48,10 @@ type SnapshotOptions struct {
 	// then read as the nodes inside it.
 	ScopeLabel string
 	scopeNodes map[string]bool
+	// PrevRefs carries the previous reading's numbers (backend id -> N of eN),
+	// so an element keeps its ref across readings of the same page: a delta
+	// that does not repeat a line must not renumber it behind the agent's back.
+	PrevRefs map[int]int
 	// Viewport reads only what is inside the window.
 	Viewport  bool
 	offscreen map[int]bool
@@ -75,6 +79,8 @@ type snapBuilder struct {
 	gen         int
 	maxDepth    int
 	offscreen   map[int]bool
+	prev        map[int]int
+	used        map[int]bool
 	skipped     int
 	truncated   bool
 }
@@ -170,6 +176,11 @@ func buildText(nodes []axNode, opts SnapshotOptions) (*Snapshot, error) {
 		gen:         opts.Gen,
 		maxDepth:    opts.MaxDepth,
 		offscreen:   opts.offscreen,
+		prev:        opts.PrevRefs,
+		used:        map[int]bool{},
+	}
+	for _, n := range opts.PrevRefs {
+		b.nextRef = max(b.nextRef, n)
 	}
 	var root *axNode
 	for i := range nodes {

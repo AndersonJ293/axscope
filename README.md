@@ -102,6 +102,7 @@ axscope snap                         # reads the screen
 axscope snap within=css=#results     # reads only that element (ref, css= or text=)
 axscope snap depth=2                 # the outline: cut containers keep a ref to open
 axscope snap --viewport              # only what is inside the window
+axscope snap --delta                 # only what changed since the last snap
 axscope click e1                     # acts by the ref from the last snap
 axscope fill e5 "owner@example.com"
 axscope press Enter
@@ -261,6 +262,30 @@ A long page costs context on every `snap`. Three ways to read less:
 
 On the Bootstrap modal docs page (16 878 px tall) the full reading is 39 KB,
 `depth=2` 17 KB and `--viewport` 9 KB.
+
+**Only what changed.** `snap --delta` compares with the tab's previous reading
+(same page, same options) and prints the changed lines with one line of context:
+
+```
+-- delta vs #1: +2 -3 lines; unchanged lines keep their refs
+  - form
+-   - checkbox [ref=e2#1]
+-   - text: A checkbox
+-   - button "Remove" [ref=e3#1]
++   - button "Add" [ref=e3#2]
++   - paragraph: It's gone!
+  - separator
+```
+
+That works because **refs are stable across readings of the same page**: an
+element keeps its number (`e3` above is the same button, now labelled "Add"), and
+a new element gets a number above every earlier one, so a plain `e12` never
+silently moves to another element. A page that changed almost entirely, or no
+earlier reading, gives the full reading with a note.
+
+**A reading has a ceiling.** Past 24 KB (`AXSCOPE_SNAP_MAX_BYTES`, `0` = off) the
+answer keeps the start, cut at a line, and saves the whole reading to a file:
+`-- cut at 805 of 1504 lines (38 KB); the whole reading is in /tmp/axscope-snap-….txt — or narrow it: within=<target>, depth=2, --viewport`.
 
 **An open modal is read alone.** When a dialog is modal (`aria-modal=true` or
 `<dialog>.showModal()`), the page behind it cannot be used, so `snap` reads the
@@ -683,6 +708,7 @@ axscope stop --all    # all sessions and all browsers
 | `AXSCOPE_HEADLESS` | start without a window |
 | `AXSCOPE_FORCE_AX` | `1` enables the accessibility tree when the browser starts (costs memory; the tree is normally enabled on demand) |
 | `AXSCOPE_CURSOR_DELAY` | cap of the cursor glide before acting (ms, default 80; 0 = jump) |
+| `AXSCOPE_SNAP_MAX_BYTES` | ceiling of one `snap` answer (bytes, default 24000; 0 = no ceiling) — the rest goes to a file |
 | `AXSCOPE_AGENT` | agent name for the tab group |
 | `AXSCOPE_BRIDGE_PORT` | first port for the extension bridge (default `8787`) |
 | `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |

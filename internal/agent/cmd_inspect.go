@@ -110,6 +110,22 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 		}
 		opts.Scope, opts.ScopeLabel = backend, label
 	}
+	key := fmt.Sprintf("%v|%v|%v|%v|%d|%d", opts.RefsOnly, opts.All, opts.Page, opts.Viewport, opts.MaxDepth, opts.Scope)
+	a.mu.Lock()
+	prev := a.readings[sid]
+	a.mu.Unlock()
+	// Numbers are reused only on the same page: another document's nodes are
+	// other elements, whatever their ids.
+	tabURL := ""
+	if tab, err := sess.Active(); err == nil {
+		tabURL = tab.URL
+	}
+	if prev != nil && prev.url != tabURL {
+		prev = nil
+	}
+	if prev != nil {
+		opts.PrevRefs = prev.nums
+	}
 	gen := a.nextGen()
 	opts.Gen = gen
 	snap, err := browser.TakeSnapshot(ctx, a.client(), sid, opts)
@@ -117,6 +133,13 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 		return protocol.Fail(err)
 	}
 	a.setRefs(snap.Refs, gen)
+	lines := strings.Split(snap.Text, "\n")
+	a.mu.Lock()
+	if a.readings == nil {
+		a.readings = map[string]*reading{}
+	}
+	a.readings[sid] = &reading{url: tabURL, key: key, gen: gen, lines: lines, nums: refNumbers(snap.Refs)}
+	a.mu.Unlock()
 	sess.UpdateHUD(ctx, "snap")
 
 	var b strings.Builder
@@ -129,11 +152,32 @@ func (a *Agent) snap(ctx context.Context, sess *browser.Session, req protocol.Re
 	if snap.Offscreen > 0 {
 		fmt.Fprintf(&b, "-- viewport only: %d targets off screen left out (scroll, or drop --viewport)\n", snap.Offscreen)
 	}
-	b.WriteString(snap.Text)
+	body := snap.Text
+	if req.Bool("delta", false) {
+		switch {
+		case prev == nil:
+			b.WriteString("-- delta: no earlier reading of this page — the full reading follows\n")
+		case prev.key != key:
+			b.WriteString("-- delta: the earlier reading had other options — the full reading follows\n")
+		default:
+			text, added, removed, fits := delta(prev.lines, lines)
+			switch {
+			case !fits:
+				fmt.Fprintf(&b, "-- delta vs #%d: +%d -%d, most of the page changed — the full reading follows\n", prev.gen, added, removed)
+			case added+removed == 0:
+				fmt.Fprintf(&b, "-- delta vs #%d: no change (refs stay valid)", prev.gen)
+				return ok(b.String())
+			default:
+				fmt.Fprintf(&b, "-- delta vs #%d: +%d -%d lines; unchanged lines keep their refs\n", prev.gen, added, removed)
+				body = text
+			}
+		}
+	}
+	b.WriteString(body)
 	if snap.Truncated {
 		b.WriteString("\n(... truncated; use `--refs` to reduce)")
 	}
-	return ok(b.String())
+	return ok(capReading(b.String(), snapCap()))
 }
 
 // scopeNode resolves a within= target to its DOM node without measuring it: a
