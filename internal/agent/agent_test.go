@@ -344,3 +344,14 @@ func TestSqueeze(t *testing.T) {
 		}
 	}
 }
+
+// read --links --scroll gathers at every step, from the top, and says where it
+// stopped: a virtualized list drops the rows it scrolled past.
+func TestScrollLinksExpression(t *testing.T) {
+	expr := scrollLinksExpression("#side", "job/", 7)
+	for _, want := range []string{"gather(scope, byHref)", "scrollTo(0, 0)", "scrollBy", "-- scrolled", strconv.Quote("#side"), strconv.Quote("job/"), "pages = 7"} {
+		if !strings.Contains(expr, want) {
+			t.Errorf("the scroll gather does not have %q", want)
+		}
+	}
+}
