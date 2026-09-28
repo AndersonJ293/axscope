@@ -78,6 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Through the extension, an action waited for none of the page's requests: a
+  tab there is a browser tab number, not the main frame's id, so every request
+  counted as an iframe's. The main frame's id is now read from the page.
 - A partial `snap` (`within=`, `--viewport`, a modal) no longer renumbers the
   refs of what it left out: the next full reading keeps them.
 - `wait --gone` right after the action that closed the target answers "gone

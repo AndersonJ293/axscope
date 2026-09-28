@@ -119,10 +119,23 @@ func (s *Session) has(targetID string) bool {
 // and its webworker.js looked open here until longLived, so the first five
 // seconds of every page with reCAPTCHA paid the settle cap on each action. A
 // same-origin iframe's fetches no longer hold an action back either; `wait`
-// by text or --change is how to wait for what an iframe loads. A page target's
-// main frame has the target's id.
-func subframeRequest(frameID, targetID string) bool {
-	return frameID != "" && frameID != targetID
+// by text or --change is how to wait for what an iframe loads. An unknown main
+// frame counts every request: waiting too much beats not waiting at all.
+func subframeRequest(frameID, mainFrame string) bool {
+	return frameID != "" && mainFrame != "" && frameID != mainFrame
+}
+
+// setMainFrame records the tab's main frame id; "" leaves it unknown.
+func (s *Session) setMainFrame(sid, id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mainFrame[sid] = id
+}
+
+func (s *Session) mainFrameOf(sid string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.mainFrame[sid]
 }
 
 func (s *Session) initTab(tab *Tab) error {
@@ -147,6 +160,17 @@ func (s *Session) initTab(tab *Tab) error {
 	// after it starts, as before.
 	_ = s.installMutations(sid)
 
+	var tree struct {
+		FrameTree struct {
+			Frame struct {
+				ID string `json:"id"`
+			} `json:"frame"`
+		} `json:"frameTree"`
+	}
+	if s.client.SendJSON(s.ctx, "Page.getFrameTree", map[string]any{}, sid, &tree) == nil {
+		s.setMainFrame(sid, tree.FrameTree.Frame.ID)
+	}
+
 	s.client.On("Network.requestWillBeSent", func(params json.RawMessage, s2 string) {
 		if s2 != sid {
 			return
@@ -159,7 +183,7 @@ func (s *Session) initTab(tab *Tab) error {
 				URL string `json:"url"`
 			} `json:"request"`
 		}
-		if json.Unmarshal(params, &p) == nil && !subframeRequest(p.FrameID, tab.TargetID) {
+		if json.Unmarshal(params, &p) == nil && !subframeRequest(p.FrameID, s.mainFrameOf(sid)) {
 			s.startReq(sid, p.RequestID, p.Request.URL)
 		}
 	})
@@ -182,6 +206,7 @@ func (s *Session) initTab(tab *Tab) error {
 		}
 		var p struct {
 			Frame struct {
+				ID       string `json:"id"`
 				ParentID string `json:"parentId"`
 			} `json:"frame"`
 		}
@@ -189,6 +214,7 @@ func (s *Session) initTab(tab *Tab) error {
 		// frameNavigated, so a SPA route change keeps its requests).
 		if json.Unmarshal(params, &p) == nil && p.Frame.ParentID == "" {
 			s.resetReqs(sid)
+			s.setMainFrame(sid, p.Frame.ID)
 		}
 	})
 

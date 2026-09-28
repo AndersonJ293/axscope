@@ -104,7 +104,7 @@ func TestSubframeRequestIsNotWork(t *testing.T) {
 	if !subframeRequest("F2", "T1") {
 		t.Error("an iframe's request must not count")
 	}
-	if subframeRequest("T1", "T1") || subframeRequest("", "T1") {
+	if subframeRequest("T1", "T1") || subframeRequest("", "T1") || subframeRequest("F2", "") {
 		t.Error("the page's own requests (and one with no frame) count")
 	}
 }
