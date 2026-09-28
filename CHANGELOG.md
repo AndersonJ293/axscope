@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `read --links match=job/` keeps the links whose label or URL has the text
+  (`"A|B"` for either, case ignored), and a URL is listed once with its first
+  label: a card's title, logo and company no longer print three lines.
 - `wait "A|B"` ends on whichever text appears first and names it (`waitgone`
   waits for all to go), for pages that word the same section differently. A
   text that never appears is answered with the page's visible headings.
