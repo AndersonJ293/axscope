@@ -22,10 +22,11 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	}
 	cx, cy := t.actionPoint()
 
-	if reason := clickRefusal(ctx, client, session, t.ObjectID, cx, cy); reason != "" {
+	obj := t.objSession(session)
+	if reason := clickRefusal(ctx, client, obj, t.ObjectID, cx, cy); reason != "" {
 		return "", fmt.Errorf("%s", reason)
 	}
-	prepareClick(ctx, client, session, t.ObjectID)
+	prepareClick(ctx, client, obj, t.ObjectID)
 
 	_ = p.Spotlight(ctx, client, session, &t.Rect)
 	// The presenter returns when the drawn cursor has arrived.
@@ -57,7 +58,7 @@ func Click(ctx context.Context, client *cdp.Client, session string, t *Target, b
 	}
 	time.Sleep(30 * time.Millisecond)
 
-	if !clickReached(ctx, client, session, t.ObjectID) {
+	if !clickReached(ctx, client, obj, t.ObjectID) {
 		return "the click did not reach the target — some layer in front must have intercepted it", nil
 	}
 	return "", nil
@@ -76,7 +77,7 @@ func DOMClick(ctx context.Context, client *cdp.Client, session string, t *Target
 			return '';
 		}`,
 		"returnByValue": true,
-	}, session)
+	}, t.objSession(session))
 	if err != nil {
 		return err
 	}

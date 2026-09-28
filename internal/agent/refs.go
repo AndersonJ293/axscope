@@ -36,6 +36,14 @@ func refGen(spec string) (string, int, bool) {
 	return spec[:i], n, true
 }
 
+// frameCommands are the commands that act on an element inside a cross-origin
+// iframe: their calls on the object go to the frame's session and their input
+// lands at the element's point in the page. The rest still refuse such a ref.
+var frameCommands = map[string]bool{
+	"click": true, "hover": true, "fill": true, "type": true,
+	"check": true, "uncheck": true,
+}
+
 func (a *Agent) currentRefs() map[string]int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -77,6 +85,9 @@ func (a *Agent) qualifyRef(spec string) string {
 	if _, ok := a.refs[full]; ok {
 		return full
 	}
+	if _, ok := a.frameRefs[full]; ok {
+		return full
+	}
 	return spec
 }
 
@@ -98,6 +109,17 @@ func (a *Agent) resolve(ctx context.Context, sess *browser.Session, target strin
 					"ref %q is from an old read (the current one is #%d) — run `snap` again", target, current)
 			}
 		}
+	}
+	a.mu.Lock()
+	fr, inFrame := a.frameRefs[target]
+	cmd := a.cmd
+	a.mu.Unlock()
+	if inFrame {
+		if !frameCommands[cmd] {
+			return nil, sid, browser.ErrInFrame(cmd)
+		}
+		t, err := browser.ResolveFrameTarget(ctx, a.client(), sid, fr, target)
+		return t, sid, err
 	}
 	t, err := browser.ResolveTarget(ctx, a.client(), sid, a.currentRefs(), target)
 	if err != nil {

@@ -14,7 +14,7 @@ import (
 
 // Fill replaces the field's content (focus + selection + insertText).
 func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
-	if ok, reason := classifyField(describeField(ctx, client, session, t.ObjectID)); !ok {
+	if ok, reason := classifyField(describeField(ctx, client, t.objSession(session), t.ObjectID)); !ok {
 		return "", fmt.Errorf("%s", reason)
 	}
 	cx, cy := t.actionPoint()
@@ -36,18 +36,18 @@ func Fill(ctx context.Context, client *cdp.Client, session string, t *Target, te
 			return true;
 		}`,
 		"returnByValue": true,
-	}, session); err != nil {
+	}, t.objSession(session)); err != nil {
 		return "", err
 	}
 	if _, err := client.Send(ctx, "Input.insertText", map[string]any{"text": normalizeNewlines(text)}, session); err != nil {
 		return "", err
 	}
-	return fillWarning(text, fieldValue(ctx, client, session, t.ObjectID)), nil
+	return fillWarning(text, fieldValue(ctx, client, t.objSession(session), t.ObjectID)), nil
 }
 
 // Type types character by character (it fires keyboard handlers).
 func Type(ctx context.Context, client *cdp.Client, session string, t *Target, text string, p Presenter) (string, error) {
-	if ok, reason := classifyField(describeField(ctx, client, session, t.ObjectID)); !ok {
+	if ok, reason := classifyField(describeField(ctx, client, t.objSession(session), t.ObjectID)); !ok {
 		return "", fmt.Errorf("%s", reason)
 	}
 	cx, cy := t.actionPoint()
@@ -58,7 +58,7 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		"objectId":            t.ObjectID,
 		"functionDeclaration": `function () { if (this.focus) this.focus(); return true; }`,
 		"returnByValue":       true,
-	}, session); err != nil {
+	}, t.objSession(session)); err != nil {
 		return "", err
 	}
 	for _, r := range normalizeNewlines(text) {
@@ -82,7 +82,7 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 		}
 		time.Sleep(8 * time.Millisecond)
 	}
-	return fillWarning(text, fieldValue(ctx, client, session, t.ObjectID)), nil
+	return fillWarning(text, fieldValue(ctx, client, t.objSession(session), t.ObjectID)), nil
 }
 
 // Select chooses an option in a native <select> or an ARIA combobox/listbox (by
@@ -90,6 +90,9 @@ func Type(ctx context.Context, client *cdp.Client, session string, t *Target, te
 // widget ignored it, because a custom widget can highlight an option without
 // selecting it.
 func Select(ctx context.Context, client *cdp.Client, session string, t *Target, want string, p Presenter) (string, error) {
+	if t.InFrame() {
+		return "", ErrInFrame("select")
+	}
 	if isNativeSelect(ctx, client, session, t.ObjectID) {
 		return selectNative(ctx, client, session, t.ObjectID, want)
 	}
@@ -255,7 +258,7 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 			};
 		}`,
 		"returnByValue": true,
-	}, session)
+	}, t.objSession(session))
 	if err != nil {
 		return false, "", err
 	}
@@ -284,4 +287,10 @@ func SetChecked(ctx context.Context, client *cdp.Client, session string, t *Targ
 	}
 	warning, err := Click(ctx, client, session, t, "left", 1, p)
 	return true, warning, err
+}
+
+// ErrInFrame refuses an action not yet supported on an element of a
+// cross-origin iframe, naming the ones that are.
+func ErrInFrame(action string) error {
+	return fmt.Errorf("%s does not reach inside a cross-origin iframe yet — click, hover, fill, type, check and press do", action)
 }

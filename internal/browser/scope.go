@@ -81,5 +81,5 @@ func (b *snapBuilder) scopeRef(n *axNode) string {
 	if n.BackendDOMNodeID == 0 {
 		return ""
 	}
-	return b.name(n.BackendDOMNodeID)
+	return b.nameNode(n)
 }
