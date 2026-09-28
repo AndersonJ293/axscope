@@ -89,6 +89,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The MCP watchdog no longer cuts a client's other servers: opencode runs one
+  per project directory under one process, and all but the newest were ended
+  after ten idle minutes — the client showed the server disconnecting over and
+  over. A server is replaced only by one of the same parent, directory and
+  session.
 - `check`/`uncheck` no longer refuse a custom checkbox: the state is read from
   ARIA (`aria-checked`, `aria-pressed`, `aria-selected`), a label's control or
   the one checkbox inside a wrapper; a toggle with no readable state is clicked
