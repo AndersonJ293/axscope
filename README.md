@@ -70,12 +70,23 @@ survive across runs.
 }
 ```
 
-The MCP exposes a **lean** set of tools (tool schemas cost context on every
-request): **34 of the 38 commands** (including `help`, `ping` and `status`). The rest are not missing — set
-`AXSCOPE_MCP_TOOLS=all` to expose every command, and the **`help` tool** lists them all
-with their arguments. The server repeats this in the `instructions` of the
-`initialize` handshake, so a client that sees a partial catalog knows it is a
-choice and not an absent capability.
+The MCP exposes **8 tools**: `batch`, `snap`, `open`, `click`, `fill`, `wait`,
+`shot` and `help`. Every other command — `type`, `press`, `select`, `check`,
+`scroll`, `read`, `find`, `eval`, the tabs, the history — runs as a **step of
+`batch`**, and `batch`'s description carries their grammar (derived from the
+command table), so an agent knows they exist without a call to `help`:
+
+```
+batch steps=["type css=#q bra", "press Enter", "wait --change within=css=#results"]
+```
+
+Why so few: every schema is sent on every request, clients cap the tool count
+across all servers (Cursor at 40 — axscope alone used to take 34 of them), and
+a client that loads tools on demand pays a round trip per tool. The catalog is
+4 KB instead of 7 KB, and a batch step costs nothing until it is used.
+`AXSCOPE_MCP_TOOLS=all` exposes one tool per command instead (38). The server
+says all this in the `instructions` of the `initialize` handshake, so a client
+that sees 8 tools knows the rest is a batch step away.
 
 A tool call runs in its own goroutine and is capped by
 `AXSCOPE_MCP_TIMEOUT_MINUTES` (default `10`, `0` = no cap). A client
@@ -742,7 +753,7 @@ axscope stop --all    # all sessions and all browsers
 | `AXSCOPE_SNAP_MAX_BYTES` | ceiling of one `snap` answer (bytes, default 24000; 0 = no ceiling) — the rest goes to a file |
 | `AXSCOPE_AGENT` | agent name for the tab group |
 | `AXSCOPE_BRIDGE_PORT` | first port for the extension bridge (default `8787`) |
-| `AXSCOPE_MCP_TOOLS` | `all` exposes every MCP tool |
+| `AXSCOPE_MCP_TOOLS` | `all` exposes one MCP tool per command (default: 8 tools, the rest as `batch` steps) |
 | `AXSCOPE_MCP_TIMEOUT_MINUTES` | bounds one MCP tool call (default 10; 0 = no bound) |
 | `AXSCOPE_SPOTLIGHT` | `1` re-enables the target outline |
 | `AXSCOPE_DEBUG` | `1` logs the best-effort presentation failures (daemon log) |

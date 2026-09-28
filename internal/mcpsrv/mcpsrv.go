@@ -472,46 +472,21 @@ type toolDef struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-// curatedMCP is the lean set exposed by default (fewer schemas means less context
-// per request; `AXSCOPE_MCP_TOOLS=all` opens everything). It covers reading,
-// interaction, scrolling, navigation and tab lifecycle; select/check/uncheck/
-// type/upload stay because the refusal messages cite them, and status/ping/help
-// stay because a client needs to ask what the state is and what exists.
-var curatedMCP = map[string]bool{
-	"help":     true,
-	"open":     true,
-	"snap":     true,
-	"click":    true,
-	"hover":    true,
-	"drag":     true,
-	"fill":     true,
-	"type":     true,
-	"select":   true,
-	"check":    true,
-	"uncheck":  true,
-	"upload":   true,
-	"press":    true,
-	"dialog":   true,
-	"wait":     true,
-	"waitgone": true,
-	"scroll":   true,
-	"read":     true,
-	"find":     true,
-	"tabs":     true,
-	"tab":      true,
-	"newtab":   true,
-	"closetab": true,
-	"back":     true,
-	"forward":  true,
-	"reload":   true,
-	"shot":     true,
-	"script":   true,
-	"batch":    true,
-	"console":  true,
-	"net":      true,
-	"eval":     true,
-	"status":   true,
-	"ping":     true,
+// coreMCP is the default catalog. Each schema costs context on every request and
+// clients cap the tool count across all servers (Cursor at 40), so the catalog
+// is the few calls an agent makes directly, and every other command runs as a
+// step of batch, whose description carries their grammar. shot stays a tool of
+// its own because it answers an image, which a batch step cannot.
+// AXSCOPE_MCP_TOOLS=all exposes one tool per command instead.
+var coreMCP = map[string]bool{
+	"batch": true,
+	"snap":  true,
+	"open":  true,
+	"click": true,
+	"fill":  true,
+	"wait":  true,
+	"shot":  true,
+	"help":  true,
 }
 
 // tools derives the tools from the command table, so CLI and MCP do not diverge.
@@ -522,7 +497,7 @@ func tools() []toolDef {
 		if mcpHidden(spec.Cmd) {
 			continue
 		}
-		if !all && !curatedMCP[spec.Cmd] {
+		if !all && !coreMCP[spec.Cmd] {
 			continue
 		}
 		props := map[string]any{}
@@ -547,14 +522,51 @@ func tools() []toolDef {
 		if len(required) > 0 {
 			schema["required"] = required
 		}
+		desc := spec.Help
+		if spec.Cmd == "batch" && !all {
+			desc += ". " + stepGrammar()
+		}
 		out = append(out, toolDef{
 			Name:        spec.Cmd,
-			Description: spec.Help,
+			Description: desc,
 			InputSchema: schema,
 		})
 	}
 	return out
 }
+
+// stepGrammar lists the commands that are not tools of their own, in the step
+// syntax, so an agent knows they exist and how to write them without a call to
+// help. It is derived from command.Specs, so it cannot drift from the parser.
+func stepGrammar() string {
+	var parts []string
+	for _, spec := range command.Specs {
+		if coreMCP[spec.Cmd] || mcpHidden(spec.Cmd) || cliOnlyMCP[spec.Cmd] {
+			continue
+		}
+		optional := map[string]bool{}
+		for _, o := range spec.Optional {
+			optional[o] = true
+		}
+		line := spec.Cmd
+		for _, p := range spec.Positional {
+			if optional[p] {
+				line += " [" + p + "]"
+			} else {
+				line += " <" + p + ">"
+			}
+		}
+		for _, f := range spec.Flags {
+			line += " [--" + f + "]"
+		}
+		parts = append(parts, line)
+	}
+	return "Every other command runs as a step (`help` explains each): " + strings.Join(parts, "; ")
+}
+
+// cliOnlyMCP are commands that exist for the CLI's own housekeeping; listing
+// them to an agent is noise.
+var cliOnlyMCP = map[string]bool{"engines": true, "clean": true, "script": true, "ping": true}
 
 // schemaOverrides types the arguments the command table can only call strings.
 // A batch's steps are a list — asking a model to JSON-encode it inside a string
@@ -606,7 +618,7 @@ func instructions() string {
 	if exposed >= total {
 		note += fmt.Sprintf("All %d commands are exposed; call the `help` tool for the list with their arguments.", total)
 	} else {
-		note += fmt.Sprintf("%d of the %d commands are exposed by default to keep each request lean; call the `help` tool to list them all, or set AXSCOPE_MCP_TOOLS=all to expose every command.", exposed, total)
+		note += fmt.Sprintf("%d tools cover the %d commands: the rest (type, press, select, check, scroll, read, find, eval, tabs, back, reload…) run as steps of `batch`, whose description lists them; `help` explains each. AXSCOPE_MCP_TOOLS=all exposes one tool per command instead.", exposed, total)
 	}
 	return note + " This MCP server has a browser session of its own (`status` names it; set AXSCOPE_SESSION to share one)."
 }

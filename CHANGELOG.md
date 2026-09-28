@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The MCP catalog is 8 tools (`batch`, `snap`, `open`, `click`, `fill`, `wait`,
+  `shot`, `help`) instead of 34: every other command runs as a `batch` step,
+  and `batch`'s description lists their grammar. `AXSCOPE_MCP_TOOLS=all` keeps
+  one tool per command.
+
 - Refs are stable across readings of the same page: an element keeps its
   number, and a new one gets a number above every earlier one.
 - `wait --change [within=<target>]` waits for the page or a region to change and

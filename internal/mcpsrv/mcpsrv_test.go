@@ -156,44 +156,38 @@ func TestDisplayName(t *testing.T) {
 	}
 }
 
-// Regression: the refusal messages from `fill` cite `axscope select`, `check` and
-// `upload`, so the test pins the contract that a command the messages tell you to
-// use is reachable in the exposed catalog.
-func TestCatalogCoversTheCommandsTheMessagesCite(t *testing.T) {
-	required := []string{"select", "check", "uncheck", "type", "upload"}
-	exposed := map[string]bool{}
+// The refusal messages cite select, check, type, upload, scroll and the tab and
+// history commands; each must be reachable — a tool, or a step of batch named
+// in its description (a command the agent cannot see, it reimplements in eval).
+func TestCatalogReachesTheCommandsTheMessagesCite(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TOOLS", "")
+	exposed := map[string]string{}
 	for _, td := range tools() {
-		exposed[td.Name] = true
+		exposed[td.Name] = td.Description
 	}
-	for _, cmd := range required {
-		if !exposed[cmd] {
-			t.Errorf("%q is not exposed in the catalog, but the refusal messages tell you to use it", cmd)
+	grammar, ok := exposed["batch"]
+	if !ok {
+		t.Fatal("batch must be in the default catalog")
+	}
+	steps := map[string]bool{}
+	_, list, _ := strings.Cut(grammar, "): ")
+	for _, step := range strings.Split(list, "; ") {
+		steps[strings.Fields(step)[0]] = true
+	}
+	for _, cmd := range []string{"select", "check", "uncheck", "type", "upload", "press", "scroll", "newtab", "closetab", "back", "forward", "reload", "read", "eval"} {
+		if _, isTool := exposed[cmd]; !isTool && !steps[cmd] {
+			t.Errorf("%q is neither a tool nor named in batch's step grammar", cmd)
 		}
 	}
 }
 
-// Regression: the curated catalog must expose the everyday core — scrolling is
-// how a snapshot reaches lazy lists, and the tab/navigation lifecycle is what
-// keeps a session from accumulating tabs it cannot close.
-func TestCatalogCoversCoreInteractions(t *testing.T) {
-	required := []string{"scroll", "newtab", "closetab", "back", "forward", "reload"}
-	exposed := map[string]bool{}
-	for _, td := range tools() {
-		exposed[td.Name] = true
-	}
-	for _, cmd := range required {
-		if !exposed[cmd] {
-			t.Errorf("%q is a core interaction and must be exposed in the default catalog", cmd)
-		}
-	}
-}
-
-// The catalog remains a lean set: if it grows by carelessness, this is where it
-// is noticed (each schema costs context on every request). status and ping came
-// in because a client needs to ask what the state is when a connection drops.
-func TestCatalogDoesNotGrowByCarelessness(t *testing.T) {
-	if n := len(tools()); n > 35 {
-		t.Errorf("the curated catalog has %d tools — above that the context cost stops paying off", n)
+// The default catalog is the few direct calls; if it grows, this is where it is
+// noticed (each schema costs context on every request, and Cursor caps the tool
+// count across every server at 40).
+func TestCatalogStaysCore(t *testing.T) {
+	t.Setenv("AXSCOPE_MCP_TOOLS", "")
+	if n := len(tools()); n > 8 {
+		t.Errorf("the default catalog has %d tools, want at most 8 — add a batch step instead", n)
 	}
 }
 
@@ -205,12 +199,12 @@ func TestSchemaDoesNotRequireOptionalPositionals(t *testing.T) {
 	for _, td := range tools() {
 		byName[td.Name] = td
 	}
-	read, ok := byName["read"]
+	snap, ok := byName["snap"]
 	if !ok {
-		t.Fatal("read must be in the curated catalog")
+		t.Fatal("snap must be in the default catalog")
 	}
-	if req, has := read.InputSchema["required"]; has {
-		t.Errorf("read marks a field required, but its selector is optional: %v", req)
+	if req, has := snap.InputSchema["required"]; has {
+		t.Errorf("snap marks a field required, but within/depth are optional: %v", req)
 	}
 	// The other side of the contract: a command that does need an argument still
 	// marks it, so the check above is not passing on an empty schema.
