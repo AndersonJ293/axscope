@@ -311,13 +311,16 @@ func (a *Agent) read(ctx context.Context, sess *browser.Session, req protocol.Re
 		return ok(fmt.Sprintf("url: %s\n\n%s", url, res.Text))
 	}
 	if req.Bool("links", false) {
-		links, err := dom.EvalString(ctx, a.client(), sid, linksExpression(sel))
+		links, err := dom.EvalString(ctx, a.client(), sid, linksExpression(sel, req.String("match")))
 		if err != nil {
 			return protocol.Fail(err)
 		}
 		links = strings.TrimRight(links, "\n")
 		if links == "" {
 			links = "(no links in scope)"
+			if m := req.String("match"); m != "" {
+				links = fmt.Sprintf("(no link in scope matches %q)", m)
+			}
 		}
 		url, _ := dom.EvalString(ctx, a.client(), sid, "location.href")
 		return ok(fmt.Sprintf("url: %s\n\n%s", url, links))
@@ -375,28 +378,40 @@ func readExpression(sel string) string {
 
 // linksExpression lists the links of the scope as `label — href`, resolving
 // relative URLs (the `href` property is absolute) and dropping `javascript:`
-// and the anchors without an href. Identical label+href pairs are listed once.
-func linksExpression(sel string) string {
+// and the anchors without an href. A URL is listed once, with its first
+// label: a card links the same page from its title, logo and company name.
+// match keeps the links whose label or URL contains one of its "|"-separated
+// parts, ignoring case — the job links, not the site's navigation.
+func linksExpression(sel, match string) string {
 	return fmt.Sprintf(`(() => {
 		const scope = document.querySelector(%s) || document.body;
 		if (!scope) return '';
-		const seen = new Set();
-		const out = [];
+		const wants = %s.split('|').map(s => s.trim().toLowerCase()).filter(Boolean);
+		const byHref = new Map();
 		for (const a of scope.querySelectorAll('a[href]')) {
 			const href = a.href;
 			if (!href || href.startsWith('javascript:')) continue;
 			let label = (a.getAttribute('aria-label') || a.innerText || a.getAttribute('title') || '').trim();
 			label = label.replace(/\s+/g, ' ').slice(0, 80);
-			if (!label) label = href;
-			const line = label + ' — ' + href;
-			if (seen.has(line)) continue;
-			seen.add(line);
-			out.push(line);
+			const known = byHref.get(href);
+			if (known !== undefined) {
+				if (!known && label) byHref.set(href, label);
+				continue;
+			}
+			byHref.set(href, label);
+		}
+		const out = [];
+		for (const [href, label] of byHref) {
+			if (wants.length) {
+				const hay = (label + ' ' + href).toLowerCase();
+				if (!wants.some(w => hay.includes(w))) continue;
+			}
+			out.push((label || href) + ' — ' + href);
 		}
 		const capped = out.slice(0, 200);
-		if (out.length > capped.length) capped.push('(... ' + (out.length - capped.length) + ' more)');
+		if (out.length > capped.length) capped.push('(... ' + (out.length - capped.length) + ' more — narrow it with match= or a selector)');
 		return capped.join('\n');
-	})()`, strconv.Quote(sel))
+	})()`, strconv.Quote(sel), strconv.Quote(match))
 }
 
 // tableExpression reads an HTML table as aligned rows: the cells of each `tr`

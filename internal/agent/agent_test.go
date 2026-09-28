@@ -164,7 +164,7 @@ func TestTableExpression(t *testing.T) {
 // read --links must stay on anchors with an href, resolve them (the `href`
 // property is absolute) and carry the scope selector.
 func TestLinksExpression(t *testing.T) {
-	expr := linksExpression("#jobs")
+	expr := linksExpression("#jobs", "job/")
 	for _, want := range []string{"a[href]", "javascript:", "innerText", "href"} {
 		if !strings.Contains(expr, want) {
 			t.Errorf("the links search does not use %q", want)
@@ -172,6 +172,9 @@ func TestLinksExpression(t *testing.T) {
 	}
 	if !strings.Contains(expr, strconv.Quote("#jobs")) {
 		t.Error("the scope selector did not enter the expression")
+	}
+	if !strings.Contains(expr, strconv.Quote("job/")) {
+		t.Error("match did not enter the expression")
 	}
 }
 
