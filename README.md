@@ -285,7 +285,11 @@ Settled means the DOM held still for 300 ms, no request was in flight, the DOM
 still held after that, and nothing inside says `aria-busy`, so a debounced
 search that shows "Loading…" before its fetch is not read too early. The region
 may not exist yet (a listbox that opens on typing): it is waited for, and its
-appearing counts as the change. Attribute churn from animations (`class`,
+appearing counts as the change. A change the previous step already caused
+counts too — a list that opened during the `click`, a filter applied during the
+`type` — from a log of the page's DOM changes that axscope keeps (`ok: changed
+in css=#lb during the previous step (206ms into it)`); then only the settling is
+waited for. Attribute churn from animations (`class`,
 `style`) does not count. The default timeout is 10 s (`wait --change 3000`);
 "nothing changed" is an error, and a region that never holds still is read as
 it is, with a note.

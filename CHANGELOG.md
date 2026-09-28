@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `wait --change` counts a change the previous step already caused (a list
+  that opened during the `click`, a filter applied during the `type`) instead of
+  answering "nothing changed": the page keeps a short log of its DOM changes.
+
 - A request open for more than 5 s (a cross-origin iframe's document such as
   reCAPTCHA's, an EventSource, a long poll) no longer counts as the page being
   busy, and a new main document forgets the old page's open requests. On a page

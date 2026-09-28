@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/AndersonJ293/axscope/internal/browser"
 	"github.com/AndersonJ293/axscope/internal/command"
@@ -70,6 +71,10 @@ func (a *Agent) routes() map[string]route {
 func (a *Agent) dispatch(ctx context.Context, req protocol.Request) protocol.Response {
 	a.mu.Lock()
 	a.note = ""
+	// batch and script only carry their steps; the steps are the commands.
+	if req.Cmd != "batch" && req.Cmd != "script" {
+		a.prevStart, a.curStart = a.curStart, time.Now()
+	}
 	a.mu.Unlock()
 	r, found := a.routes()[req.Cmd]
 	if found && !r.needsSession {

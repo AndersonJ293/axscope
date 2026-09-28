@@ -136,17 +136,35 @@ func (a *Agent) waitChange(ctx context.Context, sess *browser.Session, req proto
 		}
 	}
 
-	o, err := observe(ctx, a, sid, objectID, remaining(), !appeared)
+	// The action before this wait usually caused the change already: the log
+	// says whether the region changed since that action started, and then only
+	// the settling is left to wait for.
+	a.mu.Lock()
+	since := a.prevStart
+	a.mu.Unlock()
+	earlier := time.Duration(0)
+	already := false
+	if !appeared && !since.IsZero() {
+		if at, ok, err := browser.ChangedSince(ctx, a.client(), sid, objectID, since); err == nil && ok {
+			already, earlier = true, at.Sub(since)
+		}
+	}
+
+	o, err := observe(ctx, a, sid, objectID, remaining(), !appeared && !already)
 	if err != nil {
 		return a.changeRead(ctx, sess, within, fmt.Sprintf("ok: the page navigated while waiting (%dms)", time.Since(start).Milliseconds()))
 	}
-	changed := o.Changed || appeared
+	changed := o.Changed || appeared || already
 	if !changed {
 		return protocol.Fail(fmt.Errorf("nothing changed%s in %dms", inRegion(within), time.Since(start).Milliseconds()))
 	}
 	firstAt := time.Duration(o.After) * time.Millisecond
 	if appeared {
 		firstAt = 0
+	}
+	when := fmt.Sprintf("after %dms", firstAt.Milliseconds())
+	if already {
+		when = fmt.Sprintf("during the previous step (%dms into it)", earlier.Milliseconds())
 	}
 
 	// The DOM held still; a fetch in flight means the content is still coming
@@ -163,7 +181,7 @@ func (a *Agent) waitChange(ctx context.Context, sess *browser.Session, req proto
 		}
 	}
 
-	head := fmt.Sprintf("ok: changed%s after %dms, settled at %dms", inRegion(within), firstAt.Milliseconds(), time.Since(start).Milliseconds())
+	head := fmt.Sprintf("ok: changed%s %s, settled at %dms", inRegion(within), when, time.Since(start).Milliseconds())
 	switch {
 	case o.Busy:
 		head = fmt.Sprintf("ok: changed%s, still aria-busy at %dms (the timeout) — reading it as it is", inRegion(within), time.Since(start).Milliseconds())
